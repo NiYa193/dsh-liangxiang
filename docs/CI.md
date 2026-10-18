@@ -9,9 +9,9 @@ Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CON
 - 个人 fork 不跑云端 CI，个人推送只做本地 Codex 验证；本人的 fork 已关闭 Actions。
   功能在向社区 dev 提 PR 时跑 CI，合入 dev/main 后不再重复触发同一轮 push 检查。
 - PR 默认目标为 `dev`，普通 `pull_request` 在 GitHub 生成的测试合并提交上运行。
-- `dev` 要求三个 `verify-locked (ubuntu-latest/windows-latest/macos-latest)` 检查；
+- `dev` 要求 `privacy` 与三个 `verify-locked (ubuntu-latest/windows-latest/macos-latest)` 检查；
   Node 22.23.1 / pnpm 11.7.0，锁文件安装，完整类型、lint、单元/后端、构建、体积验证。
-- CI 控制器另有 Node 原生测试，覆盖主线推进、批次被改、假/缺/跳过检查和清理边界。
+- CI 控制器和隐私门禁另有 Node 原生测试，覆盖主线推进、批次被改、假/缺/跳过检查和清理边界。
 - 管理员审核后人工合并；目前只有一位管理员，保护允许 0 个额外 Approve。
   这支持维护者自己的 PR，不代表独立审批；GitHub 禁止作者批准自己。
 - main 额外要求 `smoke-installed`：Ubuntu 中真实 tarball 安装、桌面/窄屏/暗色浏览器

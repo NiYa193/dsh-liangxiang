@@ -48,8 +48,16 @@ jobs:
       head_sha: ${{ needs.plan.outputs.head }}
       full_smoke: true
 
+  privacy-dry-run:
+    needs: plan
+    if: needs.plan.outputs.changed == 'true' && (inputs.dry_run || vars.LIANGXIANG_PROMOTION_APP_ID == '')
+    uses: ./.github/workflows/privacy.yml
+    with:
+      base_sha: ${{ needs.plan.outputs.base }}
+      head_sha: ${{ needs.plan.outputs.head }}
+
   setup-required:
-    needs: [plan, dry-run]
+    needs: [plan, dry-run, privacy-dry-run]
     if: always() && needs.plan.outputs.changed == 'true' && !inputs.dry_run && vars.LIANGXIANG_PROMOTION_APP_ID == ''
     runs-on: ubuntu-latest
     permissions: {}
