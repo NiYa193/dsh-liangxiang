@@ -7,7 +7,7 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 梁相版本 | 1.2.0-rc.2 |
+| 梁相版本 | 1.2.0-rc.3 |
 | 状态 | 本地测试候选，尚未公开发布/生产部署 |
 | DSH CLI / Web App / UI renderer/layout/slots | 0.2.1-rc.2（同一版本） |
 | DSH tag / commit | dsh-v0.2.1-rc.2 / 687f282e86 |
@@ -64,11 +64,15 @@ chunk/final/retry 序列，但真实观测只在尝试结束时铸香。
 tsdown.config.ts 镜像上述共享模块，保持
 window.__ModuleLoader__.load({ id, factory }) 和 CJS factory 包装。
 插件运行时只要求自己实际导入的共享模块；新增平台模块不会凭空成为旧宿主依赖。
+本批压缩空白和内部变量名，显式保留 module/exports/require；check:client-budget
+还执行构建产物的工厂并核对插件导出，避免格式漂移。真实 Profile 将服务的 combo 与构建产物
+比较；只按 client/modules/src/index.ts 的 prepareSource 去掉 sourceURL/sourceMappingURL
+尾注（已核对同一 commit），不依赖引号或缩进形式。
 图像继续内联 lossless WebP，单 client.js 预算为 raw ≤700 KB、gzip ≤400 KB。
 
 ## 验证边界
 
-本次自动验证的命令、结果及本机测试入口记录在 `PR6_REVIEW.md`。类型检查通过
+徽标与 DSH 适配的验证见 `PR6_REVIEW.md`；小难梁增量验证见 `ISSUE2_IMPLEMENTATION.md`。类型检查通过
 不代表安装/浏览器兼容；只有完成的真实 Profile、localhost Backend 和浏览器
 检查才记为已验证。未来未知 DSH 版本仍需重读接口并重复相关验证。
 

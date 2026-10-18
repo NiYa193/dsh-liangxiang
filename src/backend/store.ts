@@ -110,6 +110,7 @@ export interface MonthArchiveRow {
 }
 
 export interface DayArchiveSource {
+  liangziPolicyVersion: string
   businessDate: string
   caseTitles: string[]
   upVotes: number
@@ -499,7 +500,7 @@ export function openBackendStore(databasePath: string): BackendStore {
       ORDER BY c.business_date`,
   )
   const selectArchiveCasesForDate = db.prepare(
-    `SELECT c.title AS title,
+    `SELECT c.title AS title, c.liangzi_policy_version,
             COALESCE(s.up_votes, 0) AS up_votes,
             COALESCE(s.down_votes, 0) AS down_votes
        FROM daily_liang_case c
@@ -835,6 +836,7 @@ export function openBackendStore(databasePath: string): BackendStore {
     },
     dayArchiveSource(businessDate) {
       const rows = selectArchiveCasesForDate.all(businessDate) as unknown as Array<{
+        liangzi_policy_version: string
         title: string
         up_votes: number | bigint
         down_votes: number | bigint
@@ -842,6 +844,7 @@ export function openBackendStore(databasePath: string): BackendStore {
       if (rows.length === 0) return undefined
       return {
         businessDate,
+        liangziPolicyVersion: rows.at(-1)!.liangzi_policy_version,
         caseTitles: rows.map(row => row.title),
         upVotes: rows.reduce((sum, row) => sum + Number(row.up_votes), 0),
         downVotes: rows.reduce((sum, row) => sum + Number(row.down_votes), 0),

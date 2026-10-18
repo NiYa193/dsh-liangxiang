@@ -152,11 +152,12 @@ export function playIncenseEarn(): void {
 
 const LIANGZI_RANK: Record<LiangziState, number> = {
   waiting: 0,
-  liang_gong: 1,
-  liang_zong: 2,
-  liang_shen: 3,
-  liang_sheng: 4,
-  liang_zu: 5,
+  xiao_nan_liang: 1,
+  liang_gong: 2,
+  liang_zong: 3,
+  liang_shen: 4,
+  liang_sheng: 5,
+  liang_zu: 6,
 }
 
 /** Central 梁子 crossed a threshold: rising fanfare up, falling sigh down. */

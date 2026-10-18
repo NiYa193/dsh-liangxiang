@@ -129,6 +129,7 @@ export interface BadgeButtonProps {
   open: boolean
   /** Drives the icon: the entry shows the current central 梁子 state. */
   liangziState: LiangziState
+  policyVersion?: string
   /** Next-incense fill: logo and panel bob at the same cadence. */
   liangQiFill?: number
   reducedMotion?: boolean
@@ -145,6 +146,7 @@ export interface BadgeButtonProps {
 export function BadgeButton({
   open,
   liangziState,
+  policyVersion,
   liangQiFill = 1,
   reducedMotion = false,
   dragging = false,
@@ -194,6 +196,7 @@ export function BadgeButton({
       <span aria-hidden="true" style={{ position: 'relative', zIndex: 1, display: 'flex', pointerEvents: 'none', overflow: 'visible', background: 'transparent' }}>
         <LiangAvatar
           state={liangziState}
+          {...(policyVersion === undefined ? {} : { policyVersion })}
           pulse={false}
           reducedMotion={reducedMotion}
           size={BADGE_ICON_SIZE}
@@ -874,6 +877,7 @@ export function LiangxiangBadge(): ReactElement {
       <BadgeButton
         open={open}
         liangziState={state.snapshot.liangziState}
+        {...(state.snapshot.liangziPolicyVersion === undefined ? {} : { policyVersion: state.snapshot.liangziPolicyVersion })}
         liangQiFill={throttle.fill}
         reducedMotion={reducedMotion}
         dragging={dragging}

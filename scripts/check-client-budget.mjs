@@ -2,6 +2,8 @@
 /** Fail the build when the single-file browser payload regresses materially. */
 import { readFile } from 'node:fs/promises'
 import { gzipSync } from 'node:zlib'
+import { runInNewContext } from 'node:vm'
+import { createRequire } from 'node:module'
 
 const client = await readFile(new URL('../lib/client.js', import.meta.url))
 const rawLimit = 700_000
@@ -14,4 +16,18 @@ if (client.byteLength > rawLimit || gzipBytes > gzipLimit) {
     `client.js exceeds budget (raw <= ${rawLimit}, gzip <= ${gzipLimit}); `
       + 'inspect inlined artwork and accidental browser dependencies',
   )
+}
+
+// Output minification must preserve the DSH wrapper; an ESM export or a broken
+// factory can fit the byte budget and still fail every installed WebUI at boot.
+let loaded
+runInNewContext(client.toString('utf8'), {
+  window: { __ModuleLoader__: { load: value => { loaded = value } } },
+})
+if (loaded?.id !== 'dsh-liangxiang' || typeof loaded.factory !== 'function') {
+  throw new Error('client.js must register the DSH CommonJS factory')
+}
+const plugin = loaded.factory(createRequire(import.meta.url))
+if (typeof plugin?.apply !== 'function' || !Array.isArray(plugin.inject) || !plugin.inject.includes('slots')) {
+  throw new Error('client.js must export the DSH apply function and slots injection')
 }

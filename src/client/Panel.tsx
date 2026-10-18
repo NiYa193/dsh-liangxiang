@@ -1,3 +1,4 @@
+import { liangziPolicyForVersion, LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 /**
  * The expanded 梁相 panel — exactly four visual regions (frozen UI contract):
  *
@@ -918,7 +919,7 @@ export function Panel(props: PanelProps): ReactElement {
   const earnedCompact = formatCompactCount(earnedObserved)
   const remainingCompact = formatCompactCount(personal.remainingIncense)
   const summary = `当前梁子状态：${LIANGZI_STATE_LABELS[snapshot.liangziState]}`
-    + `（${liangziRatioRangeText(snapshot.liangziState)}）。`
+    + `（${liangziRatioRangeText(snapshot.liangziState, liangziPolicyForVersion(snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION))}）。`
     + `${LIANG_POSITION_LABEL} ${percents.up}（即${VOTE_UP_NAME} ${percents.up}，${VOTE_DOWN_NAME} ${percents.down}）。`
     + `今日生成香火 ${earnedExact} 炷，剩余 ${remainingExact} 炷，距下一炷还差 ${toNextExact} 当量（Pro 口径）。`
     + `${AUTHORITY_MODE_NOTES[state.authorityMode]}。`
@@ -1207,7 +1208,7 @@ export function Panel(props: PanelProps): ReactElement {
                 <span aria-hidden="true" data-liangxiang-liang-position-causal="" style={{ ...positionGlueStyle, color: color.textTertiary }}>→</span>
                 <span
                   data-liangxiang-liangzi-title=""
-                  title={`${LIANGZI_STATE_LABELS[snapshot.liangziState]}：${liangziRatioRangeText(snapshot.liangziState)}`}
+                  title={`${LIANGZI_STATE_LABELS[snapshot.liangziState]}：${liangziRatioRangeText(snapshot.liangziState, liangziPolicyForVersion(snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION))}`}
                   style={{ ...positionFactStyle, color: color.ritualEmberText }}
                 >
                   {LIANGZI_STATE_LABELS[snapshot.liangziState]}
@@ -1217,6 +1218,7 @@ export function Panel(props: PanelProps): ReactElement {
           >
             <LiangAvatar
               state={snapshot.liangziState}
+              policyVersion={snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION}
               pulse={avatarPulse}
               crossing={avatarPulse}
               reducedMotion={reducedMotion}

@@ -1,6 +1,6 @@
 # Sticker sources for 梁子 (256px).
 
-JPEG originals keep the light-gray checkerboard plate. Punch that plate
+Legacy JPEG originals keep the light-gray checkerboard plate. Punch that plate
 out to PNG (flood-fill from the edges, stop at the black outline), encode a
 lossless WebP with the same visible RGBA pixels, and inline that WebP into
 liangzi-art.ts:
@@ -10,4 +10,10 @@ liangzi-art.ts:
 In-art jokes only (UI copy is unchanged): the waiting plaque deliberately
 reads 牢梁, while each active portrait may carry its matching state name as a
 small chest badge/plaque. These marks are decorative and never authoritative.
-牢梁 is not a sixth state; 小难梁 and 老梁 remain forbidden product concepts.
+nan.png is the approved 小难梁 portrait, resized to 256px with an optimized
+palette from the 2026-10-18 concept. It has native alpha: the generator preserves
+it directly instead of punching a JPEG. Its inlined WebP preserves every visible
+RGBA pixel of this production PNG. Regeneration requires no image service.
+
+牢梁 remains only a waiting-art plaque. 小难梁 is the new lowest voted tier
+(<25% with votes); 老梁 remains forbidden.

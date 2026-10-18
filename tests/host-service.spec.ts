@@ -5,7 +5,7 @@
  * threshold crossing, personal/global decoupling.
  */
 import { describe, expect, it } from 'vitest'
-import { deriveLiangziState, DEFAULT_INCENSE_WEIGHT_POLICY } from '../src/domain/index.ts'
+import { deriveLiangziState, DEFAULT_INCENSE_WEIGHT_POLICY, LIANGZI_POLICY_VERSION, LEGACY_LIANGZI_POLICY_VERSION } from '../src/domain/index.ts'
 import {
   FakeAuthoritativeLiangService,
   type LiangPersistedState,
@@ -654,5 +654,17 @@ describe('hydration guards', () => {
     service.creditSimulatedUsage(50_000)
     expect(service.getWireState().personal.effectiveTokensToday).toBe(100_000)
     expect(service.getWireState().personal.usedIncenseToday).toBe(0)
+  })
+})
+
+it.each([[0, LIANGZI_POLICY_VERSION], [2, LEGACY_LIANGZI_POLICY_VERSION]] as const)('uses the last selected local case %s rule after cycling wraps past a higher case index', async (caseIndex, expected) => {
+  const stored = memoryState()
+  stored.aggregates.set('local-2026-08-16-0', { upVotes: 0, downVotes: 1, uniqueVoters: 1, liangziPolicyVersion: LIANGZI_POLICY_VERSION })
+  stored.aggregates.set('local-2026-08-16-2', { upVotes: 0, downVotes: 2, uniqueVoters: 1, liangziPolicyVersion: LEGACY_LIANGZI_POLICY_VERSION })
+  stored.caseIndexes!.set('2026-08-16', { caseIndex })
+  const service = new FakeAuthoritativeLiangService(BASE_CONFIG, fakeClock(AFTER_MIDNIGHT_SHANGHAI), () => undefined)
+  await service.attachPersistence(memoryPort(stored))
+  expect(service.history().days.find(day => day.business_date === '2026-08-16')).toMatchObject({
+    up_votes: 0, down_votes: 3, liangzi_policy_version: expected,
   })
 })

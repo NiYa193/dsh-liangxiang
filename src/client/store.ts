@@ -85,6 +85,7 @@ export function wireToViewState(wire: LiangxiangWireState, connection: Connectio
     authorityMode: wire.authorityMode,
     activeCase: wire.activeCase,
     snapshot: buildPublicSnapshot({
+      ...(wire.global.liangziPolicyVersion === undefined ? {} : { liangziPolicyVersion: wire.global.liangziPolicyVersion }),
       caseId: wire.global.caseId,
       aggregate: {
         upVotes: wire.global.upVotes,

@@ -11,7 +11,7 @@ import {
   openLiangxiangLocalPersistence,
   openLiangxiangPersistence,
 } from '../src/compat/dsh/storage.ts'
-import { DEFAULT_INCENSE_WEIGHT_POLICY, parseIncenseWeightPolicy } from '../src/domain/index.ts'
+import { DEFAULT_INCENSE_WEIGHT_POLICY, parseIncenseWeightPolicy, LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION } from '../src/domain/index.ts'
 
 class MemoryTable implements DshKvTable {
   constructor(readonly values = new Map<string, unknown>()) {}
@@ -191,5 +191,29 @@ describe('liangxiang storage', () => {
     const handle = await openLiangxiangPersistence(facility, () => undefined)
     expect(() => handle.port.load()).toThrow(/requestedCount.*\[1,500\]/)
     await handle.close()
+  })
+})
+
+describe('versioned local Liangzi storage', () => {
+  it('normalizes pre-upgrade aggregates and reopens both sealed archive policies without changing their meaning', async () => {
+    const facility = new MemoryFacility()
+    const shared = await openLiangxiangPersistence(facility, () => undefined)
+    const local = await openLiangxiangLocalPersistence(facility, shared, () => undefined)
+    const spec = facility.specs.get(LIANGXIANG_LOCAL_DOMAIN_NAME)!
+    const aggregate = spec.tables.aggregates!.valueSchema
+    expect(aggregate.parse({ upVotes: 0, downVotes: 4, uniqueVoters: 1 })).toMatchObject({ liangziPolicyVersion: LEGACY_LIANGZI_POLICY_VERSION })
+    for (const [index, version] of [LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION].entries()) {
+      const businessDate = `2026-10-${18 + index}`
+      await facility.domains.get(LIANGXIANG_LOCAL_DOMAIN_NAME)!.table('day_archives').put(businessDate, {
+        businessDate, caseCount: 1, caseTitles: ['测试梁案'], finalizedAt: 1, archiveVersion: index + 1,
+        aggregationPolicyVersion: 'liang-archive-v1-weighted-counts', liangziPolicyVersion: version,
+        upVotes: 0, downVotes: 4, uniqueVoters: 1,
+      })
+    }
+    const restored = await local.port.load()
+    expect(restored.dayArchives?.get('2026-10-18')).toMatchObject({ liangziState: 'liang_gong', liangziPolicyVersion: LEGACY_LIANGZI_POLICY_VERSION })
+    expect(restored.dayArchives?.get('2026-10-19')).toMatchObject({ liangziState: 'xiao_nan_liang', liangziPolicyVersion: LIANGZI_POLICY_VERSION })
+    await local.close()
+    await shared.close()
   })
 })

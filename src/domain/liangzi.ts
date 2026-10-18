@@ -1,72 +1,54 @@
-/**
- * LiangziStatePolicy — the global side of 梁相.
- *
- * The central 梁子 state is driven ONLY by the global up ratio of accepted
- * votes (AGENTS.md §3). Zero total votes is the WAITING placeholder (待开梁),
- * which is not a sixth tier. Personal tokens/incense never appear here.
- */
+/** Community Liangzi states. Zero votes are a placeholder, never a voted tier. */
 import { DomainError, assertCount } from './errors.ts'
 
-export const LIANGZI_STATES = [
-  'waiting',
-  'liang_gong',
-  'liang_zong',
-  'liang_shen',
-  'liang_sheng',
-  'liang_zu',
-] as const
-
-export type LiangziState = (typeof LIANGZI_STATES)[number]
-
-/** The five voted states, in ascending up-ratio order (WAITING excluded). */
 export const ACTIVE_LIANGZI_STATES = [
-  'liang_gong',
-  'liang_zong',
-  'liang_shen',
-  'liang_sheng',
-  'liang_zu',
+  'xiao_nan_liang', 'liang_gong', 'liang_zong', 'liang_shen', 'liang_sheng', 'liang_zu',
 ] as const
-
+export const LIANGZI_STATES = ['waiting', ...ACTIVE_LIANGZI_STATES] as const
+export type LiangziState = (typeof LIANGZI_STATES)[number]
 export type ActiveLiangziState = (typeof ACTIVE_LIANGZI_STATES)[number]
 
-/**
- * Ascending up-ratio boundaries splitting [0,1] into the five active states:
- * `[b0,b1,b2,b3]` maps `<b0`->梁工, `[b0,b1)`->梁总, `[b1,b2)`->梁神,
- * `[b2,b3)`->梁圣, `>=b3`->梁祖. WAITING is handled by totalVotes === 0, not
- * by a boundary.
- */
-export interface LiangziThresholdPolicy {
-  readonly boundaries: readonly [number, number, number, number]
-}
+/** Four boundaries identify the legacy five-tier policy; five identify six tiers. */
+export type LiangziBoundaries = readonly [number, number, number, number]
+  | readonly [number, number, number, number, number]
+export interface LiangziThresholdPolicy { readonly boundaries: LiangziBoundaries }
 
-/**
- * Frozen thresholds: the lower half is 梁工; the upper half gets harder
- * toward 梁祖 (50 / 70 / 85 / 95).
- */
-export const DEFAULT_LIANGZI_THRESHOLDS: LiangziThresholdPolicy = {
+export const LEGACY_LIANGZI_POLICY_VERSION = 'liangzi-v0.1-50-70-85-95'
+export const LIANGZI_POLICY_VERSION = 'liangzi-v0.2-25-50-70-85-95'
+export const LEGACY_LIANGZI_THRESHOLDS: LiangziThresholdPolicy = {
   boundaries: [0.5, 0.7, 0.85, 0.95],
 }
+export const DEFAULT_LIANGZI_THRESHOLDS: LiangziThresholdPolicy = {
+  boundaries: [0.25, 0.5, 0.7, 0.85, 0.95],
+}
 
-/** Validate a threshold policy: four finite, strictly ascending values in (0,1). */
+/** Stored versions are immutable. Unknown versions must not silently rewrite history. */
+export function liangziPolicyForVersion(version: string): LiangziThresholdPolicy {
+  if (version === LIANGZI_POLICY_VERSION) return DEFAULT_LIANGZI_THRESHOLDS
+  if (version === LEGACY_LIANGZI_POLICY_VERSION) return LEGACY_LIANGZI_THRESHOLDS
+  throw new DomainError('invalid_policy', `unsupported Liangzi policy ${version}`)
+}
+
 export function assertValidThresholdPolicy(policy: LiangziThresholdPolicy): void {
   const { boundaries } = policy
-  if (!Array.isArray(boundaries) || boundaries.length !== 4) {
-    throw new DomainError('invalid_policy', 'threshold policy must have exactly 4 boundaries')
+  if (!Array.isArray(boundaries) || (boundaries.length !== 4 && boundaries.length !== 5)) {
+    throw new DomainError('invalid_policy', 'threshold policy must have 4 or 5 boundaries')
   }
-  for (const boundary of boundaries) {
+  for (let i = 0; i < boundaries.length; i += 1) {
+    const boundary = boundaries[i] as number
     if (typeof boundary !== 'number' || !Number.isFinite(boundary) || boundary <= 0 || boundary >= 1) {
       throw new DomainError('invalid_policy', `threshold boundary out of (0,1): ${String(boundary)}`)
     }
-  }
-  for (let i = 1; i < boundaries.length; i += 1) {
-    // Non-null: length checked above; indexes 0..3 are in range.
-    if ((boundaries[i] as number) <= (boundaries[i - 1] as number)) {
+    if (i > 0 && boundary <= (boundaries[i - 1] as number)) {
       throw new DomainError('invalid_policy', 'threshold boundaries must be strictly ascending (no overlap, no gap)')
     }
   }
 }
 
-/** Map a validated up ratio in [0,1] to one of the five active states. */
+function statesForPolicy(policy: LiangziThresholdPolicy): readonly ActiveLiangziState[] {
+  return policy.boundaries.length === 4 ? ACTIVE_LIANGZI_STATES.slice(1) : ACTIVE_LIANGZI_STATES
+}
+
 export function liangziStateForUpRatio(
   upRatio: number,
   policy: LiangziThresholdPolicy = DEFAULT_LIANGZI_THRESHOLDS,
@@ -75,42 +57,31 @@ export function liangziStateForUpRatio(
   if (typeof upRatio !== 'number' || !Number.isFinite(upRatio) || upRatio < 0 || upRatio > 1) {
     throw new DomainError('invalid_policy', `upRatio out of [0,1]: ${String(upRatio)}`)
   }
-  const [b0, b1, b2, b3] = policy.boundaries
-  if (upRatio < b0) return 'liang_gong'
-  if (upRatio < b1) return 'liang_zong'
-  if (upRatio < b2) return 'liang_shen'
-  if (upRatio < b3) return 'liang_sheng'
-  return 'liang_zu'
+  const states = statesForPolicy(policy)
+  const index = policy.boundaries.findIndex(boundary => upRatio < boundary)
+  return states[index === -1 ? states.length - 1 : index] as ActiveLiangziState
 }
 
-/** The up-ratio interval `[minInclusive, maxExclusive)` owned by a state. */
 export interface LiangziUpRatioBand {
-  /** null = open on that side; WAITING has both sides null (no ratio at all). */
   minInclusive: number | null
   maxExclusive: number | null
 }
 
-/** The exact up-ratio band of one state under a policy (single source for UI copy). */
+/** UI ranges use the same policy as the figure, including sealed legacy portraits. */
 export function liangziUpRatioBand(
   state: LiangziState,
   policy: LiangziThresholdPolicy = DEFAULT_LIANGZI_THRESHOLDS,
 ): LiangziUpRatioBand {
   assertValidThresholdPolicy(policy)
-  const [b0, b1, b2, b3] = policy.boundaries
-  switch (state) {
-    case 'waiting': return { minInclusive: null, maxExclusive: null }
-    case 'liang_gong': return { minInclusive: null, maxExclusive: b0 }
-    case 'liang_zong': return { minInclusive: b0, maxExclusive: b1 }
-    case 'liang_shen': return { minInclusive: b1, maxExclusive: b2 }
-    case 'liang_sheng': return { minInclusive: b2, maxExclusive: b3 }
-    case 'liang_zu': return { minInclusive: b3, maxExclusive: null }
+  if (state === 'waiting') return { minInclusive: null, maxExclusive: null }
+  const index = statesForPolicy(policy).indexOf(state)
+  if (index < 0) throw new DomainError('invalid_policy', `${state} does not exist in this policy`)
+  return {
+    minInclusive: index === 0 ? null : policy.boundaries[index - 1] as number,
+    maxExclusive: policy.boundaries[index] ?? null,
   }
 }
 
-/**
- * Derive the Liangzi state from raw accepted vote counts.
- * `0/0` is WAITING; anything else goes through the threshold policy.
- */
 export function deriveLiangziState(
   upVotes: number,
   downVotes: number,

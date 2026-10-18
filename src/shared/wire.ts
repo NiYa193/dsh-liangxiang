@@ -9,6 +9,7 @@
  */
 import {
   assertRequestId,
+  liangziPolicyForVersion,
   assertValidCase,
   assertVoteType,
   isVoteType,
@@ -48,6 +49,7 @@ export function isAuthorityMode(value: unknown): value is AuthorityMode {
 
 /** Raw global counts of one published snapshot (ratios derived client-side). */
 export interface WireGlobalCounts {
+  liangziPolicyVersion?: string
   caseId: string
   upVotes: number
   downVotes: number
@@ -282,6 +284,7 @@ export function parseWireState(raw: unknown): LiangxiangWireState {
       : requireCount(record.archiveVersion, 'state.archiveVersion'),
     activeCase: parseCase(record.activeCase, 'state.activeCase'),
     global: {
+      ...(globalRecord.liangziPolicyVersion === undefined ? {} : { liangziPolicyVersion: parseLiangziVersion(globalRecord.liangziPolicyVersion) }),
       caseId: requireString(globalRecord.caseId, 'state.global.caseId'),
       upVotes,
       downVotes,
@@ -382,4 +385,11 @@ export function parseWireVoteResponse(raw: unknown): WireVoteResponse {
     result: parseWireVoteResult(record.result),
     state: parseWireState(record.state),
   }
+}
+
+function parseLiangziVersion(raw: unknown): string {
+  const version = requireString(raw, 'state.global.liangziPolicyVersion')
+  try { liangziPolicyForVersion(version) }
+  catch { throw new WireError('state.global.liangziPolicyVersion', `unsupported Liangzi policy ${version}`) }
+  return version
 }

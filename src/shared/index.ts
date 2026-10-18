@@ -30,13 +30,13 @@ export {
 export const PLUGIN_PACKAGE_NAME = 'dsh-liangxiang'
 
 /** Installed package version, surfaced by 梁相案牍. Keep in sync with package.json. */
-export const PLUGIN_VERSION = '1.2.0-rc.2'
+export const PLUGIN_VERSION = '1.2.0-rc.3'
 
 /**
  * Server-only release label for the community backend. Do not bump the npm /
  * client `PLUGIN_VERSION` for a backend-only change; stamp `1.1.6-uN` instead.
  */
-export const SERVER_BUILD = '1.2.0-rc.2-u1'
+export const SERVER_BUILD = '1.2.0-rc.3-u1'
 
 /** Welcome gift: sticks credited once per device fingerprint per business date. */
 export const STARTER_INCENSE_COUNT = 10
@@ -220,6 +220,7 @@ export const LIANGCI_STALE_LABEL = '档案未更新'
 /** Display names of the central Liangzi states (WAITING is the zero-vote placeholder, not a tier). */
 export const LIANGZI_STATE_LABELS: Readonly<Record<LiangziState, string>> = {
   waiting: '待开梁',
+  xiao_nan_liang: '小难梁',
   liang_gong: '梁工',
   liang_zong: '梁总',
   liang_shen: '梁神',

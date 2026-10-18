@@ -27,6 +27,7 @@
 - 运维与恢复：`121-vps-deploy.md`、`122-identity-recovery.md`、
   `143-case-bank-and-operations.md`、`144-client-recovery-and-update.md`。
 - 梁祠视觉/交互实现参考：`130-liangci-design.md`；契约仍只在 `AGENTS.md`。
+- 小难梁、规则版本及增量验收：`ISSUE2_IMPLEMENTATION.md`。
 - `npm-readme.md` 是发布 README 输入；必须由现行权威校验，不能反向定义产品。
 
 参考文件若仍出现旧名称、旧 Phase、旧端点或“future/占位”描述，以当前源码、测试、

@@ -330,6 +330,7 @@ export class BackendLiangService implements LiangHostService {
       archiveVersion: this.archiveVersion,
       activeCase: toDomainCase(activeCase),
       global: {
+        liangziPolicyVersion: snapshot.policy_version,
         caseId: snapshot.case_id,
         upVotes: snapshot.up_votes,
         downVotes: snapshot.down_votes,

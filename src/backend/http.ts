@@ -22,6 +22,8 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
+import { legacyLiangziView, legacyLiangziHistory } from './liangzi-compat.ts'
+import { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 import { formatLiangPosition } from '../domain/index.ts'
 import { PLUGIN_VERSION, SERVER_BUILD } from '../shared/index.ts'
 import { WireError } from '../shared/wire.ts'
@@ -29,6 +31,7 @@ import {
   BACKEND_API_PREFIX,
   DEVICE_HEADER,
   INSTALLATION_HEADER,
+  LIANGZI_POLICY_HEADER,
   PUBLIC_KEY_HEADER,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
@@ -364,7 +367,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
     }
     if (path === `${BACKEND_API_PREFIX}/snapshot`) {
       // Public read: no installation identity involved.
-      writeJson(res, 200, service.snapshotResponse())
+      writeJson(res, 200, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? service.snapshotResponse() : legacyLiangziView(service.snapshotResponse()))
       return
     }
     if (path === `${BACKEND_API_PREFIX}/admission/tickets`) {
@@ -388,7 +391,8 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
           afterVersion = Number(raw)
           if (!Number.isSafeInteger(afterVersion)) throw new WireError('after_version', 'exceeds safe integer range')
         }
-        writeJson(res, 200, service.historyResponse(afterVersion))
+        const history = service.historyResponse(afterVersion)
+        writeJson(res, 200, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? history : legacyLiangziHistory(history))
       } catch (error) {
         writeValidationError(res, error)
       }
@@ -563,7 +567,8 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
     }
 
     if (path === `${BACKEND_API_PREFIX}/bootstrap`) {
-      writeJson(res, 200, service.bootstrap(installationId))
+      const bootstrap = service.bootstrap(installationId)
+      writeJson(res, 200, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? bootstrap : legacyLiangziView(bootstrap))
       expectedEvents.record('bootstrap_hello', `[liangxiang-backend] hello ${who(req, installationId)}`)
       return
     }
@@ -657,7 +662,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         voteLimiter.consume(installationId, 1, limiterNow, lastVoteAt)
       }
       const status = response.result.status === 'accepted' ? 200 : statusForRejection(response.result.reason)
-      writeJson(res, status, response)
+      writeJson(res, status, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? response : legacyLiangziView(response))
       const direction = intent.vote_type === 'up' ? '夯' : '拉'
       const snapshot = response.global_snapshot
       const position = formatLiangPosition(snapshot.up_votes, snapshot.down_votes)

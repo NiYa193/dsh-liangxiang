@@ -11,7 +11,7 @@ import { createMockLiangxiangStore } from '../src/client/store.ts'
 import type { LiangxiangViewState } from '../src/client/store.ts'
 import { color } from '../src/client/theme.ts'
 import { RELEASE_NOTES_QQ, RELEASE_NOTES_THANKS, RELEASE_NOTES_TITLE } from '../src/client/release-notes.ts'
-import { LIANGZI_STATES, VOTE_COUNT_MAX, deriveLocalIncenseStats, liangQiFloatPeriodMs, DEFAULT_INCENSE_WEIGHT_POLICY } from '../src/domain/index.ts'
+import { LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_STATES, VOTE_COUNT_MAX, deriveLocalIncenseStats, liangQiFloatPeriodMs, DEFAULT_INCENSE_WEIGHT_POLICY } from '../src/domain/index.ts'
 import {
   COMMUNITY_UNAVAILABLE_REASON,
   INCENSE_STAT_LABEL,
@@ -1085,6 +1085,13 @@ describe('梁相案牍', () => {
 })
 
 describe('avatar states are visually distinct', () => {
+  it('keeps old archive range text while the current 梁工 range starts at 25%', () => {
+    const old = renderDeep(<LiangAvatar state="liang_gong" policyVersion={LEGACY_LIANGZI_POLICY_VERSION} pulse={false} reducedMotion />)
+    const current = renderDeep(<LiangAvatar state="liang_gong" pulse={false} reducedMotion />)
+    expect(findAll(old, node => node.type === 'img')[0]?.props.alt).toBe('梁子当前状态：梁工（夯率 < 50%）')
+    expect(findAll(current, node => node.type === 'img')[0]?.props.alt).toBe('梁子当前状态：梁工（25% ≤ 夯率 < 50%）')
+  })
+
   it('every Liangzi state renders a different artwork composition', () => {
     const serialized = LIANGZI_STATES.map((state) =>
       JSON.stringify(renderDeep(<LiangAvatar state={state} pulse={false} reducedMotion={true} />)))
@@ -1092,7 +1099,7 @@ describe('avatar states are visually distinct', () => {
   })
 
   it('labels every state with its Chinese display name', () => {
-    const labels = ['待开梁', '梁工', '梁总', '梁神', '梁圣', '梁祖']
+    const labels = ['待开梁', '小难梁', '梁工', '梁总', '梁神', '梁圣', '梁祖']
     LIANGZI_STATES.forEach((state, index) => {
       const tree = renderDeep(<LiangAvatar state={state} pulse={false} reducedMotion={true} />)
       expect(textContent(tree)).toContain(labels[index] ?? '')

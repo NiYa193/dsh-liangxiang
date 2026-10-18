@@ -6,10 +6,10 @@ import { describe, expect, it } from 'vitest'
 import { LIANGZI_STATES } from '../src/domain/index.ts'
 import { LIANGZI_ART } from '../src/client/liangzi-art.ts'
 
-const sourceNames = ['waiting', 'gong', 'zong', 'shen', 'sheng', 'zu'] as const
+const sourceNames = ['waiting', 'nan', 'gong', 'zong', 'shen', 'sheng', 'zu'] as const
 
 describe('inlined Liangzi artwork', () => {
-  it('uses six lossless WebPs with the source dimensions and visible pixels', async () => {
+  it('uses seven lossless WebPs with the source dimensions and visible pixels', async () => {
     for (const [index, state] of LIANGZI_STATES.entries()) {
       const uri = LIANGZI_ART[state]
       expect(uri).toMatch(/^data:image\/webp;base64,/)

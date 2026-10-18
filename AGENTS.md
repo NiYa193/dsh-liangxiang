@@ -31,7 +31,7 @@
   Keyboard activation always opens/closes immediately; drag/cancel never plays
   a toy sound and cancels pending toggles. Reduced motion disables displacement
   and squash/bounce. No toy text may imply a balance change or introduce a tier.
-- The docked entry's icon IS the current central 梁子 state (one of the five, or
+- The docked entry's icon IS the current central 梁子 state (one of the six, or
   the 待开梁 placeholder) — never a letter or an abstract logo.
 - The entry is freely placeable: it can be dragged anywhere in the frame and the
   position persists per browser (a cosmetic preference, never an authority).
@@ -53,7 +53,7 @@ The following are obsolete and must not return as Liangxiang product concepts:
 - 大夯 / 偏夯 / 胶着 / 偏拉 / 大拉
 - global `LiangScore`, 0–100 梁分, Bayesian prior
 - `BallotLedger`, `LiangBallot`, 梁签 as the core voting-credit model
-- 小难梁 / 老梁
+- 老梁
 - old personal avatar progression `梁哥 -> 梁总 -> 梁神 -> 梁圣 -> 梁祖`
 - personal Token / earned incense / remaining incense driving the central Liangzi state
 - “vote must not reduce LiangQi” as an invariant
@@ -63,7 +63,7 @@ Do not mechanically delete unrelated generic words from dependencies or third-pa
 
 Artwork exception: `牢梁` is intentionally allowed only as the decorative
 plaque inside the `WAITING / 待开梁` portrait. It is never a state name, tier,
-metric, or UI label. The five active portraits may likewise carry a small
+metric, or UI label. The six active portraits may likewise carry a small
 in-art badge/plaque matching their authoritative state name. These embedded
 marks are visual jokes, not data or accessible copy.
 
@@ -242,6 +242,7 @@ incense, voting availability, or any ledger.
 
 ```text
 WAITING      -> 待开梁
+XIAO_NAN_LIANG -> 小难梁
 LIANG_GONG   -> 梁工
 LIANG_ZONG   -> 梁总
 LIANG_SHEN   -> 梁神
@@ -249,13 +250,15 @@ LIANG_SHENG  -> 梁圣
 LIANG_ZU     -> 梁祖
 ```
 
-`WAITING / 待开梁` is **not a sixth tier**. It is only the zero-vote placeholder state.
+`WAITING / 待开梁` is **not a voted tier**. It is only the zero-vote placeholder state.
 
 ### The only driver: global up ratio
 
 ```text
 if total_votes == 0:
     liangzi_state = WAITING
+else if up_ratio < 0.25:
+    liangzi_state = XIAO_NAN_LIANG
 else if up_ratio < 0.50:
     liangzi_state = LIANG_GONG
 else if up_ratio < 0.70:
@@ -268,12 +271,13 @@ else:
     liangzi_state = LIANG_ZU
 ```
 
-Frozen thresholds — the lower half is 梁工; the upper half gets harder toward 梁祖:
+Current thresholds (approved 2026-10-18, Issue #2): the lower half is split at 25%; the upper half gets harder toward 梁祖:
 
 | Global up ratio | Liangzi state |
 |---|---|
 | 0 votes | 待开梁 |
-| `< 50%` | 梁工 |
+| `0% <= x < 25%` (with votes) | 小难梁 |
+| `25% <= x < 50%` | 梁工 |
 | `50% <= x < 70%` | 梁总 |
 | `70% <= x < 85%` | 梁神 |
 | `85% <= x < 95%` | 梁圣 |
@@ -284,19 +288,34 @@ Frozen thresholds — the lower half is 梁工; the upper half gets harder towar
 The joke is “a normal person is gradually夯 into an ancestor”:
 
 - 待开梁: low-presence, unlit placeholder
+- 小难梁: dusty-pink hoodie, small bow, bashful expression; the same adult 梁子 face
 - 梁工: ordinary engineer / work badge
 - 梁总: suit / executive presence
 - 梁神: halo / mild levitation / starts becoming absurd
 - 梁圣: holy light / 法相
 - 梁祖: ancestor/master form / maximum 梁威
 
-Artwork can change later. State semantics cannot.
+Artwork can change later. State semantics follow the versioned policy below.
 
 The global visual master is **现代编年志 × 克制梁祠**: approximately 80% DSH
 native desktop UI, 15% calendar/chronicle structure, and 5% ritual accents.
 Warm gold and vermilion are punctuation, not background themes. The main panel,
 welcome, tooltips, icons, and 梁祠 must look like one system; do not drift into
 an ancient-fantasy game, dashboard card wall, glassmorphism, or palace UI.
+
+### Rule-version compatibility
+
+- Current policy `liangzi-v0.2-25-50-70-85-95` has six voted tiers plus 待开梁.
+- Legacy `liangzi-v0.1-50-70-85-95` retains 梁工 below 50%. Existing cases keep
+  their opening policy; newly opened cases use the current policy. A restart
+  must not silently reinterpret an active case.
+- Sealed day/week/month archives derive their figure and range text with their
+  recorded policy. A newly sealed day uses its last case's rule; a week/month
+  uses its latest covered day's rule after summing raw counts. No enum averaging.
+- Current clients send `x-liangxiang-liangzi-policy` with the current policy id.
+  Requests without that capability receive a legacy presentation (four boundaries,
+  known enum/policy ids) of the same counts, sequence, balance and vote receipt.
+  This is cosmetic negotiation, never authority or vote weight.
 
 ### Forbidden inputs
 
@@ -878,6 +897,8 @@ earned    = 1
 
 ```text
 0 total votes       -> 待开梁
+24.999999% up       -> 小难梁
+25% up              -> 梁工
 49.999% up          -> 梁工
 50% up              -> 梁总
 69.999% up          -> 梁总
@@ -1154,7 +1175,7 @@ Before completing any major Liangxiang change, be able to answer **yes** to all 
 - Does one accepted vote consume exactly one incense?
 - Is central 梁子 driven only by global up ratio?
 - Does zero vote render 待开梁?
-- Are the five states exactly 梁工/梁总/梁神/梁圣/梁祖?
+- Are the six current states exactly 小难梁/梁工/梁总/梁神/梁圣/梁祖?
 - Is the 香火环 personal rather than global?
 - Does remaining incense control 香火环 intensity?
 - Does Token remainder control 香火环 fill?

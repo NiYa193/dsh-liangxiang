@@ -21,6 +21,8 @@ import type {
 } from '../../domain/index.ts'
 import {
   deriveArchiveResult,
+  liangziPolicyForVersion,
+  LEGACY_LIANGZI_POLICY_VERSION,
   isBusinessDate,
   isoWeekFor,
   LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
@@ -39,7 +41,6 @@ import {
   type CommunityKeypair,
 } from '../../host/community-keys.ts'
 import type { DailyUsageRecord, SessionUsageWatermark } from '../../host/usage-ledger.ts'
-import { LIANGZI_POLICY_VERSION } from '../../shared/backend-v1.ts'
 import type { HostAuthorityPreference } from '../../shared/wire.ts'
 import type { DshKvTable, DshOpenDomain, DshStorageDomainFacility, DshValueSchema } from './host-services.ts'
 
@@ -112,7 +113,10 @@ const ledgerSchema: DshValueSchema = {
 const aggregateSchema: DshValueSchema = {
   parse(raw: unknown): GlobalVoteAggregate {
     const record = asStoredRecord(raw)
+    const liangziPolicyVersion = record.liangziPolicyVersion === undefined ? LEGACY_LIANGZI_POLICY_VERSION : requireStringField(record, 'liangziPolicyVersion')
+    liangziPolicyForVersion(liangziPolicyVersion)
     return {
+      liangziPolicyVersion,
       upVotes: requireCountField(record, 'upVotes'),
       downVotes: requireCountField(record, 'downVotes'),
       uniqueVoters: requireCountField(record, 'uniqueVoters'),
@@ -190,9 +194,8 @@ function requireArchivePolicy(record: Record<string, unknown>): {
   if (aggregationPolicyVersion !== LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION) {
     throw new RecordShapeError(`unsupported aggregationPolicyVersion ${aggregationPolicyVersion}`)
   }
-  if (liangziPolicyVersion !== LIANGZI_POLICY_VERSION) {
-    throw new RecordShapeError(`unsupported liangziPolicyVersion ${liangziPolicyVersion}`)
-  }
+  try { liangziPolicyForVersion(liangziPolicyVersion) }
+  catch { throw new RecordShapeError(`unsupported liangziPolicyVersion ${liangziPolicyVersion}`) }
   return { aggregationPolicyVersion, liangziPolicyVersion }
 }
 
@@ -225,6 +228,7 @@ const dayArchiveSchema: DshValueSchema = {
         requireCountField(record, 'upVotes'),
         requireCountField(record, 'downVotes'),
         record.uniqueVoters === undefined ? 0 : requireCountField(record, 'uniqueVoters'),
+        liangziPolicyForVersion(requireArchivePolicy(record).liangziPolicyVersion),
       ),
     }
   },
@@ -252,6 +256,7 @@ const weekArchiveSchema: DshValueSchema = {
         requireCountField(record, 'upVotes'),
         requireCountField(record, 'downVotes'),
         record.uniqueVoters === undefined ? 0 : requireCountField(record, 'uniqueVoters'),
+        liangziPolicyForVersion(requireArchivePolicy(record).liangziPolicyVersion),
       ),
     }
   },
@@ -279,6 +284,7 @@ const monthArchiveSchema: DshValueSchema = {
         requireCountField(record, 'upVotes'),
         requireCountField(record, 'downVotes'),
         record.uniqueVoters === undefined ? 0 : requireCountField(record, 'uniqueVoters'),
+        liangziPolicyForVersion(requireArchivePolicy(record).liangziPolicyVersion),
       ),
     }
   },

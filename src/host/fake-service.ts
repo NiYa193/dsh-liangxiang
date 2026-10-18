@@ -31,6 +31,9 @@ import {
   VOTE_REFILL_PER_MINUTE,
   computeEffectiveTokens,
   deriveArchiveResult,
+  archiveLiangziPolicyVersion,
+  liangziPolicyForVersion,
+  LEGACY_LIANGZI_POLICY_VERSION,
   derivePersonalLiangQiState,
   EMPTY_GLOBAL_AGGREGATE,
   isoWeekFor,
@@ -691,6 +694,11 @@ export class FakeAuthoritativeLiangService {
     const upVotes = cases.reduce((sum, entry) => sum + entry.aggregate.upVotes, 0)
     const downVotes = cases.reduce((sum, entry) => sum + entry.aggregate.downVotes, 0)
     const uniqueVoters = cases.reduce((sum, entry) => sum + entry.aggregate.uniqueVoters, 0)
+    // Local cases can wrap around their index list. The persisted selection,
+    // rather than the largest case index, identifies the last active rule.
+    const selectedIndex = this.caseIndexes.get(endedDate)?.caseIndex
+    const selected = selectedIndex === undefined ? undefined : this.aggregates.get(localCaseId(endedDate, selectedIndex))
+    const liangziPolicyVersion = (selected ?? cases.at(-1)!.aggregate).liangziPolicyVersion ?? LEGACY_LIANGZI_POLICY_VERSION
     const dayArchive: LiangDayArchive = {
       businessDate: endedDate,
       caseCount: cases.length,
@@ -698,8 +706,8 @@ export class FakeAuthoritativeLiangService {
       finalizedAt: this.clock.now(),
       archiveVersion: version,
       aggregationPolicyVersion: LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
-      liangziPolicyVersion: LIANGZI_POLICY_VERSION,
-      ...deriveArchiveResult(upVotes, downVotes, uniqueVoters),
+      liangziPolicyVersion,
+      ...deriveArchiveResult(upVotes, downVotes, uniqueVoters, liangziPolicyForVersion(liangziPolicyVersion)),
     }
     this.dayArchives.set(endedDate, dayArchive)
     this.persistence?.putDayArchive(endedDate, dayArchive)
@@ -723,8 +731,8 @@ export class FakeAuthoritativeLiangService {
           finalizedAt: this.clock.now(),
           archiveVersion: version,
           aggregationPolicyVersion: LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
-          liangziPolicyVersion: LIANGZI_POLICY_VERSION,
-          ...deriveArchiveResult(weekSum.upVotes, weekSum.downVotes, maxDayUniqueVoters(covered)),
+          liangziPolicyVersion: archiveLiangziPolicyVersion(covered),
+          ...deriveArchiveResult(weekSum.upVotes, weekSum.downVotes, maxDayUniqueVoters(covered), liangziPolicyForVersion(archiveLiangziPolicyVersion(covered))),
         }
         this.weekArchives.set(week.weekId, weekArchive)
         this.persistence?.putWeekArchive(week.weekId, weekArchive)
@@ -742,8 +750,8 @@ export class FakeAuthoritativeLiangService {
           finalizedAt: this.clock.now(),
           archiveVersion: version,
           aggregationPolicyVersion: LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
-          liangziPolicyVersion: LIANGZI_POLICY_VERSION,
-          ...deriveArchiveResult(monthSum.upVotes, monthSum.downVotes, maxDayUniqueVoters(covered)),
+          liangziPolicyVersion: archiveLiangziPolicyVersion(covered),
+          ...deriveArchiveResult(monthSum.upVotes, monthSum.downVotes, maxDayUniqueVoters(covered), liangziPolicyForVersion(archiveLiangziPolicyVersion(covered))),
         }
         this.monthArchives.set(month.monthId, monthArchive)
         this.persistence?.putMonthArchive(month.monthId, monthArchive)
@@ -764,13 +772,14 @@ export class FakeAuthoritativeLiangService {
       tokenPerIncense: this.config.tokenPerIncense,
     }
     this.aggregate = this.aggregates.get(this.activeCase.id)
-      ?? (this.config.seed === 'demo' && this.localCaseIndex === 0 ? DEMO_SEED : EMPTY_GLOBAL_AGGREGATE)
+      ?? { ...(this.config.seed === 'demo' && this.localCaseIndex === 0 ? DEMO_SEED : EMPTY_GLOBAL_AGGREGATE), liangziPolicyVersion: LIANGZI_POLICY_VERSION }
   }
 
   /** Capture the raw aggregate into a new published snapshot (one sequence). */
   private publishSnapshot(): void {
     this.snapshotSequence += 1
     this.published = {
+      liangziPolicyVersion: this.aggregate.liangziPolicyVersion ?? LEGACY_LIANGZI_POLICY_VERSION,
       caseId: this.activeCase.id,
       upVotes: this.aggregate.upVotes,
       downVotes: this.aggregate.downVotes,
