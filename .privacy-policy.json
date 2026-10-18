@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "public_commit_identities": {
+    "16209318+niya193@users.noreply.github.com": ["NiYa193", "liangxiang-CI"],
+    "niya193@users.noreply.github.com": ["NiYa193", "liangxiang-CI"]
+  },
+  "blocked_phrase_hashes": [
+    {
+      "length": 5,
+      "sha256": "fa8debed827313d16180bd21b35fc757b3a001c8b5aab13c8676a95fad156c80"
+    },
+    {
+      "length": 5,
+      "sha256": "7685bd6a10005229e89f416c8735c995e4a872c00139493896b13477711c4395"
+    },
+    {
+      "length": 5,
+      "sha256": "53765875e7c01a1960b784e0dce606929c2c08a9035eaa919f30a7a4c2c0c4e8"
+    }
+  ]
+}

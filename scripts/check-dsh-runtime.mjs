@@ -11,8 +11,8 @@ if (!nodeSupported) {
 }
 
 const pnpmVersion = execFileSync('pnpm', ['--version'], { encoding: 'utf8' }).trim()
-if (pnpmVersion !== '11.7.0') {
-  throw new Error(`DSH 0.2.1-rc.2 clean-Profile baseline requires pnpm 11.7.0; received ${pnpmVersion}`)
+if (pnpmVersion !== '11.28.5') {
+  throw new Error(`DSH 0.2.1-rc.2 clean-Profile baseline requires pnpm 11.28.5; received ${pnpmVersion}`)
 }
 
 console.log(`clean-Profile runtime: Node ${process.versions.node}, pnpm ${pnpmVersion}`)
