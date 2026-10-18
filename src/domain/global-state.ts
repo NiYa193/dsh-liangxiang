@@ -9,6 +9,7 @@ import { DomainError, assertCount } from './errors.ts'
 import {
   DEFAULT_LIANGZI_THRESHOLDS,
   deriveLiangziState,
+  liangziPolicyForVersion,
   type LiangziState,
   type LiangziThresholdPolicy,
 } from './liangzi.ts'
@@ -16,6 +17,8 @@ import type { VoteType } from './vote.ts'
 
 /** Raw accepted-vote aggregate, updated transactionally per accepted vote. */
 export interface GlobalVoteAggregate {
+  /** Local cases retain the rule they opened under. Absent on pre-upgrade records. */
+  liangziPolicyVersion?: string
   upVotes: number
   downVotes: number
   /** Users with >= 1 accepted vote for the current case. */
@@ -41,6 +44,7 @@ export interface PublicLiangSnapshot {
   upRatio: number | null
   downRatio: number | null
   liangziState: LiangziState
+  liangziPolicyVersion?: string
   /** Epoch milliseconds at capture. */
   capturedAt: number
   /** Monotonic snapshot version; ratios + state always share one sequence. */
@@ -78,6 +82,7 @@ export function applyAcceptedVotes(
     throw new DomainError('invalid_vote_count', `acceptedCount must be >= 1, got ${String(count)}`)
   }
   return {
+    ...(aggregate.liangziPolicyVersion === undefined ? {} : { liangziPolicyVersion: aggregate.liangziPolicyVersion }),
     upVotes: aggregate.upVotes + (voteType === 'up' ? count : 0),
     downVotes: aggregate.downVotes + (voteType === 'down' ? count : 0),
     uniqueVoters: aggregate.uniqueVoters + (isFirstAcceptedVoteByVoter ? 1 : 0),
@@ -90,6 +95,7 @@ export interface SnapshotBuildInput {
   capturedAt: number
   sequence: number
   policy?: LiangziThresholdPolicy
+  liangziPolicyVersion?: string
 }
 
 /** Capture the aggregate into a published snapshot (ratios + state together). */
@@ -101,9 +107,10 @@ export function buildPublicSnapshot(input: SnapshotBuildInput): PublicLiangSnaps
   }
   const { upVotes, downVotes, uniqueVoters } = input.aggregate
   const totalIncense = upVotes + downVotes
-  const policy = input.policy ?? DEFAULT_LIANGZI_THRESHOLDS
+  const policy = input.policy ?? (input.liangziPolicyVersion === undefined ? DEFAULT_LIANGZI_THRESHOLDS : liangziPolicyForVersion(input.liangziPolicyVersion))
   return {
     caseId: input.caseId,
+    ...(input.liangziPolicyVersion === undefined ? {} : { liangziPolicyVersion: input.liangziPolicyVersion }),
     upVotes,
     downVotes,
     totalIncense,

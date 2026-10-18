@@ -10,11 +10,11 @@ export const SQUISH_LABELS = [
   '梁子：申请原地躺平',
 ] as const
 
-/** Immediate squash, then a short window to distinguish open/close from play. */
-export const SQUISH_TAP_WINDOW_MS = 400
-export const SQUISH_IDLE_MS = 750
 export const SQUISH_COMMENT_GAP_MS = 140
-export const SQUISH_LABEL_LINGER_MS = 2_600
+/** Only releases within this window form one play gesture. */
+export const SQUISH_DOUBLE_MS = 200
+export const SQUISH_LABEL_LINGER_MS = 2_400
+export const SQUISH_EXIT_MS = 420
 export const SQUISH_MAX_ROWS = 3
 export const SQUISH_ANIM_MS = 680
 

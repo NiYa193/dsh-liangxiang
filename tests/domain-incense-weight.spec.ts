@@ -16,6 +16,14 @@ import { parseV1Bootstrap } from '../src/shared/backend-v1.ts'
 describe('canonicalModelId', () => {
   it('strips a context-window suffix', () => {
     expect(canonicalModelId('deepseek-v4-pro[1m]')).toBe('deepseek-v4-pro')
+    expect(canonicalModelId(' DEEPSEEK-V4.1-PRO[128K] ')).toBe('deepseek-v4.1-pro')
+    expect(canonicalModelId('deepseek-v4-pro[1000000]')).toBe('deepseek-v4-pro')
+  })
+
+  it('does not strip arbitrary labels, broken brackets, or trailing text', () => {
+    for (const id of ['deepseek-v4-pro[preview]', 'deepseek-v4-pro[1m', 'deepseek-v4-pro[1m] unknown']) {
+      expect(canonicalModelId(id)).toBe(id)
+    }
   })
 })
 
@@ -43,7 +51,18 @@ describe('incenseWeightBpsForModel', () => {
   })
 
   it('keeps every Flash version and alias at half rate, with no provider exceptions', () => {
-    for (const model of ['deepseek-v4-flash', 'deepseek-v4-flash-vision-exp', 'deepseek-v4.1-flash', 'deepseek-v4.2-flash', 'deepseek-v4.3-flash', 'deepseek-v5-flash', 'deepseek-flash', ' DEEPSEEK-FLASH[1m] ']) {
+    for (const model of ['deepseek-v4-flash', 'deepseek-v4-flash-vision-exp', 'deepseek-v4.1-flash', 'deepseek-v4.1-flash-1017', 'deepseek-v4.1-flash-expires-on-0910', 'deepseek-v4.2-flash', 'deepseek-v4.3-flash', 'deepseek-v5-flash', 'deepseek-flash', ' DEEPSEEK-FLASH[1m] ']) {
+      expect(incenseWeightBpsForModel(model)).toBe(5_000)
+    }
+  })
+
+  it('keeps display labels, namespaced ids and malformed Pro lookalikes at the conservative fallback', () => {
+    for (const model of [
+      'DeepSeek V4.1 Pro', 'DeepSeek V4.1 Pro (1017)', 'deepseek-ai/DeepSeek-V4.1-Pro',
+      'deepseek-v4-pro[preview]', 'deepseek-v4-pro[1m', 'deepseek-v4-pro[1m] unknown',
+      'deepseek-v4-pro[1m][1m]', 'deepseek-v4.1 pro', 'deepseek-unknown model-pro',
+      `deepseek-${'v'.repeat(160)}-pro`,
+    ]) {
       expect(incenseWeightBpsForModel(model)).toBe(5_000)
     }
   })

@@ -1,183 +1,73 @@
 # 梁相：当前架构与事实索引
 
-> Agent 默认入口，源码最后核对：2026-10-18；远端运维快照仍以其单独日期为准。先完整阅读根目录
-> [`AGENTS.md`](../AGENTS.md)，再读本文与 [`docs/README.md`](README.md)。
-> 本文记录“现在是什么”；产品契约冲突时永远以 `AGENTS.md` 为准，精确 DSH
-> 兼容基线以 [`COMPATIBILITY.md`](COMPATIBILITY.md) 为准。
+核对：2026-10-19。先读 [`AGENTS.md`](../AGENTS.md)，再按本文进入专题；历史文档不能覆盖现行契约。
 
-## 1. 事实优先级
+## 版本与边界
 
-1. `AGENTS.md`：唯一产品与工程法则。
-2. 本文：当前代码、仓库边界、运行架构与限时运维快照。
-3. `140-liangxiang-brand.md`、`COMPATIBILITY.md`、安装/安全/隐私文档：各自领域的现行说明。
-4. 源码与测试：实现证据；若违反上层契约，说明实现需要修复，不是契约自动失效。
-5. `docs/README.md` 标为“历史”或“归档”的文件：只能追溯决策，不能指导新实现。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.2.0-rc.8`，`SERVER_BUILD=1.2.0-rc.8-u1`。
+正式目标为 **1.2.0**；npm 已发布稳定版仍为 **1.1.6**。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
-不要把超长 Cursor Prompt、旧 Phase、旧发布报告或宣传产物一次性装入 Agent
-上下文。只读取当前任务需要的现行参考。
-
-## 2. 仓库边界
-
-| 路径 | 角色 | 写入边界 |
-|---|---|---|
-| `dsh-liangxiang/` | 插件、Host、Client、社区 Backend 主仓 | 当前开发仓；按 `AGENTS.md` 验证、提交、推送 |
-| `../liang-xiang-page/` | `liang.today` 官网与 Pages 构建 | 独立 Git 仓，独立验证和提交 |
-| `../deepseek-harness/` | 当前钉住的 DSH 源码证据 | **只读**，不得为梁相打补丁 |
-| `../promo-video/` | Remotion 宣传视频工程 | 非 Git；改动前先明确版本与交付方式 |
-| `../Promo-Output/` | 历史安装包、截图和宣传输出 | 归档，不是产品或文案事实源 |
-
-技术命名只使用 `dsh-liangxiang`、`liangxiang`、`/liangxiang/api`、
-`LIANGXIANG_*` 和 `liangxiang-backend`。产品语义、四区 UI、二元投票、梁位、
-梁子状态与香火环规则不在本文重复定义，直接服从 `AGENTS.md`。
-
-## 3. 当前运行架构
-
-```text
-DSH durable provider usage + request/attempt lifecycle
-        ↓
-src/compat/dsh（唯一 DSH 接触层）
-        ↓
-Host 每次请求最终结算、同源模型规则、持久化会话结算游标
-        ├── online → 签名 Host 声明 Token → 社区 Backend / SQLite
-        └── offline → 独立本地账本
-        ↓
-/liangxiang/api/*（同源 HTTP + SSE；浏览器从不当权威）
-        ↓
-Badge / 今日梁案 / 香火环 / 二元投票 / 梁祠
-```
-
-重要短广播复用 Backend 的约 1 秒 snapshot → Host SSE 通道，只在空闲反馈行暂代
-「梁小号」并按时间失效；不新增浏览器直连、运营 HTTP 口或独立轮询。
-
-- `src/domain/`：纯规则；Token、香火、梁位、梁子、档案聚合。
-- `src/shared/`：Host、Client、Backend 的 wire/API 校验。
-- `src/host/`：DSH 用量观测、持久化、模式切换、同源路由与生命周期。
-- `src/client/`：展示与意图；不持有投票或余额权威。
-- `src/backend/`：`node:http + node:sqlite` 社区服务、事务、身份、快照、梁祠。
-
-### 权威与存储
-
-- 在线身份的 Ed25519 密钥只证明同一安装仍持有私钥；Token 是 Host 自报，当前是
-  `DEV_STAGING_ONLY` 社区软信任，绝不能宣传为可验证生产票权。
-- 在线 Backend 的 SQLite 事务权威决定扣香、接受票、幂等、唯一香客、聚合和快照。
-- 在线核心状态在 `storages/liangxiang.json`；离线玩法在懒创建的
-  `storages/liangxiang_local.json`。两种模式不合并香火、票、梁案或档案。
-- 两种模式共享会话结算游标（旧高水位保留迁移兼容），防止同一请求在两侧重复凝香；
-  模型倍率使用同一份静态规则，香火/票/档案仍严格隔离。
-- Global ratio、Liangzi state 与计数必须来自同一 snapshot；梁祠走独立 history 冷通道。
-- 网络中断保持 online 偏好、锁票并自动重连，绝不静默切换 offline。
-- 不记录或传输 prompt、回复、源码、会话内容、凭据或原始文件路径。
-
-## 4. 版本矩阵
-
-当前测试分支源码 `package.json` / `PLUGIN_VERSION` = `1.2.0-rc.2`，
-`SERVER_BUILD=1.2.0-rc.2-u1`；只在本机隔离 Profile 测试，尚未公开发布/部署。
-DSH 对齐 `0.2.1-rc.2` / `687f282e86`，Session format 4 的内嵌流结算已适配，
-旧格式仍可读；DSH 格式迁移会保守重建会话基线，旧香火不追溯改写。
-PR #6 在测试分支保留整枚徽标回弹：单击开合、双击/连拍弹幕且保持面板状态；
-默认提示按真实边界对齐，弹幕逐行下沉并避开实测面板，兼顾键盘、拖拽/取消与减少动态。
-具体审查与验收记录见 `PR6_REVIEW.md`。
-
-以下旧矩阵和远端运维状态属于历史已发布基线，不描述本次候选的部署状态。
-
-以下是 `1.1.6` 正式发布基线：
-
-2026-10-12 源码新增未发布的静态模型族匹配与最终请求结算；用户要求本批暂不升版本、
-验证后统一 commit/push。版本字符串仍是旧正式基线，不代表 npm 或远端已经更新。
-正式发布前必须统一盖新版本/构建号。静态倍率与计算/说明同源契约见 `INCENSE_POLICY.md`。
-
-| 组件 | 当前事实 |
+| 仓库 | 职责 |
 |---|---|
-| 插件程序号 | 当前源码 `package.json` / `PLUGIN_VERSION` = `1.1.6`；npm `latest` = `1.1.6` |
-| 本地 Backend 源码 | `SERVER_BUILD=1.1.6-u2`；schema v10（v9 receipt + v10 单行限时广播）；单次 Token 补账异常限幅为 5,000 炷（2.5 亿 Pro 当量） |
-| count 修复基线 | accepted 与 rejected 的 `count` 业务处置都保存 durable receipt；v7/v8→v9 migration 整体原子化 |
-| DSH 兼容基线 | 源码审计为 `dsh-v0.1.2-alpha.5` / `db6bdc3576`；npm 无标签安装实际解析到的稳定线 `0.1.1-rc.2` 也已用同一份 1.1.6 tarball 完成真实 Profile 与浏览器回归；Node `22.23.1` / pnpm `11.7.0` |
-| 官网 | 当前公开版 `1.1.6`；静态模型倍率说明已同步独立仓 `main` 与 Pages；GoatCounter 使用一方统计域名，构建门禁会阻止漏装统计脚本 |
-| 社区服务器 | `SERVER_BUILD=1.1.6-u2` / schema v10；单次 Token 补账异常限幅为 5,000 炷；只通过 `scripts/deploy.sh` 更新并由 `scripts/deploy-check.sh` 核验 |
+| `dsh-liangxiang` | 插件、Host、Client、社区 Backend |
+| `liang-xiang-page` | 官网与安装指南，独立 Git、构建与提交 |
+| `deepseek-harness` | DSH 源码证据，只读，不为梁相打补丁 |
+| `promo-video` | 宣传工程，非 Git，不作为产品事实源 |
 
-服务器必须与部署分支当前 HEAD 一致。任何 Agent 都不得因为本地修复已提交，就声称
-远端已升级；每次获准部署前后必须分别运行 `scripts/deploy-check.sh`。
+固定验证环境：DSH **0.2.1-rc.2** / `687f282e86`，Node **22.23.1**、pnpm **11.28.5**。
+公开使用的兼容要求与精确触点见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。
 
-## 5. 社区服务器脱敏快照
-
-核对时间：2026-09-03；这是限时运维事实，不是永久常量。
-
-- 香港 Rocky Linux 9.8 节点；`systemd` 运行 `liangxiang-backend`，Caddy 提供 HTTPS。
-- Backend 仅监听 `127.0.0.1:4180`；部署目录 `/opt/liangxiang`，暂存目录
-  `/var/tmp/liangxiang-deploy`，配置 `/etc/liangxiang.env`。
-- SQLite 位于独立数据盘 `/var/lib/liangxiang/data/liangxiang.sqlite`，WAL，
-  `quick_check=ok`、无外键异常；当前 schema v10。标准部署会在迁移前生成在线备份。
-- 初次审计时数据库有 16 个梁案（1 active）、90 个安装身份、54 个实际投票安装、
-  43,304 炷累计接受香火、12,293 条投票请求记录；批量请求与聚合账可对齐。
-- 首轮 Profile 冒烟在隔离逻辑收紧前短暂触发在线 bootstrap，新增 1 个零投票测试身份、
-  1 条当日状态和 1 条见面礼记录；未改变全局梁位、已接受香火或香客。未获删除授权，
-  故保留并记账（复核时身份总数 91）。clean-profile 现已在 Host 启动前默认锁定 `local`。
-- 梁祠 archive version 16：16 个日档、2 个周档、1 个月档。
-- 本地部署备份存在且最近一份可读，但没有应用级定时 SQLite 备份；云备份需在云侧
-  单独验收。journald 当前只在 `/run`，重启会丢失历史日志。
-
-不在仓库写入服务器地址、SSH 用户、票券、密钥、公钥、签名或完整环境变量。
-
-## 6. 当前风险与下一步门禁
-
-### 发布前阻塞
-
-- schema v10 的 receipt/广播迁移已在 2026-09-28 随 `1.1.6-u2` 部署；以下是旧迁移
-  的历史约束，不是仍待部署的阻塞。本批模型规则源码尚未部署，见 `INCENSE_POLICY.md`。
-  v7 accepted 行会回填为 count 未知的 accepted receipt：旧单票可按 count=1 安全重放，
-  旧批量因无法恢复原始 count 而返回 409；历史 rejected 从未落库，无法追溯重建。v9
-  对每个进入 service 的 accepted / stale / closed / insufficient 处置保存完整规范化
-  payload；同 payload 重放既有处置，不同 case/type/count 必须冲突。HTTP 解析/鉴权失败、
-  admission 429、网络和 500 不进入业务事务，也不占 request ID。后续发布仍须按实际
-  数据库版本验证迁移、备份、重启和真实请求回归。
-- 为防不同 ID 的 rejected receipt 无界写盘，新 accepted 按实际扣香数消耗限流 work
-  units，新 service rejection 消耗 1；已存 receipt 的 replay/conflict 绕过 live bucket。
-- 正常日切、关案和重启保留 receipt。只有带 `--yes` 的 `cases reset` / `archive clear`
-  会和对应票据一起删除 receipt、明确释放这些 request ID；这是运维破坏性例外，不能
-  当成日常幂等保留策略。
-- DSH 是 Developer Preview。每次升级必须重新读钉住源码，不得凭模型记忆猜 API。
-- DSH 的 `tokenUsage` 累计值允许最终样本下调。未发布源码已改为按请求最终样本结算，
-  原生 DSH 投影对照、重试、模型切换、重启/种子/跨日回归见 `COMPATIBILITY.md`。
-  已发布 1.1.6 仍有旧高水位的中间样本多计风险；既往信用不追溯改写。
-- 社区模式仍是 A3 软信任；没有可验证身份/Token 时不得升级安全宣传口径。
-
-### 运维与质量风险
-
-- 远端本地备份依赖部署/配置变更触发，缺少独立周期备份与保留策略。
-- 远端日志易失；云备份、监控、证书和入口 ACL 需要运营侧持续验收。
-- 2026-08-16/17 有 3,810 炷旧日账残留，但对应梁案/统计/档案已不存在；不影响
-  当前业务日，清理前必须先定义保留政策，禁止直接删库。
-- 六态图为可见像素等价的 lossless WebP；当前开发产物为 699,805 B / gzip 389,706 B，
-  通过 700 KB / gzip 400 KB 构建预算。剩余性能工作
-  应以浏览器 profiler 为证据，重点观察拖动监听重绑和根组件动画重渲染；不得为追求
-  指标破坏冻结 UI 契约。
-
-## 7. 验证、提交与发布边界
-
-主仓完成变更前至少运行：
+## 权威数据流
 
 ```text
-pnpm run verify
-pnpm run smoke:clean-profile   # DSH/打包/安装触点变化时
-pnpm run smoke:browser-clean-profile  # 真实临时 Profile + 浏览器/Axe/视觉基线
-pnpm run smoke:online          # Backend/API/权威流变化时
+DSH 最终请求用量
+  → compat/dsh 观察与持久化游标
+  → Host 按请求路由折算 Pro 当量
+      ├─ 在线：签名声明 → Backend / SQLite 事务记账
+      └─ 离线：独立本地账本
+  → 同源 HTTP + SSE → 今日梁案 / 香火环 / 梁祠
 ```
 
-当前浏览器基线为桌面、窄屏、暗色三组共 60 项（59 通过、1 按 DSH 窄屏设计跳过），覆盖四区结构、恰好两个投票动作、
-键盘与焦点环/返回、梁祠弹窗、axe WCAG A/AA 自动规则、徽标手势/弹幕避让、视口几何和 reduced motion。若新发布的 DSH
-包仍处于 pnpm 24 小时门禁内，只可在人工核对精确版本后为临时 smoke 设置
-`LIANGXIANG_ALLOW_FRESH_DSH=1`，并直接运行 `bash scripts/smoke-clean-profile.sh`；
-默认路径不得绕过供应链等待期。clean-profile 默认在 Host 启动前锁定 `local`，只有
-显式传入 `LIANGXIANG_SMOKE_BACKEND_URL` 才允许它接触社区后端；脚本会先拒绝不满足
-Node `^22.19 || >=24` / pnpm `11.28.5` 的运行环境。
+- 在线 Backend 决定扣香、幂等票据、唯一香客、聚合与快照；浏览器只发送意图。
+- 社区仍为 `DEV_STAGING_ONLY` 软信任：安装密钥不等于实名身份，Token 是 Host 声明，不是可验证生产票权。
+- 在线与离线分别保存身份投影、香火、投票、梁案和档案；共享已结算会话游标以避免同一用量重复凝香。
+- 梁位、梁子与统计来自同版权威快照。网络失败保留在线偏好、锁票并自动重连，不静默切换模式。
+- 不保存或传输提示词、回复、源码、会话正文或原始文件路径；Backend 不接收模型名。
 
-- DSH 触点变化：记录准确源码路径/符号和 commit，更新 `COMPATIBILITY.md`。
-- 官网变化：进入独立官网仓运行其构建和链接检查，独立 commit/push。
-- 宣传视频变化：至少类型检查与渲染抽查；该目录非 Git，不能假装已有提交保护。
-- 用户可见插件改动：同步提升 `package.json` 与 `PLUGIN_VERSION`，两者必须相同。
-- 仅 Backend 改动：只递增 `SERVER_BUILD` 的 `-uN`，不浮动客户端程序号。
-- 完成的仓库改动按 `AGENTS.md` commit + push；不得覆盖其他 Agent/用户的工作树。
-- 未经用户明确命令，禁止 npm publish、GitHub Release、公开/生产部署、修改真实 DSH
-  profile 或修改 `../deepseek-harness`。
-- 社区部署只能走 `scripts/deploy.sh`；不得手工 rsync、构建、迁移或重启来绕过备份、
-  health/history smoke、Caddy 校验与 `VERSION` 门禁。
+## 当前产品行为
+
+| 功能 | 最终规则与资料 |
+|---|---|
+| 小难梁 | 有票且梁位 <25%；25%–<50% 为梁工。旧梁案和档案保留原规则，见 [`ISSUE2_IMPLEMENTATION.md`](ISSUE2_IMPLEMENTATION.md) |
+| 凝香 | Pro ×1；Flash、其他及未知 ×0.5；按每个请求最终用量结算。V4.1 路由与重试/迁移边界见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)、[`PR7_REVIEW.md`](PR7_REVIEW.md) |
+| 拍梁子 | 单击 200ms 判定开合；双击/连拍保持面板状态。主面板固定，独立三行短句下落渐隐，见 [`PR6_FEEDBACK_REDESIGN.md`](PR6_FEEDBACK_REDESIGN.md) |
+| 日终上香 | 默认关闭，Host 运行时按业务时区 23:59 发一笔普通倾炉；右键只设置方向，手动优先，意图持久化且不跨日补投，见 [`DAY_END_INCENSE.md`](DAY_END_INCENSE.md) |
+| 连接 | Host 跟随后端 cadence；只过滤业务内容相同的 SSE 整帧，真实变化即时发送，见 [`CONNECTION_EFFICIENCY.md`](CONNECTION_EFFICIENCY.md) |
+| 更新说明 | 升级按版本显示一次，可从案牍重看；保留 QQ 二维码及社区贡献者鸣谢 |
+
+Desktop 通过原生“插件 → 发现”安装；命令行 WebUI 独立管理 Profile。首次市场设置、可信目录、升级和卸载见 [`INSTALL.md`](INSTALL.md)。
+在线一直连不上时先排查 DSH Host 到社区的网络；部分地区可尝试代理，见 [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)。
+
+## 实现位置
+
+- `src/domain/`：纯业务规则、倍率、梁位与档案聚合。
+- `src/shared/`：Host、Client、Backend 的 wire 校验及版本。
+- `src/compat/dsh/`：DSH 接口、请求用量、存储与升级适配的唯一接触层。
+- `src/host/`：结算、持久化、模式、日终排期、同源路由与生命周期。
+- `src/client/`：交互与展示，不持有余额或投票权威。
+- `src/backend/`：HTTP、SQLite 事务、身份、票据、快照与梁祠。
+
+存储使用既有 DSH storage domain。在线为 `liangxiang.json`，离线为 `liangxiang_local.json`；
+正常更新/卸载不删除账本。Backend 数据位于运维配置的 SQLite 文件，迁移和备份规则见 [`121-vps-deploy.md`](121-vps-deploy.md)。
+
+## 验证与协作
+
+完成变更至少运行 `pnpm run verify`；DSH/打包触点运行 `smoke:clean-profile`，UI 运行
+`smoke:browser-clean-profile`，权威/API 变化运行 `smoke:online`，提交和推送必须通过隐私门禁。
+完整候选验证、集成 CI 与提交证据集中记录在 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md)。
+
+个人 fork 开发并提交到上游 `dev`；受保护的 `main` 只接收经完整检查的固定合并批次。
+三平台锁定依赖检查、隐私、安装与浏览器门禁及英国当地午夜流程以 [`CI.md`](CI.md) 为准。
+自动合并不构成 npm、Release、Tag 或生产部署授权，不绕过分支保护。
+
+每次上线均需独立执行 `scripts/deploy-check.sh` 核实真实运行版本；不能从源码或 CI 成功推断生产已更新。

@@ -21,6 +21,8 @@ import type {
 } from '../../domain/index.ts'
 import {
   deriveArchiveResult,
+  liangziPolicyForVersion,
+  LEGACY_LIANGZI_POLICY_VERSION,
   isBusinessDate,
   isoWeekFor,
   LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
@@ -39,8 +41,8 @@ import {
   type CommunityKeypair,
 } from '../../host/community-keys.ts'
 import type { DailyUsageRecord, SessionUsageWatermark } from '../../host/usage-ledger.ts'
-import { LIANGZI_POLICY_VERSION } from '../../shared/backend-v1.ts'
 import type { HostAuthorityPreference } from '../../shared/wire.ts'
+import { parseDayEndState, type DayEndPersistence, type DayEndState } from '../../shared/day-end.ts'
 import type { DshKvTable, DshOpenDomain, DshStorageDomainFacility, DshValueSchema } from './host-services.ts'
 
 export const LIANGXIANG_DOMAIN_NAME = 'liangxiang'
@@ -112,7 +114,10 @@ const ledgerSchema: DshValueSchema = {
 const aggregateSchema: DshValueSchema = {
   parse(raw: unknown): GlobalVoteAggregate {
     const record = asStoredRecord(raw)
+    const liangziPolicyVersion = record.liangziPolicyVersion === undefined ? LEGACY_LIANGZI_POLICY_VERSION : requireStringField(record, 'liangziPolicyVersion')
+    liangziPolicyForVersion(liangziPolicyVersion)
     return {
+      liangziPolicyVersion,
       upVotes: requireCountField(record, 'upVotes'),
       downVotes: requireCountField(record, 'downVotes'),
       uniqueVoters: requireCountField(record, 'uniqueVoters'),
@@ -190,9 +195,8 @@ function requireArchivePolicy(record: Record<string, unknown>): {
   if (aggregationPolicyVersion !== LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION) {
     throw new RecordShapeError(`unsupported aggregationPolicyVersion ${aggregationPolicyVersion}`)
   }
-  if (liangziPolicyVersion !== LIANGZI_POLICY_VERSION) {
-    throw new RecordShapeError(`unsupported liangziPolicyVersion ${liangziPolicyVersion}`)
-  }
+  try { liangziPolicyForVersion(liangziPolicyVersion) }
+  catch { throw new RecordShapeError(`unsupported liangziPolicyVersion ${liangziPolicyVersion}`) }
   return { aggregationPolicyVersion, liangziPolicyVersion }
 }
 
@@ -225,6 +229,7 @@ const dayArchiveSchema: DshValueSchema = {
         requireCountField(record, 'upVotes'),
         requireCountField(record, 'downVotes'),
         record.uniqueVoters === undefined ? 0 : requireCountField(record, 'uniqueVoters'),
+        liangziPolicyForVersion(requireArchivePolicy(record).liangziPolicyVersion),
       ),
     }
   },
@@ -252,6 +257,7 @@ const weekArchiveSchema: DshValueSchema = {
         requireCountField(record, 'upVotes'),
         requireCountField(record, 'downVotes'),
         record.uniqueVoters === undefined ? 0 : requireCountField(record, 'uniqueVoters'),
+        liangziPolicyForVersion(requireArchivePolicy(record).liangziPolicyVersion),
       ),
     }
   },
@@ -279,13 +285,14 @@ const monthArchiveSchema: DshValueSchema = {
         requireCountField(record, 'upVotes'),
         requireCountField(record, 'downVotes'),
         record.uniqueVoters === undefined ? 0 : requireCountField(record, 'uniqueVoters'),
+        liangziPolicyForVersion(requireArchivePolicy(record).liangziPolicyVersion),
       ),
     }
   },
 }
 
 const settingsSchema: DshValueSchema = {
-  parse(raw: unknown): { authorityPreference: HostAuthorityPreference, weightPolicies?: IncenseWeightPolicy[] } {
+  parse(raw: unknown): { authorityPreference: HostAuthorityPreference, weightPolicies?: IncenseWeightPolicy[], dayEnd?: DayEndState } {
     const record = asStoredRecord(raw)
     if (Array.isArray(record.weightPolicies) && record.weightPolicies.length <= 32) {
       return {
@@ -297,7 +304,7 @@ const settingsSchema: DshValueSchema = {
     if (preference !== 'online' && preference !== 'local') {
       throw new RecordShapeError('authorityPreference must be online/local')
     }
-    return { authorityPreference: preference }
+    return { authorityPreference: preference, ...(record.dayEnd === undefined ? {} : { dayEnd: parseDayEndState(record.dayEnd) }) }
   },
 }
 
@@ -394,7 +401,7 @@ export interface LiangxiangCorePersistencePort {
   deleteDailyUsage(businessDate: string): void
 }
 
-export interface LiangxiangSettingsPort {
+export interface LiangxiangSettingsPort extends DayEndPersistence {
   getAuthorityPreference(): HostAuthorityPreference | null
   setAuthorityPreference(preference: HostAuthorityPreference): Promise<void>
 }
@@ -488,6 +495,14 @@ export async function openLiangxiangPersistence(
   }
 
   const settings: LiangxiangSettingsPort = {
+    getDayEndState(): DayEndState | null {
+      const stored = settingsTable.get('day_end')
+      if (stored === undefined) return null
+      return (settingsSchema.parse(stored) as { dayEnd?: DayEndState }).dayEnd ?? null
+    },
+    async setDayEndState(dayEnd: DayEndState): Promise<void> {
+      await settingsTable.put('day_end', { authorityPreference: 'online', dayEnd: parseDayEndState(dayEnd) })
+    },
     getAuthorityPreference(): HostAuthorityPreference | null {
       const stored = settingsTable.get(SETTINGS_KEY)
       if (stored === undefined) return null

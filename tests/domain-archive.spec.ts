@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   addBusinessDays,
+  LEGACY_LIANGZI_THRESHOLDS,
+  LIANGZI_POLICY_VERSION,
   deriveArchiveResult,
   deriveTemporaryMonth,
   deriveTemporaryWeek,
@@ -20,7 +22,7 @@ function day(businessDate: string, upVotes: number, downVotes: number): LiangDay
     archiveVersion: 1,
     aggregationPolicyVersion: 'liang-archive-v1-weighted-counts',
     liangziPolicyVersion: 'liangzi-v0.1-50-70-85-95',
-    ...deriveArchiveResult(upVotes, downVotes),
+    ...deriveArchiveResult(upVotes, downVotes, 0, LEGACY_LIANGZI_THRESHOLDS),
   }
 }
 
@@ -60,7 +62,7 @@ describe('weighted 梁 archive policy', () => {
     ])
     expect(result).toMatchObject({ upVotes: 10, downVotes: 100, totalIncense: 110, uniqueVoters: 0 })
     expect(result.upRatio).toBeCloseTo(10 / 110)
-    expect(result.liangziState).toBe('liang_gong')
+    expect(result.liangziState).toBe('xiao_nan_liang')
   })
 
   it('keeps zero-vote archives as WAITING with null ratios', () => {
@@ -116,5 +118,14 @@ describe('weighted 梁 archive policy', () => {
       liangziState: 'waiting',
     })
     expect(deriveTemporaryMonth('2026-08-01', [])).toMatchObject({ status: 'waiting' })
+  })
+})
+
+it('uses one versioned rule after summing a mixed-policy temporary period', () => {
+  const old = day('2026-10-19', 0, 10)
+  const recent = { ...day('2026-10-20', 0, 10), liangziPolicyVersion: LIANGZI_POLICY_VERSION }
+  expect(deriveTemporaryWeek('2026-10-21', [old])).toMatchObject({ liangziState: 'liang_gong' })
+  expect(deriveTemporaryWeek('2026-10-21', [old, recent])).toMatchObject({
+    upVotes: 0, downVotes: 20, liangziState: 'xiao_nan_liang', liangziPolicyVersion: LIANGZI_POLICY_VERSION,
   })
 })

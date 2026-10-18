@@ -1,10 +1,11 @@
 /**
  * LiangAvatar — the concrete central 梁子 figure (NOT a gauge/donut/meter).
  *
- * Artwork is a six-sticker comedy progression of ONE engineer being 夯
- * into an ancestor. Pixels are swappable; state semantics are frozen:
+ * Artwork is a seven-sticker comedy progression of ONE engineer being 夯
+ * into an ancestor. Pixels are swappable; state semantics are versioned:
  *
  *   waiting     待开梁  gray unlit placeholder; plaque in art reads 牢梁
+ *   xiao_nan_liang 小难梁 dusty-pink hoodie, small bow, bashful expression
  *   liang_gong  梁工    hard hat + coffee; chest badge reads 梁工
  *   liang_zong  梁总    navy suit + matching 梁总 badge
  *   liang_shen  梁神    crooked halo, levitation, matching 梁神 badge
@@ -18,13 +19,14 @@
  * Presentational only: no hooks, driven entirely by props.
  */
 import type { CSSProperties, ReactElement } from 'react'
-import { liangQiFloatPeriodMs, type LiangziState } from '../domain/index.ts'
+import { liangQiFloatPeriodMs, liangziPolicyForVersion, LIANGZI_POLICY_VERSION, type LiangziState } from '../domain/index.ts'
 import { LIANGZI_STATE_LABELS, liangziRatioRangeText } from '../shared/index.ts'
 import { color, font } from './theme.ts'
 import { LIANGZI_ART } from './liangzi-art.ts'
 
 export interface LiangAvatarProps {
   state: LiangziState
+  policyVersion?: string
   /** Play one short state-transition pulse (container decides when). */
   pulse: boolean
   /** Brief 200–400ms glow when the 梁子 crosses a threshold. */
@@ -52,6 +54,7 @@ export interface LiangAvatarProps {
 const AVATAR_MOTION_CSS = `
 [data-liangxiang-avatar],
 [data-liangci-dialog] {
+  --liangxiang-state-nan-text: #965269;
   --liangxiang-state-gong-text: #496b82;
   --liangxiang-state-shen-text: #5644cc;
   --liangxiang-state-sheng-text: #745900;
@@ -80,6 +83,7 @@ const AVATAR_MOTION_CSS = `
 @media (prefers-color-scheme: dark) {
   [data-liangxiang-avatar],
   [data-liangci-dialog] {
+    --liangxiang-state-nan-text: #e9a9bf;
     --liangxiang-state-gong-text: #9bbbd1;
     --liangxiang-state-shen-text: #b8afff;
     --liangxiang-state-sheng-text: #e1c46a;
@@ -90,6 +94,7 @@ const AVATAR_MOTION_CSS = `
 
 export const LIANGZI_LABEL_COLOR: Record<LiangziState, string> = {
   waiting: color.textTertiary,
+  xiao_nan_liang: 'var(--liangxiang-state-nan-text, #965269)',
   liang_gong: 'var(--liangxiang-state-gong-text, #496b82)',
   liang_zong: color.textPrimary,
   liang_shen: 'var(--liangxiang-state-shen-text, #5644cc)',
@@ -99,6 +104,7 @@ export const LIANGZI_LABEL_COLOR: Record<LiangziState, string> = {
 
 export function LiangAvatar({
   state,
+  policyVersion = LIANGZI_POLICY_VERSION,
   pulse,
   crossing = false,
   reducedMotion,
@@ -108,7 +114,7 @@ export function LiangAvatar({
   liangQiFill = 1,
 }: LiangAvatarProps): ReactElement {
   const waiting = state === 'waiting'
-  const rangeText = liangziRatioRangeText(state)
+  const rangeText = liangziRatioRangeText(state, liangziPolicyForVersion(policyVersion))
   const stateText = `${LIANGZI_STATE_LABELS[state]}（${rangeText}）`
   const floatMs = reducedMotion ? null : liangQiFloatPeriodMs(liangQiFill)
   const floating = floatMs !== null

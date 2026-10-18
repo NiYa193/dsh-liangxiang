@@ -1,8 +1,8 @@
 # DATA_FLOW — 数据从哪来、被谁决定、到哪去
 
-两条流刻意分开：一条决定**全网梁位与梁子状态**，一条决定**个人香火环**。它们只在视觉上围绕梁子相遇。
+两条流刻意分开：一条决定**社区梁位与梁子状态**，一条决定**个人香火环**。它们只在视觉上围绕梁子相遇。
 
-## 全局流（决定梁位 / 梁子五态）
+## 全局流（决定梁位 / 梁子六档与待开梁）
 
 ```text
 DSH 会话产生 provider-reported 用量
@@ -15,17 +15,20 @@ DSH 会话产生 provider-reported 用量
   → 事务：先查/写 liang_vote_request receipt；accepted 再 CAS 扣香 → liang_vote
            → daily_liang_stats → public_liang_snapshot(sequence+1)
   → 投票响应即带回该 snapshot；GET /v1/snapshot 也读它
-  → Host → SSE → 浏览器
-  → UI：梁位 83.021952% + 梁子五态 + 全局香火/香客
+  → Host → SSE（只省去内容完全相同的重复帧）→ 浏览器
+  → UI：梁位 83.021952% + 梁子六档与待开梁 + 全局香火/香客
 ```
+
+服务端账行中的 `claimed_effective_tokens` 已包含登记过的赠香当量；`starter_tokens` 是其中的赠香部分，不再额外相加。Host 的本机用量观测不含赠香；提交的绝对声明目标是服务端现有总水位加尚未记入的本机用量，不再次添加 `starter_tokens`。
 
 ## 个人流（决定香火环，不进全局链）
 
 ```text
-daily_incense_state.{claimed_effective_tokens, used_incense}
+daily_incense_state.{claimed_effective_tokens, starter_tokens, used_incense}
+  → earned = floor(claimed / token_per_incense)
   → remaining = earned - used            → 环上香火数量与展示强度
-  → remainder = claimed % 50,000         → 香火环 fill
-  → to_next  = 50,000 - remainder        → 右翼「下一炷 X 当量」
+  → remainder = claimed % token_per_incense         → 香火环 fill
+  → to_next  = token_per_incense - remainder        → 右翼「下一炷 X 当量」
 ```
 
 投票只动 `used`，不动 `remainder`：所以花香火会减少环上可用香火和展示强度，

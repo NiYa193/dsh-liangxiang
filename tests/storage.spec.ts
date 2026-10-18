@@ -11,7 +11,8 @@ import {
   openLiangxiangLocalPersistence,
   openLiangxiangPersistence,
 } from '../src/compat/dsh/storage.ts'
-import { DEFAULT_INCENSE_WEIGHT_POLICY, parseIncenseWeightPolicy } from '../src/domain/index.ts'
+import { DEFAULT_DAY_END } from '../src/shared/day-end.ts'
+import { DEFAULT_INCENSE_WEIGHT_POLICY, parseIncenseWeightPolicy, LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION } from '../src/domain/index.ts'
 
 class MemoryTable implements DshKvTable {
   constructor(readonly values = new Map<string, unknown>()) {}
@@ -74,6 +75,23 @@ describe('liangxiang storage', () => {
     const local = await openLiangxiangLocalPersistence(facility, reopened, () => undefined)
     expect((await local.port.load()).weightPolicies).toEqual([policy])
     await local.close()
+    await reopened.close()
+  })
+  it('persists day-end preferences and exact pending intents independently from mode', async () => {
+    const facility = new MemoryFacility()
+    const handle = await openLiangxiangPersistence(facility, () => undefined)
+    await handle.settings.setAuthorityPreference('local')
+    const dayEnd = { ...DEFAULT_DAY_END, enabled: true, voteType: 'down' as const, jobs: {
+      online: { businessDate: '2026-10-19', caseId: 'case-test', requestId: 'durable-test', voteType: 'down' as const, count: 20, done: false },
+    } }
+    await handle.settings.setDayEndState(dayEnd)
+    await handle.close()
+    const reopened = await openLiangxiangPersistence(facility, () => undefined)
+    expect(reopened.settings.getDayEndState()).toEqual(dayEnd)
+    expect(reopened.settings.getAuthorityPreference()).toBe('local')
+    const stored = facility.domains.get(LIANGXIANG_DOMAIN_NAME)?.table('settings').get('day_end')
+    const parsed = facility.specs.get(LIANGXIANG_DOMAIN_NAME)?.tables.settings?.valueSchema.parse(stored)
+    expect(parsed).toMatchObject({ authorityPreference: 'online', dayEnd })
     await reopened.close()
   })
   it('loads existing identity and accounting records from the canonical domain', async () => {
@@ -191,5 +209,29 @@ describe('liangxiang storage', () => {
     const handle = await openLiangxiangPersistence(facility, () => undefined)
     expect(() => handle.port.load()).toThrow(/requestedCount.*\[1,500\]/)
     await handle.close()
+  })
+})
+
+describe('versioned local Liangzi storage', () => {
+  it('normalizes pre-upgrade aggregates and reopens both sealed archive policies without changing their meaning', async () => {
+    const facility = new MemoryFacility()
+    const shared = await openLiangxiangPersistence(facility, () => undefined)
+    const local = await openLiangxiangLocalPersistence(facility, shared, () => undefined)
+    const spec = facility.specs.get(LIANGXIANG_LOCAL_DOMAIN_NAME)!
+    const aggregate = spec.tables.aggregates!.valueSchema
+    expect(aggregate.parse({ upVotes: 0, downVotes: 4, uniqueVoters: 1 })).toMatchObject({ liangziPolicyVersion: LEGACY_LIANGZI_POLICY_VERSION })
+    for (const [index, version] of [LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION].entries()) {
+      const businessDate = `2026-10-${18 + index}`
+      await facility.domains.get(LIANGXIANG_LOCAL_DOMAIN_NAME)!.table('day_archives').put(businessDate, {
+        businessDate, caseCount: 1, caseTitles: ['测试梁案'], finalizedAt: 1, archiveVersion: index + 1,
+        aggregationPolicyVersion: 'liang-archive-v1-weighted-counts', liangziPolicyVersion: version,
+        upVotes: 0, downVotes: 4, uniqueVoters: 1,
+      })
+    }
+    const restored = await local.port.load()
+    expect(restored.dayArchives?.get('2026-10-18')).toMatchObject({ liangziState: 'liang_gong', liangziPolicyVersion: LEGACY_LIANGZI_POLICY_VERSION })
+    expect(restored.dayArchives?.get('2026-10-19')).toMatchObject({ liangziState: 'xiao_nan_liang', liangziPolicyVersion: LIANGZI_POLICY_VERSION })
+    await local.close()
+    await shared.close()
   })
 })

@@ -43,6 +43,13 @@ Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CON
 main 的 workflow bootstrap/修复须维护者明确操作；main 紧急修复需同步回 dev。
 nightly 并发串行、不取消正在执行的批次，也不锁住 dev 的日常 PR。
 
+控制器使用 REST API `2026-03-10`，先读取 PR 触发测试合并计算，再读取精确的
+`refs/pull/<PR>/merge`，继续验证其双亲与完整文件树。该版本已移除 PR 对象中的
+`merge_commit_sha`，不得依赖旧字段。测试引用暂未生成（404）时有界等待；其他 API
+错误立即停止，不能改用 head、base 或单独的 mergeable 状态替代测试合并树。
+参见 [GitHub API 破坏性变更](https://docs.github.com/en/rest/about-the-rest-api/breaking-changes)
+和 [Git 引用接口](https://docs.github.com/en/rest/git/refs#get-a-reference)。
+
 ## 一次性 GitHub App 配置
 
 普通 CI 和只读试跑无需额外凭据。无人值守的 PR 创建/合并使用专用 GitHub App，

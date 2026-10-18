@@ -9,7 +9,6 @@ import { apiClient, assertPull, checkResult, cleanup, plan, promote, REQUIRED, R
 const base = 'a'.repeat(40), head = 'b'.repeat(40), candidate = 'c'.repeat(40), merge = 'd'.repeat(40);
 const state = { base, head, candidate, pr: 42, branch: 'automation/promote-123-1' };
 const pull = () => ({ state: 'open', draft: false, mergeable: true, mergeable_state: 'clean',
-  merge_commit_sha: merge,
   base: { ref: 'main', sha: base, repo: { full_name: REPOSITORY } },
   head: { ref: state.branch, sha: candidate, repo: { full_name: REPOSITORY } },
 });
@@ -20,6 +19,7 @@ function scenario({ pr = pull(), main = base, checks = passing(), parents = [bas
   const api = async (path, method = 'GET', body) => {
     if (method !== 'GET') { writes.push({ path, method, body }); return { merged, sha: merge }; }
     if (path === 'pulls/42') return pr;
+    if (path === 'git/ref/pull/42/merge') return { ref: 'refs/pull/42/merge', object: { type: 'commit', sha: merge } };
     if (path === 'git/ref/heads/main') return { object: { sha: main } };
     if (path === `git/commits/${merge}`) return { parents: parents.map(value => ({ sha: value })), tree: { sha: 'e'.repeat(40) } };
     if (path === `git/commits/${candidate}`) return { parents: candidateParents.map(value => ({ sha: value })), tree: { sha: candidateTree } };
@@ -151,6 +151,50 @@ test('cleanup never deletes main, dev or a branch someone else changed', async (
 test('API errors omit credentials and response bodies', async () => {
   const api = apiClient('private-test-token', async () => ({ ok: false, status: 403, json: () => ({ secret: 'do not log' }) }));
   await assert.rejects(api('pulls'), error => error.message === 'GitHub GET pulls: HTTP 403');
+});
+
+test('the HTTP client accepts the current PR response without the removed merge field', async () => {
+  const api = apiClient('private-test-token', async (url, options) => {
+    assert.equal(url, `https://api.github.com/repos/${REPOSITORY}/pulls/42`);
+    assert.equal(options.headers['X-GitHub-Api-Version'], '2026-03-10');
+    return { ok: true, status: 200, json: async () => pull() };
+  });
+  const pr = await api('pulls/42');
+  assert.equal(Object.hasOwn(pr, 'merge_commit_sha'), false);
+  const scenarioApi = scenario({ pr });
+  assert.equal(await waitAndMerge(scenarioApi.api, scenarioApi.api, state, once), merge);
+});
+
+test('a not-yet-created test merge waits and then verifies the exact ref', async () => {
+  const { api, writes } = scenario();
+  let refReads = 0;
+  const pendingApi = async (...args) => {
+    if (args[0] === 'git/ref/pull/42/merge' && ++refReads === 1) {
+      throw Object.assign(new Error('Test merge pending'), { status: 404 });
+    }
+    return api(...args);
+  };
+  assert.equal(await waitAndMerge(pendingApi, api, state, { ...once, attempts: 2 }), merge);
+  assert.equal(refReads, 2);
+  assert.equal(writes.length, 1);
+});
+
+test('a different reference is never used as the PR test merge', async () => {
+  const { api, writes } = scenario();
+  const wrongRefApi = async (...args) => args[0] === 'git/ref/pull/42/merge'
+    ? { ref: 'refs/heads/main', object: { type: 'commit', sha: merge } } : api(...args);
+  await assert.rejects(waitAndMerge(wrongRefApi, api, state, once), /unexpected test-merge reference/);
+  assert.deepEqual(writes, []);
+});
+
+test('test-merge access failures abort instead of being treated as a pending merge', async () => {
+  const { api, writes } = scenario();
+  const deniedApi = async (...args) => {
+    if (args[0] === 'git/ref/pull/42/merge') throw Object.assign(new Error('Denied'), { status: 403 });
+    return api(...args);
+  };
+  await assert.rejects(waitAndMerge(deniedApi, api, state, once), /Denied/);
+  assert.deepEqual(writes, []);
 });
 
 test('a dev-only history change with no resulting file changes creates no commit, branch or PR', async () => {

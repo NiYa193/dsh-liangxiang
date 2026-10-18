@@ -7,7 +7,7 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 梁相版本 | 1.2.0-rc.2 |
+| 梁相版本 | 1.2.0-rc.8 |
 | 状态 | 本地测试候选，尚未公开发布/生产部署 |
 | DSH CLI / Web App / UI renderer/layout/slots | 0.2.1-rc.2（同一版本） |
 | DSH tag / commit | dsh-v0.2.1-rc.2 / 687f282e86 |
@@ -64,11 +64,16 @@ chunk/final/retry 序列，但真实观测只在尝试结束时铸香。
 tsdown.config.ts 镜像上述共享模块，保持
 window.__ModuleLoader__.load({ id, factory }) 和 CJS factory 包装。
 插件运行时只要求自己实际导入的共享模块；新增平台模块不会凭空成为旧宿主依赖。
+本批压缩空白和内部变量名，显式保留 module/exports/require；check:client-budget
+还执行构建产物的工厂并核对插件导出，避免格式漂移。真实 Profile 将服务的 combo 与构建产物
+比较；只按 client/modules/src/index.ts 的 prepareSource 去掉 sourceURL/sourceMappingURL
+尾注（已核对同一 commit），不依赖引号或缩进形式。
 图像继续内联 lossless WebP，单 client.js 预算为 raw ≤700 KB、gzip ≤400 KB。
 
 ## 验证边界
 
-本次自动验证的命令、结果及本机测试入口记录在 `PR6_REVIEW.md`。类型检查通过
+徽标与 DSH 适配的验证见 `PR6_REVIEW.md`；PR #7 的漏算回归、会话迁移/重启及 CI 处理见
+`PR7_REVIEW.md`；小难梁增量验证见 `ISSUE2_IMPLEMENTATION.md`。类型检查通过
 不代表安装/浏览器兼容；只有完成的真实 Profile、localhost Backend 和浏览器
 检查才记为已验证。未来未知 DSH 版本仍需重读接口并重复相关验证。
 
@@ -78,3 +83,12 @@ npm 无标签解析的 0.1.1-rc.2。该正式包仍有累计 max-HWM 的中间�
 
 社区身份和 Token 仍为 A3 软信任：安装密钥证明持钥连续性，不能验证 Token
 真实来源；浏览器余额、Context Occupancy 和估算值永远不是投票权威。
+
+## 日终设置兼容
+
+rc.7 复用现有公开 `storageDomain` 设置表与 Host 路由，未新增 DSH API 或依赖。
+已按同一 DSH commit 的 `storage/storage-domain/src/spec.ts`（DomainTableSpec）和
+`index.ts`（DomainFacility.open 的 valueSchema.parse）复核，新增设置行保留旧
+authorityPreference 字段。Host/Client 的 dayEnd 偏好为 additive 可选字段，旧 Host
+不提供时关闭新入口；Backend API 不增加字段，按其 server_time/业务时区安排本机
+定时，最终扣香仍由原有签名投票接口决定。具体行为见 `DAY_END_INCENSE.md`。

@@ -22,16 +22,24 @@
 - 产品 UI/copy 中，中央角色统一称为 **梁子**；不直接使用现实人物姓名。
 - DSH WebUI entry name, accessible name and default Hover / Focus text: **今日梁相**.
   Use one custom tooltip, never a competing native title popup. Pointer single
-  click opens/closes after a 400ms double-click window; double/continuous clicks
-  play without changing the panel. Squash feedback is immediate. The second tap
-  starts decorative comments, subsequent taps emit at most once per 140ms;
-  newest first, at most three rows, each expires within 2.6s. Older rows sink.
-  Center feedback whenever it fits; align at actual viewport edges and avoid
-  the measured panel. Hide the default hint during gestures/comments, then restore.
-  Keyboard activation always opens/closes immediately; drag/cancel never plays
-  a toy sound and cancels pending toggles. Reduced motion disables displacement
-  and squash/bounce. No toy text may imply a balance change or introduce a tier.
-- The docked entry's icon IS the current central 梁子 state (one of the five, or
+  click toggles the panel after a short 200ms classification window. Only taps
+  within that interval form a double/continuous play gesture; they never change
+  either the open or closed panel state. No separate long play/idle window.
+  Keyboard toggles, × and Escape respond immediately; drag/cancel clears pending
+  toggles and never plays a toy sound. Squash feedback is immediate.
+  Comments are separate lightweight lines, with no shared speech card or tail.
+  Keep them inside the panel's horizontal footprint and outside its content.
+  The main panel NEVER moves or changes its gap for toy feedback. Align the
+  speech area's top with the badge portrait and flow down into the adjacent
+  empty space; reduce rows when the viewport or a below-stacked panel limits it.
+  Fix the emission point throughout a burst so older rows truly fall on screen.
+  Up to three live rows fit the available height; displaced and expired rows
+  retain presence for a 420ms downward fade, with a full unclipped exit runway.
+  Live text stays readable in both themes; reduced motion removes displacement.
+  Center the ordinary hint when it fits and clamp only at actual viewport edges.
+  Hide it during presses/comments, then restore. No toy text may imply a balance
+  change or introduce a tier. Keyboard activation never emits decorative speech.
+- The docked entry's icon IS the current central 梁子 state (one of the six, or
   the 待开梁 placeholder) — never a letter or an abstract logo.
 - The entry is freely placeable: it can be dragged anywhere in the frame and the
   position persists per browser (a cosmetic preference, never an authority).
@@ -53,7 +61,7 @@ The following are obsolete and must not return as Liangxiang product concepts:
 - 大夯 / 偏夯 / 胶着 / 偏拉 / 大拉
 - global `LiangScore`, 0–100 梁分, Bayesian prior
 - `BallotLedger`, `LiangBallot`, 梁签 as the core voting-credit model
-- 小难梁 / 老梁
+- 老梁
 - old personal avatar progression `梁哥 -> 梁总 -> 梁神 -> 梁圣 -> 梁祖`
 - personal Token / earned incense / remaining incense driving the central Liangzi state
 - “vote must not reduce LiangQi” as an invariant
@@ -63,7 +71,7 @@ Do not mechanically delete unrelated generic words from dependencies or third-pa
 
 Artwork exception: `牢梁` is intentionally allowed only as the decorative
 plaque inside the `WAITING / 待开梁` portrait. It is never a state name, tier,
-metric, or UI label. The five active portraits may likewise carry a small
+metric, or UI label. The six active portraits may likewise carry a small
 in-art badge/plaque matching their authoritative state name. These embedded
 marks are visual jokes, not data or accessible copy.
 
@@ -170,16 +178,37 @@ incense.
   `进入梁祠`; both remain inside Region 4 and neither is a fifth region
 - routine Token claims, snapshots, reconnects and archive refresh are automatic;
   never present a routine manual-sync action
-- 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、核对香火、在线模式/离线模式、
+- 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、日终上香、在线模式/离线模式、
   当前版本. The mode action always means switching to the other mode and requires
   explicit confirmation; network failure, reconnect, refresh and backend restart
   must never invoke it. 当前版本 opens a compact version-information dialog; the sound
-  control has no long-press version gesture. `核对香火` is repair-only: it must warn that unconfirmed local
+  control has no long-press version gesture. `核对香火` remains under the collapsed
+  `显示异常？` repair entry, outside the four main tiles; it is repair-only: it must warn that unconfirmed local
   observation is discarded before rereading the server ledger
 - destructive identity reset does not belong in this lightweight drawer; it
   requires a separate flow with explicit consequences and confirmation
 - 进入梁祠 opens the read-only in-plugin calendar
 - 进入梁祠 is not a vote, operator control, or external GitHub Pages link
+
+### Opt-in day-end incense (Issues #3/#5)
+
+- Default off. The Host must be running; the browser may be closed. Use the
+  backend business clock/timezone online, the explicit local clock offline.
+- At 23:59 make one ordinary dump (at most VOTE_COUNT_MAX), respecting remaining
+  incense and the existing authority budget. This is best-effort, not a promise
+  to empty arbitrarily large balances. No per-stick queue, adaptive direction,
+  new vote type, privilege or rate-limit exemption.
+- Right-click / keyboard context menu on 夯 or 拉 only saves the default direction
+  and shows `日终默认夯/拉`. It never votes or enables the day-end switch.
+- Clicking the entire day-end tile toggles it; show `已开启` / `已关闭` and
+  `保存中…` while persisting. Keep timing, direction and running requirements
+  in its hover/focus tooltip, never as a permanent explanatory paragraph.
+- Serialize manual and automatic intents in the Host. Give active manual work
+  priority and wait 2s after it finishes; reread authority before the auto dump.
+- Persist the exact daily intent before sending. Uncertain/restart retries keep
+  its request ID, case, direction and count. Stop new attempts 5s before close;
+  do not replay yesterday into today. Keep separate online/local daily receipts.
+- Never weaken the backend's transaction, idempotency or business-date checks.
 
 ### Explicit online/offline separation
 
@@ -242,6 +271,7 @@ incense, voting availability, or any ledger.
 
 ```text
 WAITING      -> 待开梁
+XIAO_NAN_LIANG -> 小难梁
 LIANG_GONG   -> 梁工
 LIANG_ZONG   -> 梁总
 LIANG_SHEN   -> 梁神
@@ -249,13 +279,15 @@ LIANG_SHENG  -> 梁圣
 LIANG_ZU     -> 梁祖
 ```
 
-`WAITING / 待开梁` is **not a sixth tier**. It is only the zero-vote placeholder state.
+`WAITING / 待开梁` is **not a voted tier**. It is only the zero-vote placeholder state.
 
 ### The only driver: global up ratio
 
 ```text
 if total_votes == 0:
     liangzi_state = WAITING
+else if up_ratio < 0.25:
+    liangzi_state = XIAO_NAN_LIANG
 else if up_ratio < 0.50:
     liangzi_state = LIANG_GONG
 else if up_ratio < 0.70:
@@ -268,12 +300,13 @@ else:
     liangzi_state = LIANG_ZU
 ```
 
-Frozen thresholds — the lower half is 梁工; the upper half gets harder toward 梁祖:
+Current thresholds (approved 2026-10-18, Issue #2): the lower half is split at 25%; the upper half gets harder toward 梁祖:
 
 | Global up ratio | Liangzi state |
 |---|---|
 | 0 votes | 待开梁 |
-| `< 50%` | 梁工 |
+| `0% <= x < 25%` (with votes) | 小难梁 |
+| `25% <= x < 50%` | 梁工 |
 | `50% <= x < 70%` | 梁总 |
 | `70% <= x < 85%` | 梁神 |
 | `85% <= x < 95%` | 梁圣 |
@@ -284,19 +317,34 @@ Frozen thresholds — the lower half is 梁工; the upper half gets harder towar
 The joke is “a normal person is gradually夯 into an ancestor”:
 
 - 待开梁: low-presence, unlit placeholder
+- 小难梁: dusty-pink hoodie, small bow, bashful expression; the same adult 梁子 face
 - 梁工: ordinary engineer / work badge
 - 梁总: suit / executive presence
 - 梁神: halo / mild levitation / starts becoming absurd
 - 梁圣: holy light / 法相
 - 梁祖: ancestor/master form / maximum 梁威
 
-Artwork can change later. State semantics cannot.
+Artwork can change later. State semantics follow the versioned policy below.
 
 The global visual master is **现代编年志 × 克制梁祠**: approximately 80% DSH
 native desktop UI, 15% calendar/chronicle structure, and 5% ritual accents.
 Warm gold and vermilion are punctuation, not background themes. The main panel,
 welcome, tooltips, icons, and 梁祠 must look like one system; do not drift into
 an ancient-fantasy game, dashboard card wall, glassmorphism, or palace UI.
+
+### Rule-version compatibility
+
+- Current policy `liangzi-v0.2-25-50-70-85-95` has six voted tiers plus 待开梁.
+- Legacy `liangzi-v0.1-50-70-85-95` retains 梁工 below 50%. Existing cases keep
+  their opening policy; newly opened cases use the current policy. A restart
+  must not silently reinterpret an active case.
+- Sealed day/week/month archives derive their figure and range text with their
+  recorded policy. A newly sealed day uses its last case's rule; a week/month
+  uses its latest covered day's rule after summing raw counts. No enum averaging.
+- Current clients send `x-liangxiang-liangzi-policy` with the current policy id.
+  Requests without that capability receive a legacy presentation (four boundaries,
+  known enum/policy ids) of the same counts, sequence, balance and vote receipt.
+  This is cosmetic negotiation, never authority or vote weight.
 
 ### Forbidden inputs
 
@@ -495,10 +543,10 @@ overrides. Stored or received rule metadata must not change these rates.
 Host sends the same rule data to Client for its tooltip. Details:
 `docs/INCENSE_POLICY.md`.
 
-Streaming usage is provisional: final `assistant/message` replaces its latest
-sample; `llm/retry` / `step/end` closes a failed/interrupted attempt with its
-last provider sample. A durable per-session settlement cursor prevents replay,
-restart and mode-switch double credit. First observations fence inherited and
+Streaming usage is provisional: current DSH's durable `assistant/message` or
+`assistant/attempt` settles the attempt from its final provider sample. Legacy
+chunks wait for a message, `llm/retry` or `step/end`. A durable per-session
+settlement cursor prevents replay, restart and mode-switch double credit. First observations fence inherited and
 pre-upgrade history. Never estimate missing usage or use a timer as finality.
 Daily 10-stick gifts remain in the existing accounting/UI, with no separate
 gift row or section.
@@ -834,6 +882,9 @@ Rules:
 - the published global snapshot refreshes on a cadence, and that cadence is
   **near real time by default (1s)**: a voter must see their own vote move 梁位
   within about a second, otherwise the loop stops feeling like voting
+- online Host polling adopts the bootstrap cadence dynamically; local env is
+  the offline/startup fallback. The browser keeps SSE and uses cadence only to
+  throttle hover refresh; explicit panel-open refresh still bypasses it
 - a deployment may raise the cadence for load reasons, but a cadence slow enough
   that a vote produces no visible feedback is a product bug, not a tuning choice
 - no requirement for per-vote WebSocket broadcast in V0.1 (poll + SSE is enough)
@@ -878,6 +929,8 @@ earned    = 1
 
 ```text
 0 total votes       -> 待开梁
+24.999999% up       -> 小难梁
+25% up              -> 梁工
 49.999% up          -> 梁工
 50% up              -> 梁总
 69.999% up          -> 梁总
@@ -1074,6 +1127,9 @@ token into CI, or put repository-write credentials in PR test jobs. Scheduled
 source merges do not authorize npm publication, Release/Tag, or deployment.
 Main workflow bootstrap/repair PRs remain explicit maintainer operations.
 
+The accepted PR #6 follow-up is submitted as new commits on a personal fork
+work branch; do not create or reopen a PR for that batch.
+
 After every completed change in this repository, **before considering the
 task done**:
 
@@ -1188,7 +1244,7 @@ Before completing any major Liangxiang change, be able to answer **yes** to all 
 - Does one accepted vote consume exactly one incense?
 - Is central 梁子 driven only by global up ratio?
 - Does zero vote render 待开梁?
-- Are the five states exactly 梁工/梁总/梁神/梁圣/梁祖?
+- Are the six current states exactly 小难梁/梁工/梁总/梁神/梁圣/梁祖?
 - Is the 香火环 personal rather than global?
 - Does remaining incense control 香火环 intensity?
 - Does Token remainder control 香火环 fill?
