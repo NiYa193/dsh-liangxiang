@@ -123,7 +123,7 @@ function git(args, cwd, extraEnv = {}) {
   }).trim();
 }
 
-async function promote(api, checksApi) {
+export async function promote(api, checksApi) {
   const base = sha(process.env.BASE_SHA), head = sha(process.env.HEAD_SHA);
   const run = process.env.GITHUB_RUN_ID, attempt = process.env.GITHUB_RUN_ATTEMPT;
   if (!/^\d+$/.test(run ?? '') || !/^\d+$/.test(attempt ?? '')) throw new Error('Invalid run identity');
@@ -138,6 +138,13 @@ async function promote(api, checksApi) {
     added = true;
     const identity = ['-c', 'user.name=liangxiang-nightly', '-c', 'user.email=ci@users.noreply.github.com'];
     git([...identity, 'merge', '--no-ff', '--no-commit', head], directory);
+    // Separate integration merges can have different histories but the same
+    // resulting files. Preserve the no-change rule before creating any commit,
+    // remote branch or PR, including when main contains extra changes.
+    if (git(['write-tree'], directory) === git(['rev-parse', `${base}^{tree}`], directory)) {
+      summary('Frozen dev produces no changes to main; no batch PR or merge was created.');
+      return;
+    }
     git([...identity, 'commit', '-m', `Prepare nightly batch from dev ${head}\n\nFrozen main: ${base}`], directory);
     const candidate = sha(git(['rev-parse', 'HEAD'], directory));
     const state = { base, head, candidate, branch: `automation/promote-${run}-${attempt}` };
