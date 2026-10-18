@@ -178,16 +178,37 @@ incense.
   `进入梁祠`; both remain inside Region 4 and neither is a fifth region
 - routine Token claims, snapshots, reconnects and archive refresh are automatic;
   never present a routine manual-sync action
-- 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、核对香火、在线模式/离线模式、
+- 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、日终上香、在线模式/离线模式、
   当前版本. The mode action always means switching to the other mode and requires
   explicit confirmation; network failure, reconnect, refresh and backend restart
   must never invoke it. 当前版本 opens a compact version-information dialog; the sound
-  control has no long-press version gesture. `核对香火` is repair-only: it must warn that unconfirmed local
+  control has no long-press version gesture. `核对香火` remains under the collapsed
+  `显示异常？` repair entry, outside the four main tiles; it is repair-only: it must warn that unconfirmed local
   observation is discarded before rereading the server ledger
 - destructive identity reset does not belong in this lightweight drawer; it
   requires a separate flow with explicit consequences and confirmation
 - 进入梁祠 opens the read-only in-plugin calendar
 - 进入梁祠 is not a vote, operator control, or external GitHub Pages link
+
+### Opt-in day-end incense (Issues #3/#5)
+
+- Default off. The Host must be running; the browser may be closed. Use the
+  backend business clock/timezone online, the explicit local clock offline.
+- At 23:59 make one ordinary dump (at most VOTE_COUNT_MAX), respecting remaining
+  incense and the existing authority budget. This is best-effort, not a promise
+  to empty arbitrarily large balances. No per-stick queue, adaptive direction,
+  new vote type, privilege or rate-limit exemption.
+- Right-click / keyboard context menu on 夯 or 拉 only saves the default direction
+  and shows `日终默认夯/拉`. It never votes or enables the day-end switch.
+- Clicking the entire day-end tile toggles it; show `已开启` / `已关闭` and
+  `保存中…` while persisting. Keep timing, direction and running requirements
+  in its hover/focus tooltip, never as a permanent explanatory paragraph.
+- Serialize manual and automatic intents in the Host. Give active manual work
+  priority and wait 2s after it finishes; reread authority before the auto dump.
+- Persist the exact daily intent before sending. Uncertain/restart retries keep
+  its request ID, case, direction and count. Stop new attempts 5s before close;
+  do not replay yesterday into today. Keep separate online/local daily receipts.
+- Never weaken the backend's transaction, idempotency or business-date checks.
 
 ### Explicit online/offline separation
 
@@ -861,6 +882,9 @@ Rules:
 - the published global snapshot refreshes on a cadence, and that cadence is
   **near real time by default (1s)**: a voter must see their own vote move 梁位
   within about a second, otherwise the loop stops feeling like voting
+- online Host polling adopts the bootstrap cadence dynamically; local env is
+  the offline/startup fallback. The browser keeps SSE and uses cadence only to
+  throttle hover refresh; explicit panel-open refresh still bypasses it
 - a deployment may raise the cadence for load reasons, but a cadence slow enough
   that a vote produces no visible feedback is a product bug, not a tuning choice
 - no requirement for per-vote WebSocket broadcast in V0.1 (poll + SSE is enough)

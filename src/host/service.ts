@@ -12,6 +12,7 @@ import type { VoteResult } from '../domain/index.ts'
 import type { UsageObservationOrigin } from '../compat/dsh/usage-observer.ts'
 import type { LiangxiangWireState, WireVoteRequest } from '../shared/wire.ts'
 import type { V1HistoryResponse } from '../shared/history-v1.ts'
+import type { DayEndTiming } from '../shared/day-end.ts'
 
 export interface VoteOutcome {
   result: VoteResult
@@ -38,6 +39,8 @@ export interface LiangHostService {
   markReadyMemoryOnly: (reason: string) => void
   /** Cadence hook (snapshot publication / refresh). */
   tick: () => void
+  /** Scheduler clock only; backend still decides spend eligibility. */
+  dayEndTiming?: () => DayEndTiming | null
   /**
    * Force a backend re-read now (hover / panel open). Online: re-bootstrap so
    * the expanded panel does not wait for the next 1s snapshot poll. Local:

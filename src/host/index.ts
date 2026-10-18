@@ -41,7 +41,8 @@ import { BackendLiangService } from './backend-service.ts'
 import { type CommunityKeypair } from './community-keys.ts'
 import { resolveHostRuntimeConfig } from './config.ts'
 import { FakeAuthoritativeLiangService } from './fake-service.ts'
-import { AuthoritySlot } from './authority-slot.ts'
+import { DayEndService } from './day-end-service.ts'
+import { startSnapshotCadence } from './snapshot-cadence.ts'
 import { createLiangxiangApi } from './routes.ts'
 import { createHostFileLog } from './file-log.ts'
 import { ensureProfileTracksLatest } from './profile-npm-float.ts'
@@ -100,7 +101,7 @@ export function apply(ctx: DshHostContext): void {
       warn,
       identityRef,
     })
-  const slot = new AuthoritySlot(local)
+  const slot = new DayEndService(local, systemClock, () => modeTransitioning, warn)
   const service: LiangHostService = slot
   let online: BackendLiangService | null = defaultAuthorityPreference === 'online'
     ? createOnlineService()
@@ -268,11 +269,10 @@ export function apply(ctx: DshHostContext): void {
   // strobe for spectators. The voter's own response already carries the new
   // snapshot so their 梁位 still moves on the click.
   ctx.effect(() => {
-    const interval = setInterval(() => {
-      service.tick()
-    }, serviceConfig.snapshotRefreshSeconds * 1000)
-    return () => clearInterval(interval)
+    return startSnapshotCadence(service, serviceConfig.snapshotRefreshSeconds)
   }, 'liangxiang: snapshot cadence')
+
+  ctx.effect(() => slot.startDayEnd(), 'liangxiang: day-end incense')
 
   ctx.inject(['webServer'], (scoped: DshHostContext) => {
     const { webServer } = resolveDshHostServices(scoped)
@@ -280,6 +280,8 @@ export function apply(ctx: DshHostContext): void {
     scoped.effect(() => {
       const api = createLiangxiangApi(service, warn, {
         selectAuthorityMode,
+        setDayEndPreferences: preferences => slot.setDayEndPreferences(preferences),
+        noteManualGesture: () => slot.noteManualGesture(),
         isAuthorityModeChanging: () => modeTransitioning,
       })
       const disposeRoute = webServer.register({
@@ -310,6 +312,7 @@ export function apply(ctx: DshHostContext): void {
           }
           openedCore = core
           coreHandle = core
+          slot.attachDayEndPersistence(core.settings)
           const openLocal = (): Promise<LiangxiangLocalPersistenceHandle> => {
             if (openedLocal !== null) return Promise.resolve(openedLocal)
             if (openingLocal !== null) return openingLocal

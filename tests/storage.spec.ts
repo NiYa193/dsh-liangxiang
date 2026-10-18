@@ -11,6 +11,7 @@ import {
   openLiangxiangLocalPersistence,
   openLiangxiangPersistence,
 } from '../src/compat/dsh/storage.ts'
+import { DEFAULT_DAY_END } from '../src/shared/day-end.ts'
 import { DEFAULT_INCENSE_WEIGHT_POLICY, parseIncenseWeightPolicy, LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION } from '../src/domain/index.ts'
 
 class MemoryTable implements DshKvTable {
@@ -74,6 +75,23 @@ describe('liangxiang storage', () => {
     const local = await openLiangxiangLocalPersistence(facility, reopened, () => undefined)
     expect((await local.port.load()).weightPolicies).toEqual([policy])
     await local.close()
+    await reopened.close()
+  })
+  it('persists day-end preferences and exact pending intents independently from mode', async () => {
+    const facility = new MemoryFacility()
+    const handle = await openLiangxiangPersistence(facility, () => undefined)
+    await handle.settings.setAuthorityPreference('local')
+    const dayEnd = { ...DEFAULT_DAY_END, enabled: true, voteType: 'down' as const, jobs: {
+      online: { businessDate: '2026-10-19', caseId: 'case-test', requestId: 'durable-test', voteType: 'down' as const, count: 20, done: false },
+    } }
+    await handle.settings.setDayEndState(dayEnd)
+    await handle.close()
+    const reopened = await openLiangxiangPersistence(facility, () => undefined)
+    expect(reopened.settings.getDayEndState()).toEqual(dayEnd)
+    expect(reopened.settings.getAuthorityPreference()).toBe('local')
+    const stored = facility.domains.get(LIANGXIANG_DOMAIN_NAME)?.table('settings').get('day_end')
+    const parsed = facility.specs.get(LIANGXIANG_DOMAIN_NAME)?.tables.settings?.valueSchema.parse(stored)
+    expect(parsed).toMatchObject({ authorityPreference: 'online', dayEnd })
     await reopened.close()
   })
   it('loads existing identity and accounting records from the canonical domain', async () => {

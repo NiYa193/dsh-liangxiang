@@ -5,6 +5,7 @@ import { BackendClientError } from '../src/host/backend-client.ts'
 import { createLiangxiangApi } from '../src/host/routes.ts'
 import type { LiangHostService } from '../src/host/service.ts'
 import { AUTHORITY_MODE_ACTION_HEADER, AUTHORITY_MODE_ACTION_VALUE } from '../src/shared/index.ts'
+import { DAY_END_ACTION_HEADER, DAY_END_ACTION_VALUE, type DayEndPreferences } from '../src/shared/day-end.ts'
 import type { HostAuthorityPreference } from '../src/shared/wire.ts'
 
 const CONFIG: LiangServiceConfig = {
@@ -17,7 +18,7 @@ const CONFIG: LiangServiceConfig = {
 
 let closeHarness: (() => Promise<void>) | null = null
 
-async function start(options: { rateLimitedVote?: boolean, modeChanging?: boolean, ready?: boolean } = {}): Promise<{ baseUrl: string, selected: () => HostAuthorityPreference[] }> {
+async function start(options: { rateLimitedVote?: boolean, modeChanging?: boolean, ready?: boolean, dayEnd?: (preferences: DayEndPreferences) => Promise<void> } = {}): Promise<{ baseUrl: string, selected: () => HostAuthorityPreference[] }> {
   const service = new FakeAuthoritativeLiangService(CONFIG, { now: () => Date.UTC(2026, 7, 18, 4) }, () => undefined)
   if (options.ready !== false) service.markReadyMemoryOnly('route-test')
   const routedService = service as LiangHostService
@@ -28,6 +29,7 @@ async function start(options: { rateLimitedVote?: boolean, modeChanging?: boolea
   }
   const selected: HostAuthorityPreference[] = []
   const api = createLiangxiangApi(routedService, () => undefined, {
+    ...(options.dayEnd === undefined ? {} : { setDayEndPreferences: options.dayEnd }),
     selectAuthorityMode: (preference) => { selected.push(preference) },
     isAuthorityModeChanging: () => options.modeChanging === true,
   })
@@ -110,5 +112,22 @@ describe('Host vote error mapping', () => {
     })
     expect(response.status).toBe(429)
     expect(await response.json()).toMatchObject({ error: { code: 'vote_rate_limited' } })
+  })
+})
+
+
+describe('day-end preferences boundary', () => {
+  it('requires an explicit JSON action and rejects balance, identity and unsupported directions', async () => {
+    const saved: DayEndPreferences[] = []
+    const harness = await start({ dayEnd: async p => { saved.push(p) } })
+    const post = (body: string, guarded = true) => fetch(`${harness.baseUrl}/liangxiang/api/day-end`, {
+      method: 'POST', headers: { 'content-type': 'application/json', ...(guarded ? { [DAY_END_ACTION_HEADER]: DAY_END_ACTION_VALUE } : {}) }, body,
+    })
+    expect((await post('{"enabled":true,"voteType":"up"}', false)).status).toBe(403)
+    expect((await post('{"enabled":true,"voteType":"neutral"}')).status).toBe(400)
+    expect((await post('{"enabled":true,"voteType":"down","remaining":500}')).status).toBe(400)
+    expect(saved).toEqual([])
+    expect((await post('{"enabled":true,"voteType":"down"}')).status).toBe(200)
+    expect(saved).toEqual([{ enabled: true, voteType: 'down' }])
   })
 })

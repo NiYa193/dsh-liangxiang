@@ -548,6 +548,8 @@ export function LiangxiangBadge(): ReactElement {
   // Transient vote feedback (已上香).
   const [voteFeedback, setVoteFeedback] = useState('')
   const [utilityOpen, setUtilityOpen] = useState(false)
+  const [dayEndPending, setDayEndPending] = useState(false)
+  const dayEndSaving = useRef(false)
   const [reconcilePending, setReconcilePending] = useState(false)
   const [modeConfirmOpen, setModeConfirmOpen] = useState(false)
   const [modeChanging, setModeChanging] = useState(false)
@@ -703,6 +705,7 @@ export function LiangxiangBadge(): ReactElement {
 
   const onVotePointerDown = (voteType: VoteType, event: ReactPointerEvent<HTMLButtonElement>): void => {
     if (event.button !== 0 || chargeRef.current !== null || voteInFlight.current) return
+    store.noteVoteActivity()
     pointerConsumedRef.current = true
     event.preventDefault()
     event.currentTarget.setPointerCapture(event.pointerId)
@@ -760,6 +763,20 @@ export function LiangxiangBadge(): ReactElement {
     clearCharge()
   }
 
+  const changeDayEnd = (voteType?: VoteType): void => {
+    const current = state.dayEnd
+    if (dayEndSaving.current || !current?.available) return
+    clearCharge()
+    dayEndSaving.current = true
+    setDayEndPending(true)
+    const preferences = { enabled: voteType === undefined ? !current.enabled : current.enabled, voteType: voteType ?? current.voteType }
+    store.setDayEndPreferences(preferences).then(
+      () => setVoteFeedback(voteType === undefined
+        ? (preferences.enabled ? '已开启日终上香 · 23:59' : '已关闭日终上香')
+        : `日终默认${voteType === 'up' ? '夯' : '拉'}`),
+      () => setVoteFeedback('日终设置未保存，请稍后重试'),
+    ).finally(() => { dayEndSaving.current = false; setDayEndPending(false) })
+  }
   const onReconcileAsk = (): void => {
     setModeConfirmOpen(false)
     setReconcilePending(true)
@@ -915,6 +932,9 @@ export function LiangxiangBadge(): ReactElement {
           displayTotalIncense={displayTotalIncense}
           displayUniqueVoters={displayUniqueVoters}
           onVote={onVote}
+          dayEndPending={dayEndPending}
+          onDayEndToggle={() => changeDayEnd()}
+          onDayEndDirection={type => changeDayEnd(type)}
           onVoteClick={onVoteClick}
           onVotePointerDown={onVotePointerDown}
           onVotePointerUp={onVotePointerUp}

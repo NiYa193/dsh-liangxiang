@@ -55,7 +55,7 @@ import {
 } from '../domain/index.ts'
 import type { LiangxiangWireState, WireGlobalCounts, WireVoteRequest } from '../shared/wire.ts'
 import { WIRE_SCHEMA_VERSION } from '../shared/wire.ts'
-import { createBusinessDateProvider, type BusinessDateProvider, type Clock } from '../shared/business-date.ts'
+import { businessDayEndsAt, createBusinessDateProvider, type BusinessDateProvider, type Clock } from '../shared/business-date.ts'
 import { BackendClientError } from './backend-client.ts'
 import { DEV_CREDIT_SESSION_ID } from './dev-credit.ts'
 import { localCaseId, LOCAL_CASE_TITLES, nextLocalCaseIndex } from './local-cases.ts'
@@ -513,6 +513,11 @@ export class FakeAuthoritativeLiangService {
     ) {
       this.publishSnapshot()
     }
+  }
+
+  dayEndTiming(): { now: number, endsAt: number, businessDate: string } {
+    const now = this.clock.now()
+    return { now, endsAt: businessDayEndsAt(this.dates, now), businessDate: this.dates.businessDateOf(now) }
   }
 
   refreshNow(): void {

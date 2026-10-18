@@ -44,3 +44,16 @@ export function createBusinessDateProvider(timezone: string): BusinessDateProvid
     businessDateOf: (epochMs: number): string => format.format(new Date(epochMs)),
   }
 }
+
+/** First instant outside this business date, including 23/25-hour DST days. */
+export function businessDayEndsAt(dates: BusinessDateProvider, now: number): number {
+  const date = dates.businessDateOf(now)
+  let lo = Math.floor(now)
+  let hi = lo + 48 * 60 * 60 * 1000
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2)
+    if (dates.businessDateOf(mid) === date) lo = mid
+    else hi = mid
+  }
+  return hi
+}

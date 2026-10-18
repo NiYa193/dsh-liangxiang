@@ -1050,14 +1050,15 @@ describe('梁相案牍', () => {
     expect(repair && textContent([repair])).toContain(UTILITY_RECONCILE_HINT)
   })
 
-  it('opens a themed four-action drawer with an explicit offline-mode control', () => {
+  it('keeps four main utility actions and a collapsed repair entry', () => {
     const tree = renderPanel(onlineState(), '', { utilityOpen: true })
     expect(findByAttr(tree, 'data-liangxiang-utility-drawer')).toHaveLength(1)
     const bridge = findByAttr(tree, 'data-liangxiang-utility-bridge')[0]
     expect(styleOf(bridge).bottom).toBe('100%')
     expect(styleOf(bridge).height).toBe('7px')
     expect(styleOf(bridge).width).toBe('220px')
-    expect(findByAttr(tree, 'data-liangxiang-utility-action')).toHaveLength(4)
+    expect(findByAttr(tree, 'data-liangxiang-utility-action')).toHaveLength(5)
+    expect(findByAttr(tree, 'data-liangxiang-utility-action', 'day-end')).toHaveLength(1)
     expect(findByAttr(tree, 'data-liangxiang-utility-action', 'home')).toHaveLength(1)
     const mode = findByAttr(tree, 'data-liangxiang-utility-action', 'mode')[0]
     expect(mode && textContent([mode])).toContain(UTILITY_MODE_LOCAL_LABEL)

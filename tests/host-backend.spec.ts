@@ -10,6 +10,8 @@ import { createBackendHttpApi } from '../src/backend/http.ts'
 import { LiangxiangBackendService } from '../src/backend/service.ts'
 import { openBackendStore } from '../src/backend/store.ts'
 import { BackendClientError, createBackendClient, type BackendClient } from '../src/host/backend-client.ts'
+import { DayEndService } from '../src/host/day-end-service.ts'
+import { DEFAULT_DAY_END, type DayEndState } from '../src/shared/day-end.ts'
 import { BackendLiangService } from '../src/host/backend-service.ts'
 import { generateCommunityKeypair, type CommunityKeypair } from '../src/host/community-keys.ts'
 import { wireToViewState } from '../src/client/store.ts'
@@ -137,6 +139,7 @@ async function startStack(
   env: Record<string, string | undefined> = {},
   hostOptions: {
     claimDebounceMs?: number
+    clockOffsetMs?: number
     timezone?: string
     start?: number
     signedIdentity?: CommunityKeypair
@@ -190,7 +193,7 @@ async function startStack(
       signer: () => identityRef.current,
     }),
     timezone: hostOptions.timezone ?? config.timezone,
-    clock,
+    clock: { now: () => clock.now() + (hostOptions.clockOffsetMs ?? 0) },
     warn: () => undefined,
     claimDebounceMs: hostOptions.claimDebounceMs ?? 0,
     identityRef,
@@ -829,5 +832,28 @@ describe('online rollover', () => {
     s.backend.publishCase('悬停应立刻看到')
     await s.host.refreshNow()
     expect(frame(s).activeCase.title).toBe('悬停应立刻看到')
+  })
+})
+
+
+describe('signed online day-end authority', () => {
+  it('uses the backend business clock despite a different Host zone and wall-clock offset', async () => {
+    const identity = generateCommunityKeypair('e'.repeat(64))
+    const s = await startStack({ LIANGXIANG_BUSINESS_TZ: 'Europe/London', LIANGXIANG_SNAPSHOT_SECONDS: '17' }, {
+      start: Date.UTC(2026, 9, 19, 22, 59, 1), timezone: 'Asia/Shanghai', clockOffsetMs: 6 * 3_600_000, signedIdentity: identity,
+    })
+    expect(frame(s).snapshotRefreshSeconds).toBe(17)
+    expect(s.host.dayEndTiming()).toEqual({ now: s.clock.now(), endsAt: Date.UTC(2026, 9, 19, 23), businessDate: '2026-10-19' })
+    let state: DayEndState = { ...structuredClone(DEFAULT_DAY_END), enabled: true }
+    const ritual = new DayEndService(s.host, { now: () => s.clock.now() + 6 * 3_600_000 }, () => false, () => undefined)
+    try {
+      ritual.attachDayEndPersistence({ getDayEndState: () => state, setDayEndState: async next => { state = structuredClone(next) } })
+      ritual.startDayEnd()
+      await waitFor(() => state.jobs.online?.done === true, 'signed day-end receipt')
+      const personal = s.backend.dailyState(identity.installationId).authoritative_personal_state
+      expect(personal.used_incense).toBe(10)
+      expect(personal.remaining_incense).toBe(0)
+      expect(state.jobs.local).toBeUndefined()
+    } finally { ritual.dispose() }
   })
 })
