@@ -10,7 +10,7 @@ Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CON
   功能在向社区 dev 提 PR 时跑 CI，合入 dev/main 后不再重复触发同一轮 push 检查。
 - PR 默认目标为 `dev`，普通 `pull_request` 在 GitHub 生成的测试合并提交上运行。
 - `dev` 要求 `privacy` 与三个 `verify-locked (ubuntu-latest/windows-latest/macos-latest)` 检查；
-  Node 22.23.1 / pnpm 11.7.0，锁文件安装，完整类型、lint、单元/后端、构建、体积验证。
+  Node 22.23.1 / pnpm 11.28.5，锁文件安装，完整类型、lint、单元/后端、构建、体积验证。
 - CI 控制器和隐私门禁另有 Node 原生测试，覆盖主线推进、批次被改、假/缺/跳过检查和清理边界。
 - 管理员审核后人工合并；目前只有一位管理员，保护允许 0 个额外 Approve。
   这支持维护者自己的 PR，不代表独立审批；GitHub 禁止作者批准自己。
@@ -30,8 +30,10 @@ Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CON
    不在持有写凭据的进程中执行候选代码、安装脚本或测试。
 3. 创建短期 `automation/promote-<run>-<attempt>` 分支和 main 批次 PR；PR 的测试合并
    运行上述必需检查，App 创建的 PR 正常触发 CI，无需每晚人工批准工作流。
-4. 仅接受 GitHub Actions App `15368` 在该测试合并 SHA 上提供的全部真实 success。
-   检查其父提交、PR 来源/目标/head 和 main 未变；main 变化、冲突、失败或超时均停止。
+4. GitHub 把 PR 检查关联到候选 head。先确认候选的父提交恰为冻结的 main/dev，
+   再验证 GitHub 测试合并的父提交及文件树与该完整候选一致；只接受 Actions App
+   `15368` 在这一候选 SHA 上的全部真实 success。检查 PR 来源/目标/head 和 main
+   未变；main 变化、树不一致、冲突、失败或超时均停止。
 5. 通过标准 PR merge API 合并，指定冻结的 head，严格分支保护继续生效，不使用绕过。
    新进入 dev 的提交留给下一批。长期分支使用 merge 保留来源历史，不反复 squash。
 6. 成功后或失败关闭批次 PR 后删除本次临时分支；分支被别人改动则拒绝删除并报错。
@@ -94,3 +96,8 @@ nightly 并发串行、不取消正在执行的批次，也不锁住 dev 的日�
 - 自动扫描不能识别所有自然语言细节或图片内容；维护者仍须审核隐私和门禁本身的修改。
 - 已公开历史的修复需独立映射及本地备份。移除当前文字或追加修正提交不会抹去旧提交；
   受保护历史的 force 更新、标签变化和缓存移除必须单独评估，不能冒充已经彻底清除。
+
+CI 与临时 Profile 固定 pnpm 11.28.5，以避开旧 11.7.0 在安装完成后进程不退出的问题（[pnpm #13617](https://github.com/pnpm/pnpm/issues/13617)）。这只约束隔离验收，不修改正在运行的个人开发环境；依赖安装和完整冒烟分别有步骤超时，失败保持主分支不变。
+
+维护提交的公开署名采用 `liangxiang-CI`，GitHub noreply 邮箱与公开名称同时受门禁约束；
+旧的公开用户名署名仍可验证。GitHub 网页生成合并提交时也会读取账号显示名，须保持公开项目署名。

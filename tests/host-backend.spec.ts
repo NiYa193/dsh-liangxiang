@@ -559,7 +559,13 @@ describe('online bootstrap', () => {
     // Same session: watermarks keep the original 50k from being dumped again.
     // New output is a suffix that must raise the ledger, not replace it.
     observePro(s.host, SESSION, usage(50_000, 0, 0, 50_000), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 100_000), 'the post-reconcile suffix to raise the ledger')
+    // The backend updates its ledger before the HTTP response reaches the
+    // host. Wait for both sides of that boundary before asserting the view.
+    await waitFor(
+      () => claimedOnBackend(s, 100_000)
+        && wireToViewState(frame(s), 'live').personal.remainingIncense === 2,
+      'the post-reconcile suffix to reach the backend ledger and host snapshot',
+    )
     expect(wireToViewState(frame(s), 'live').personal.remainingIncense).toBe(2)
   })
 

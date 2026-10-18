@@ -43,9 +43,13 @@ export function safeEmail(email) {
     /@(?:example\.(?:com|org|net)|[^@]+\.invalid)$/i.test(email);
 }
 
-export function assertMetadata(email) {
+export function assertMetadata(email, name) {
   if (!safeEmail(email) || /@(?:example\.(?:com|org|net)|[^@]+\.invalid)$/i.test(email)) {
     throw new Error('Commit identity must use a GitHub noreply email');
+  }
+  const allowedNames = policy.public_commit_identities?.[email.toLowerCase()];
+  if (allowedNames && !allowedNames.includes(name?.normalize('NFKC'))) {
+    throw new Error('Commit identity must use its configured public name');
   }
 }
 
@@ -67,13 +71,14 @@ function inspectFiles(staged, errors, ref = 'HEAD') {
 function inspectRange(range, errors) {
   for (const commit of git(['rev-list', range]).split('\n').filter(Boolean)) {
     const fields = git(['show', '-s', '--format=%ae%x00%ce%x00%an%n%cn%n%B', commit]).split('\0');
-    for (const email of fields.slice(0, 2)) {
-      try { assertMetadata(email); } catch { errors.push({ location: 'commit-metadata', categories: ['personal-email'] }); }
+    const names = (fields[2] ?? '').split('\n');
+    for (const [index, email] of fields.slice(0, 2).entries()) {
+      try { assertMetadata(email, names[index]); } catch { errors.push({ location: 'commit-metadata', categories: ['private-identity'] }); }
     }
     const categories = inspectText(fields[2] ?? '');
     if (categories.length) errors.push({ location: 'commit-message', categories });
-    // Scan each introduced snapshot, not only added lines: a secret introduced
-    // and then deleted before the final head is still public in commit history.
+    // Scan additions in every outgoing commit: a secret introduced and then
+    // deleted before the final head is still public in commit history.
     const patch = git(['show', '--format=', '--no-ext-diff', '--no-textconv', '--diff-merges=first-parent', commit]);
     const added = patch.split('\n').filter(line => line.startsWith('+') && !line.startsWith('+++')).join('\n');
     const additions = inspectText(added);
@@ -87,8 +92,10 @@ export function run(args) {
     const categories = inspectText(readFileSync(args[1], 'utf8'));
     if (categories.length) errors.push({ location: 'commit-message', categories });
   } else if (args[0] === '--pre-commit') {
-    const ident = git(['var', 'GIT_AUTHOR_IDENT']);
-    assertMetadata(ident.match(/<([^>]+)>/)?.[1] ?? '');
+    for (const variable of ['GIT_AUTHOR_IDENT', 'GIT_COMMITTER_IDENT']) {
+      const ident = git(['var', variable]);
+      assertMetadata(ident.match(/<([^>]+)>/)?.[1] ?? '', ident.match(/^(.+) </)?.[1]?.trim());
+    }
     inspectFiles(true, errors);
   } else {
     const refIndex = args.indexOf('--ref');

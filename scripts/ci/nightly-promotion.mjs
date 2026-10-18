@@ -52,9 +52,10 @@ export function assertPull(pr, state) {
   }
 }
 
-export function checkResult(runs) {
-  // Never accept skipped/neutral checks, an impersonating app, or head-only checks.
-  const selected = REQUIRED.map(name => runs.find(run => run.name === name && run.app?.id === 15368));
+export function checkResult(runs, expectedSha) {
+  // Never accept skipped/neutral checks or checks for a different batch/app.
+  const selected = REQUIRED.map(name => runs.find(run => run.name === name && run.app?.id === 15368
+    && (expectedSha === undefined || run.head_sha === expectedSha)));
   for (const check of selected) {
     if (check?.status === 'completed' && check.conclusion !== 'success') {
       throw new Error(`Required check failed: ${check.name} (${check.conclusion})`);
@@ -82,8 +83,16 @@ export async function waitAndMerge(api, checksApi, state, {
       if (commit.parents?.[0]?.sha !== state.base || commit.parents?.[1]?.sha !== state.candidate) {
         throw new Error('GitHub test merge does not match this frozen batch');
       }
-      const checks = await checksApi(`commits/${mergeSha}/check-runs?filter=latest&per_page=100`);
-      if (checkResult(checks.check_runs) && pr.mergeable_state === 'clean') {
+      // Actions attaches PR check runs to the PR head, even though checkout uses
+      // the test merge. Our head already merges frozen main + dev; prove that
+      // its complete integration tree is exactly the test merge's tree.
+      const candidateCommit = await api(`git/commits/${state.candidate}`);
+      if (candidateCommit.parents?.[0]?.sha !== state.base || candidateCommit.parents?.[1]?.sha !== state.head
+          || !commit.tree?.sha || commit.tree.sha !== candidateCommit.tree?.sha) {
+        throw new Error('Batch ancestry or integration tree changed');
+      }
+      const checks = await checksApi(`commits/${state.candidate}/check-runs?filter=latest&per_page=100`);
+      if (checkResult(checks.check_runs, state.candidate) && pr.mergeable_state === 'clean') {
         // Strict branch protection rechecks the base and required checks atomically.
         // The sha parameter also rejects a changed head. No admin/bypass flag exists here.
         const result = await api(`pulls/${state.pr}/merge`, 'PUT', {
@@ -123,7 +132,7 @@ function git(args, cwd, extraEnv = {}) {
   }).trim();
 }
 
-async function promote(api, checksApi) {
+export async function promote(api, checksApi) {
   const base = sha(process.env.BASE_SHA), head = sha(process.env.HEAD_SHA);
   const run = process.env.GITHUB_RUN_ID, attempt = process.env.GITHUB_RUN_ATTEMPT;
   if (!/^\d+$/.test(run ?? '') || !/^\d+$/.test(attempt ?? '')) throw new Error('Invalid run identity');
@@ -138,6 +147,13 @@ async function promote(api, checksApi) {
     added = true;
     const identity = ['-c', 'user.name=liangxiang-nightly', '-c', 'user.email=ci@users.noreply.github.com'];
     git([...identity, 'merge', '--no-ff', '--no-commit', head], directory);
+    // Separate integration merges can have different histories but the same
+    // resulting files. Preserve the no-change rule before creating any commit,
+    // remote branch or PR, including when main contains extra changes.
+    if (git(['write-tree'], directory) === git(['rev-parse', `${base}^{tree}`], directory)) {
+      summary('Frozen dev produces no changes to main; no batch PR or merge was created.');
+      return;
+    }
     git([...identity, 'commit', '-m', `Prepare nightly batch from dev ${head}\n\nFrozen main: ${base}`], directory);
     const candidate = sha(git(['rev-parse', 'HEAD'], directory));
     const state = { base, head, candidate, branch: `automation/promote-${run}-${attempt}` };

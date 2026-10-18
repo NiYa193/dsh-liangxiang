@@ -118,7 +118,8 @@ smoke_dsh_cli plugin --profile "$SMOKE_PROFILE" add --ignore-scripts "./$TARBALL
 # In-box bundles must come from the installation, never from a profile-local
 # copy — see the comment in dev-install.sh (duplicate module instances break
 # the tool scheduler's symbol seam).
-smoke_pnpm_cli --dir "$DSH_HOME/profiles/$SMOKE_PROFILE" remove "${WEB_APP_SPEC%@*}" >/dev/null
+echo "Removing the temporary in-box bundle dependency from the isolated Profile"
+smoke_pnpm_cli --dir "$DSH_HOME/profiles/$SMOKE_PROFILE" remove "${WEB_APP_SPEC%@*}"
 node "$REPO_ROOT/scripts/assert-profile-modules.mjs" "$DSH_HOME/profiles/$SMOKE_PROFILE"
 
 echo "== 3/5 dump-config layer =="

@@ -92,7 +92,7 @@ pnpm run dev:web
 
 默认开发入口为本机 3080。脚本使用隔离 `DSH_HOME`；需要离线首次默认时设置
 `LIANGXIANG_BACKEND_URL=local`。已有保存偏好不会被环境变量覆盖。
-开发卸载使用 `pnpm run dev:uninstall`。精确兼容环境见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。
+开发卸载使用 `pnpm run dev:uninstall`。精确兼容环境见 [`COMPATIBILITY.md`](COMPATIBILITY.md)；干净安装门禁采用 pnpm 11.28.5，日常开发不强制改动已工作的工具链。
 
 验证最终安装包：
 

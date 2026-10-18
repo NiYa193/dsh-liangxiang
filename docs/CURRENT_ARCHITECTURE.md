@@ -14,7 +14,7 @@
 | `deepseek-harness` | DSH 源码证据，只读，不为梁相打补丁 |
 | `promo-video` | 宣传工程，非 Git，不作为产品事实源 |
 
-固定验证环境：DSH **0.2.1-rc.2** / `687f282e86`，Node **22.23.1**、pnpm **11.7.0**。
+固定验证环境：DSH **0.2.1-rc.2** / `687f282e86`，Node **22.23.1**、pnpm **11.28.5**。
 公开使用的兼容要求与精确触点见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。
 
 ## 权威数据流
