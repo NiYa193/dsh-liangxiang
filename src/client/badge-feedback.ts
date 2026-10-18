@@ -1,4 +1,4 @@
-import { BADGE_SIZE, type BadgePoint, type Viewport } from './badge-position.ts'
+import { BADGE_SIZE, BADGE_ICON_SIZE, PANEL_WIDTH, panelPlacementFor, type BadgePoint, type Viewport } from './badge-position.ts'
 import { SQUISH_EXIT_MS, SQUISH_MAX_ROWS } from './badge-squish.ts'
 
 export interface FeedbackRect extends BadgePoint { width: number, height: number }
@@ -6,7 +6,8 @@ export interface FeedbackPlacement extends BadgePoint { align: 'start' | 'center
 export interface BadgeComment { id: number, text: string, createdAt: number }
 export interface PresentedComment extends BadgeComment { slot: number, exitingAt?: number }
 export const SPEECH_ROW_HEIGHT = 22
-export const SPEECH_PADDING = 14
+/** An actual exit runway: no clipped viewport can cut a retiring line off. */
+export const SPEECH_EXIT_SPACE = 20
 const GAP = 10
 const MARGIN = 8
 
@@ -21,7 +22,7 @@ export function placeBadgeFeedback(badge: BadgePoint, viewport: Viewport, width:
   const x = Math.max(MARGIN, Math.min(viewport.width - MARGIN - width, centered))
   const candidates = [{ x, y: badge.y + BADGE_SIZE + GAP }, { x, y: badge.y - GAP - height }]
   if (panel) {
-    const speech = placeBadgeSpeech(badge, viewport, width, panel, 1)
+    const speech = placeBadgeSpeech(badge, viewport, width, panel)
     if (speech) candidates.push({ x: speech.x, y: speech.y })
   }
   const point = candidates.find(point => point.x >= MARGIN && point.y >= MARGIN
@@ -31,25 +32,28 @@ export function placeBadgeFeedback(badge: BadgePoint, viewport: Viewport, width:
   return point ? { ...point, align: point.x > centered ? 'start' : point.x < centered ? 'end' : 'center' } : null
 }
 
-export interface SpeechPlacement extends BadgePoint { width: number, capacity: number, tail: 'left' | 'right', tailY: number, lift: number }
+export interface SpeechPlacement extends BadgePoint { width: number, capacity: number, align: 'start' | 'center' | 'end', height: number }
 
 /** A voice beside the badge, within the panel's column. Never beside the panel. */
-export function placeBadgeSpeech(badge: BadgePoint, viewport: Viewport, desiredWidth: number, panel: FeedbackRect | null, requestedRows = SQUISH_MAX_ROWS): SpeechPlacement | null {
-  const left = panel?.x ?? MARGIN
-  const right = panel ? panel.x + panel.width : viewport.width - MARGIN
+export function placeBadgeSpeech(badge: BadgePoint, viewport: Viewport, desiredWidth: number, panel: FeedbackRect | null): SpeechPlacement | null {
+  const placement = panelPlacementFor(badge, viewport)
+  const left = panel?.x ?? (placement.align === 'end' ? badge.x + BADGE_SIZE - PANEL_WIDTH : badge.x)
+  const right = left + (panel?.width ?? PANEL_WIDTH)
   const roomLeft = badge.x - GAP - left
   const roomRight = right - badge.x - BADGE_SIZE - GAP
-  const tail = roomRight >= roomLeft ? 'left' : 'right'
-  const width = Math.min(desiredWidth, tail === 'left' ? roomRight : roomLeft)
-  const panelAbove = panel === null || panel.y < badge.y
-  const roomToLift = panel === null ? viewport.height : Math.max(0, panelAbove ? panel.y - MARGIN : viewport.height - MARGIN - panel.y - panel.height)
-  const capacity = Math.min(SQUISH_MAX_ROWS, Math.floor((roomToLift + BADGE_SIZE - SPEECH_PADDING) / SPEECH_ROW_HEIGHT))
+  const onRight = roomRight >= roomLeft
+  const width = Math.min(desiredWidth, onRight ? roomRight : roomLeft)
+  const y = badge.y + (BADGE_SIZE - BADGE_ICON_SIZE) / 2
+  const bottom = Math.min(viewport.height - MARGIN, panel && panel.y > badge.y ? panel.y - GAP : Infinity)
+  const capacity = Math.min(SQUISH_MAX_ROWS, Math.floor((bottom - y - SPEECH_EXIT_SPACE) / SPEECH_ROW_HEIGHT))
   if (width < 64 || capacity < 1) return null
-  const height = Math.min(capacity, Math.max(1, requestedRows)) * SPEECH_ROW_HEIGHT + SPEECH_PADDING
-  const x = tail === 'left' ? badge.x + BADGE_SIZE + GAP : badge.x - GAP - width
-  const y = panelAbove ? badge.y + BADGE_SIZE - height : badge.y
+  // The emission point stays fixed throughout a burst; moving it up for each
+  // new row would cancel the older rows' downward motion in screen coordinates.
+  const height = capacity * SPEECH_ROW_HEIGHT + SPEECH_EXIT_SPACE
+  const x = onRight ? badge.x + BADGE_SIZE + GAP : badge.x - GAP - width
   if (x < MARGIN || x + width > viewport.width - MARGIN || y < MARGIN || y + height > viewport.height - MARGIN) return null
-  return { x, y, width, capacity, tail, tailY: badge.y + BADGE_SIZE / 2 - y, lift: Math.max(0, height - BADGE_SIZE) }
+  const align = badge.x < MARGIN + width / 2 ? 'start' : badge.x + BADGE_SIZE > viewport.width - MARGIN - width / 2 ? 'end' : 'center'
+  return { x, y, width, capacity, height, align }
 }
 
 /** Removed rows remain present for the same exit, whether displaced or expired. */
@@ -59,7 +63,7 @@ export function reconcileBadgeComments(previous: PresentedComment[], comments: B
     && (row.exitingAt === undefined || now - row.exitingAt < SQUISH_EXIT_MS))
     .map(row => row.exitingAt === undefined ? {
       ...row, exitingAt: now,
-      slot: comments.length >= capacity ? Math.max(capacity, row.slot + 0.45) : row.slot + 0.45,
+      slot: row.slot + 0.85,
     } : row)
-  return [...live, ...retiring].slice(0, SQUISH_MAX_ROWS + 2)
+  return [...live, ...retiring].slice(0, SQUISH_MAX_ROWS + 4)
 }

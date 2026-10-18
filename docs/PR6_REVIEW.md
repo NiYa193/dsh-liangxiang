@@ -2,11 +2,13 @@
 
 来源：https://github.com/liang-today/dsh-liangxiang/pull/6，贡献者 XChen446，
 原始提交 d4f2add224caaa20d3d99e6099ebea934112e322。
-整合分支 codex/pr-6-dsh-latest；候选 1.2.0-rc.4，供本机隔离环境手工验收。
+当前提交分支 work/rc6-approved；候选 1.2.0-rc.6，已完成本机隔离环境手工验收。
 
-## rc.4 后续设计
+## rc.6 本机再设计
 
-用户手工反馈后，入口延时、旁白视觉、统一退场与面板位置关系已重新设计。
+恢复单击开合与短窗口双击玩耍；弹幕为独立短句，顶端对齐图标，在现有旁侧空白
+向下排三行，主面板全程不动。用户已验收并授权提交；本轮接续净化历史，
+只提交个人 fork 工作分支，不创建或重开 PR。
 当前行为以 [PR6_FEEDBACK_REDESIGN.md](PR6_FEEDBACK_REDESIGN.md) 为准；
 以下 rc.1/rc.2 是历史验收记录。#6 保持合并关闭，只追加新 commit。
 

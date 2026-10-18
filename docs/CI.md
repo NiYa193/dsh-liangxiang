@@ -1,41 +1,96 @@
-# 三平台验证与 DSH 兼容预警
+# fork、dev/main 与三平台 CI
 
-当前正式版目标为 **1.2.0**；CI 不执行 npm 发布、Release、Tag 或部署。
-开发通过个人 fork 的工作分支向社区上游 main 提交 PR，不再为本次 CI 在社区仓库新增开发分支。
-既有上游候选分支的迁移整理仍是正式版本发布前待办，不在本次 CI 中删除。
+正式版目标 **1.2.0**。源码进入 main 不等于正式发布；以下任务不执行 npm、
+Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CONTRIBUTING.md)。
 
-## 合并门禁
+## 日常集成
 
-`.github/workflows/ci.yml` 在 PR、main 推送和手动运行时，以 Node 22.23.1、
-pnpm 11.7.0、未修改的锁文件，分别在 Ubuntu、Windows、macOS 完整执行
-`pnpm run verify`：类型、lint、单元/后端测试、构建和客户端体积预算。
-三个必需检查名称固定为：
+- 社区保留 `dev`、`main` 两个长期分支；个人功能分支留在个人 fork。
+- 个人 fork 不跑云端 CI，个人推送只做本地 Codex 验证；本人的 fork 已关闭 Actions。
+  功能在向社区 dev 提 PR 时跑 CI，合入 dev/main 后不再重复触发同一轮 push 检查。
+- PR 默认目标为 `dev`，普通 `pull_request` 在 GitHub 生成的测试合并提交上运行。
+- `dev` 要求 `privacy` 与三个 `verify-locked (ubuntu-latest/windows-latest/macos-latest)` 检查；
+  Node 22.23.1 / pnpm 11.7.0，锁文件安装，完整类型、lint、单元/后端、构建、体积验证。
+- CI 控制器和隐私门禁另有 Node 原生测试，覆盖主线推进、批次被改、假/缺/跳过检查和清理边界。
+- 管理员审核后人工合并；目前只有一位管理员，保护允许 0 个额外 Approve。
+  这支持维护者自己的 PR，不代表独立审批；GitHub 禁止作者批准自己。
+- main 额外要求 `smoke-installed`：Ubuntu 中真实 tarball 安装、桌面/窄屏/暗色浏览器
+  与隔离 Backend/Host 在线回归。所有 smoke 只使用临时 Profile、SQLite 和 localhost。
+- 两个分支均要求 PR、严格同步、管理员同样受门禁约束，禁止强推、删除，要求解决讨论。
+  写入限制限定管理员；专用 App 安装后只给 main 的合并职责，不给予保护绕过。
 
-- `verify-locked (ubuntu-latest)`
-- `verify-locked (windows-latest)`
-- `verify-locked (macos-latest)`
+## 每日批次
 
-首次三平台通过后，将这些检查设为 main 的必需状态检查，并要求 PR 与 main 保持同步。
-维护者通过 PR 合入，允许零个额外审查批准以支持个人维护；禁止 main 强推和删除。
-提交者原始历史可通过 merge commit 保留，不要求把贡献者提交改写为维护者署名。
+`nightly-promotion.yml` 放在默认分支 main，仅允许在社区仓 main 上运行。
+每天英国当地 00:00，`timezone: Europe/London` 自动跟随 GMT/BST。GitHub 定时运行
+可能延迟，尤其是整点；这是一项每日任务，不是精确到秒的定时承诺。
+
+1. 冻结当前 main 和 dev 的完整 SHA；dev 没有独有提交时直接结束。
+2. 专用 App 从 trusted main 启动控制器，在独立临时 worktree 合并这两个固定 SHA。
+   不在持有写凭据的进程中执行候选代码、安装脚本或测试。
+3. 创建短期 `automation/promote-<run>-<attempt>` 分支和 main 批次 PR；PR 的测试合并
+   运行上述必需检查，App 创建的 PR 正常触发 CI，无需每晚人工批准工作流。
+4. 仅接受 GitHub Actions App `15368` 在该测试合并 SHA 上提供的全部真实 success。
+   检查其父提交、PR 来源/目标/head 和 main 未变；main 变化、冲突、失败或超时均停止。
+5. 通过标准 PR merge API 合并，指定冻结的 head，严格分支保护继续生效，不使用绕过。
+   新进入 dev 的提交留给下一批。长期分支使用 merge 保留来源历史，不反复 squash。
+6. 成功后或失败关闭批次 PR 后删除本次临时分支；分支被别人改动则拒绝删除并报错。
+   PR、检查、工作流摘要保留批次和提交记录。取消时也尝试清理；异常中断留下的分支
+   必须按 PR 及 SHA 核实后人工清理，不得批量按名字删除。
+
+main 的 workflow bootstrap/修复须维护者明确操作；main 紧急修复需同步回 dev。
+nightly 并发串行、不取消正在执行的批次，也不锁住 dev 的日常 PR。
+
+## 一次性 GitHub App 配置
+
+普通 CI 和只读试跑无需额外凭据。无人值守的 PR 创建/合并使用专用 GitHub App，
+不保存个人 OAuth/PAT。GitHub 当前会让默认 `GITHUB_TOKEN` 创建的 PR 工作流等待人工
+批准，因此不使用它伪装成全自动方案。
+
+在社区组织创建并仅安装到本仓的 App，仓库权限仅需：
+
+- Contents: read/write（临时分支及合并）
+- Pull requests: read/write（批次 PR）
+- Workflows: read/write（批次含已审核的 CI 文件更新时，允许 Git 推送该批次）
+- Metadata: read（GitHub 自动提供）
+
+关闭 webhook，不授予 Administration、Secrets、Actions write 或保护绕过。
+将 App ID 设为仓库 variable `LIANGXIANG_PROMOTION_APP_ID`，私钥通过 GitHub Secrets
+设为 `LIANGXIANG_PROMOTION_APP_PRIVATE_KEY`。在 main 的允许写入 App 列表加入此 App；
+它仍必须经过 PR 和全部状态检查。令牌由官方固定 SHA 的 action 按本仓和上述显式
+权限临时签发，任务结束撤销。Workflows 与 Actions write 是不同权限；不授予触发或
+修改工作流运行的 Actions write。`checks: read` 由控制器的内置只读 token 提供。
+
+尚未配置 App 时，定时任务会完整执行只读集成检查，然后明确报出缺失配置，不合并。
+手动 `dry_run=true` 无写操作，不会创建 PR 或修改分支，可在授权前验收。App 安装后
+先试跑，再人工触发一次 `dry_run=false` 验证首个批次。
 
 ## 上游兼容预警
 
-`.github/workflows/ci-compat.yml` 在相关 PR、每日北京时间 04:17 及手动运行时检查
-DSH alpha 渠道。准备任务只解析一次 CLI 版本，四个 DSH 包均使用该精确版本；
-Cordis 与 group 的当次精确版本也统一记录，再交由三平台执行完整 verify。
-某个配套版本尚未发布、供应链等待期、安装或测试失败会在日志和摘要中保留，
-不会通过降低安装政策或吞掉失败来制造成功。预警检查不列为 main 的必需检查。
-alpha 是独立预览渠道，不表示它的版本号必然高于当前锁定的 RC。
+`ci-compat.yml` 的相关 PR、每日北京时间 04:17 及手动检查保持独立。准备任务只解析
+一次 DSH alpha，并将四个 DSH 包和 Cordis/group 的精确版本冻结给三平台。
+安装政策、白名单与供应链等待期不降低；失败保留为红色，预警不替代锁定依赖门禁，
+也不阻止已通过锁定版全量检查的夜间批次。alpha 不表示版本一定高于当前 RC。
 
-## 权限与边界
+## 参考与验收
 
-- 使用普通 `pull_request`，工作流仅有 `contents: read`，不传入发布或部署凭据。
-- checkout 不保存 Git 凭据；外部 Actions 固定为其官方仓库的完整 Commit SHA。
-- pnpm 安装脚本白名单和等待期沿用项目政策，不在 CI 中豁免。
-- 日志与摘要记录实际版本、Commit、安装和完整验证结果；预警失败不等于基础门禁失败。
-- 三平台 verify 不等于真实安装和浏览器验收。发布仍需隔离 Profile、浏览器和在线链路检查；
-  Ubuntu 验证也不能代替目标 Rocky Linux 服务器的正式部署验收。
+- [GitHub 定时语法与时区](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#onschedule)
+- [默认 token 的触发限制](https://docs.github.com/en/actions/concepts/security/github_token)
+- [保护分支](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
+- [作者不能批准自己](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews)
 
-方案沿用 @XChen446 在 PR #7 提出的跨平台验证和上游兼容检查方向，
-维护者将锁定依赖门禁与浮动渠道预警分开，并统一预览版本、收紧凭据和合并边界。
+最初三平台和上游兼容方向来自 @XChen446 的 PR #7，原贡献记录已保留；后续
+批次冻结、权限隔离和协作流程由维护者补强。正式发布仍须项目完整发布门禁。
+
+## 隐私门禁
+
+- 安装 `node scripts/install-privacy-hooks.mjs`，在本地提交内容、提交说明和推送前检查；
+  既有 hooks 会串联保留，同仓所有 worktree 共用门禁。Git 身份使用公开账号和 noreply 邮箱。
+- 主仓 PR 必须通过 `privacy`，检查最终文件、每个新提交的说明/新增内容、作者与提交者
+  邮箱，以及 PR 标题和描述。编辑描述时单独重查，不重复执行三平台验证。
+- 拦截私人工作流称呼、本机用户路径、私人会话标识、非匿名邮箱、常见凭据格式和私钥。
+  日志只报告类别，不回显命中值、文件名或上下文；规则和测试也不写入私人称呼明文。
+- 公开评论或其他文案先保存临时文件，再运行 `check-privacy.mjs --message <file>`。
+- 自动扫描不能识别所有自然语言细节或图片内容；维护者仍须审核隐私和门禁本身的修改。
+- 已公开历史的修复需独立映射及本地备份。移除当前文字或追加修正提交不会抹去旧提交；
+  受保护历史的 force 更新、标签变化和缓存移除必须单独评估，不能冒充已经彻底清除。

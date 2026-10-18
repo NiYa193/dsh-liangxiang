@@ -2,6 +2,7 @@ name: DSH compatibility preview
 
 on:
   pull_request:
+    branches: [dev, main]
     paths:
       - .github/workflows/**
       - src/compat/dsh/**
@@ -26,6 +27,7 @@ defaults:
 jobs:
   resolve:
     name: Resolve one preview dependency set
+    if: github.repository == 'liang-today/dsh-liangxiang'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:

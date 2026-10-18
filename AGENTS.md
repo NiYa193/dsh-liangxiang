@@ -21,15 +21,21 @@
   deployments, tests, or documentation.
 - 产品 UI/copy 中，中央角色统一称为 **梁子**；不直接使用现实人物姓名。
 - DSH WebUI entry name, accessible name and default Hover / Focus text: **今日梁相**.
-  Use one custom tooltip, never a competing native title popup. Pointer and
-  keyboard activation open immediately. Once open, pointer taps play; × / Escape
-  dismiss immediately. Never delay the primary action to classify double clicks.
-  Squash feedback is immediate; drag/cancel never plays a toy sound.
-  Comments share one connected speech surface beside the badge, inside the
-  panel's horizontal footprint and outside its content. At most three rows fit
-  the available height; newer rows push older rows down. Displaced and expired
-  rows both retain presence for a 200ms fade/slide before removal. Active text
-  stays readable in both themes; reduced motion removes displacement.
+  Use one custom tooltip, never a competing native title popup. Pointer single
+  click toggles the panel after a short 200ms classification window. Only taps
+  within that interval form a double/continuous play gesture; they never change
+  either the open or closed panel state. No separate long play/idle window.
+  Keyboard toggles, × and Escape respond immediately; drag/cancel clears pending
+  toggles and never plays a toy sound. Squash feedback is immediate.
+  Comments are separate lightweight lines, with no shared speech card or tail.
+  Keep them inside the panel's horizontal footprint and outside its content.
+  The main panel NEVER moves or changes its gap for toy feedback. Align the
+  speech area's top with the badge portrait and flow down into the adjacent
+  empty space; reduce rows when the viewport or a below-stacked panel limits it.
+  Fix the emission point throughout a burst so older rows truly fall on screen.
+  Up to three live rows fit the available height; displaced and expired rows
+  retain presence for a 420ms downward fade, with a full unclipped exit runway.
+  Live text stays readable in both themes; reduced motion removes displacement.
   Center the ordinary hint when it fits and clamp only at actual viewport edges.
   Hide it during presses/comments, then restore. No toy text may imply a balance
   change or introduce a tier. Keyboard activation never emits decorative speech.
@@ -1062,6 +1068,43 @@ leave `package.json` / `PLUGIN_VERSION` alone so the plugin market stays on
 the current client release.
 
 ### Git (HARD RULE — 每次修复都必须 commit + push)
+
+Privacy is a publication gate. Never publish private workflow/conversation
+labels, internal task identifiers, personal home paths, private contact data,
+or credentials in files, commit metadata/messages, PR descriptions or comments.
+Use the public GitHub handle and GitHub noreply email for maintained commits.
+Run `node scripts/install-privacy-hooks.mjs` once per clone; it installs shared
+pre-commit, commit-msg and pre-push checks for all worktrees. Never bypass them.
+Run `node scripts/ci/check-privacy.mjs --message <file>` on externally posted
+text before publishing it. Required upstream CI includes `privacy`.
+Policies use phrase digests; do not add private literals as rules or fixtures.
+Historical cleanup must preserve code and third-party attribution. Changes
+to protected published history require a prepared mapping/backup and explicit
+approval for the force update; never silently rewrite another active checkout.
+
+Community collaboration (approved 2026-10-19): upstream
+`liang-today/dsh-liangxiang` has two long-lived branches, `dev` and `main`.
+Every developer, including the maintainer, works in a personal fork. The local
+`origin` and default push remote must be the fork; `upstream` fetches the
+community repository and has a disabled push URL. Independent concurrent
+agents use separate worktrees/directories, never change each other's checkout.
+Submit feature PRs to upstream `dev`; after required CI and maintainer review,
+an administrator merges them. Authors cannot approve their own GitHub PRs;
+the single-maintainer setup uses manual administrator merge, not a claim of
+independent approval. See `CONTRIBUTING.md` and `docs/CI.md`.
+
+Personal fork pushes use local Codex verification only. Cloud CI runs on PRs
+to upstream dev/main, never on personal pushes or duplicate post-merge pushes.
+
+Only the trusted nightly controller promotes a frozen dev batch to main after
+full PR checks. Its temporary `automation/promote-*` branch is deleted after
+the attempt. Never force-push, bypass branch protection, copy a personal CLI
+token into CI, or put repository-write credentials in PR test jobs. Scheduled
+source merges do not authorize npm publication, Release/Tag, or deployment.
+Main workflow bootstrap/repair PRs remain explicit maintainer operations.
+
+The accepted PR #6 follow-up is submitted as new commits on a personal fork
+work branch; do not create or reopen a PR for that batch.
 
 After every completed change in this repository, **before considering the
 task done**:
