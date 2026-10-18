@@ -13,14 +13,16 @@ const pull = () => ({ state: 'open', draft: false, mergeable: true, mergeable_st
   base: { ref: 'main', sha: base, repo: { full_name: REPOSITORY } },
   head: { ref: state.branch, sha: candidate, repo: { full_name: REPOSITORY } },
 });
-const passing = () => REQUIRED.map(name => ({ name, app: { id: 15368 }, status: 'completed', conclusion: 'success' }));
-function scenario({ pr = pull(), main = base, checks = passing(), parents = [base, candidate], merged = true } = {}) {
+const passing = () => REQUIRED.map(name => ({ name, head_sha: candidate, app: { id: 15368 }, status: 'completed', conclusion: 'success' }));
+function scenario({ pr = pull(), main = base, checks = passing(), parents = [base, candidate],
+  candidateParents = [base, head], candidateTree = 'e'.repeat(40), merged = true } = {}) {
   const writes = [];
   const api = async (path, method = 'GET', body) => {
     if (method !== 'GET') { writes.push({ path, method, body }); return { merged, sha: merge }; }
     if (path === 'pulls/42') return pr;
     if (path === 'git/ref/heads/main') return { object: { sha: main } };
-    if (path === `git/commits/${merge}`) return { parents: parents.map(value => ({ sha: value })) };
+    if (path === `git/commits/${merge}`) return { parents: parents.map(value => ({ sha: value })), tree: { sha: 'e'.repeat(40) } };
+    if (path === `git/commits/${candidate}`) return { parents: candidateParents.map(value => ({ sha: value })), tree: { sha: candidateTree } };
     if (path.startsWith('commits/')) return { check_runs: checks };
     throw new Error('Unexpected request: ' + path);
   };
@@ -84,6 +86,18 @@ test('passing checks from a different merge tree cannot promote the batch', asyn
   assert.deepEqual(writes, []);
 });
 
+test('candidate must merge the exact frozen main and dev commits', async () => {
+  const { api, writes } = scenario({ candidateParents: [base, 'f'.repeat(40)] });
+  await assert.rejects(waitAndMerge(api, api, state, once), /Batch ancestry or integration tree changed/);
+  assert.deepEqual(writes, []);
+});
+
+test('head checks cannot pass when the test merge contains different files', async () => {
+  const { api, writes } = scenario({ candidateTree: 'f'.repeat(40) });
+  await assert.rejects(waitAndMerge(api, api, state, once), /Batch ancestry or integration tree changed/);
+  assert.deepEqual(writes, []);
+});
+
 test('failure, skipped and neutral checks are not accepted as success', () => {
   for (const conclusion of ['failure', 'cancelled', 'skipped', 'neutral', 'timed_out']) {
     const checks = passing(); checks[0].conclusion = conclusion;
@@ -93,7 +107,7 @@ test('failure, skipped and neutral checks are not accepted as success', () => {
 
 test('missing, pending or impersonated checks block merging', async () => {
   for (const mutate of [checks => checks.pop(), checks => { checks[0].status = 'in_progress'; },
-    checks => { checks[0].app.id = 999; }]) {
+    checks => { checks[0].app.id = 999; }, checks => { checks[0].head_sha = head; }]) {
     const checks = passing(); mutate(checks);
     const { api, writes } = scenario({ checks });
     await assert.rejects(waitAndMerge(api, api, state, once), /Timed out/);
@@ -104,7 +118,7 @@ test('missing, pending or impersonated checks block merging', async () => {
 test('checks can finish later without changing the frozen dev snapshot', async () => {
   const { api, writes } = scenario();
   let polls = 0;
-  const checksApi = async path => { assert.ok(path.includes(merge)); return { check_runs: ++polls === 1 ? [] : passing() }; };
+  const checksApi = async path => { assert.ok(path.includes(candidate)); return { check_runs: ++polls === 1 ? [] : passing() }; };
   assert.equal(await waitAndMerge(api, checksApi, state, { ...once, attempts: 2 }), merge);
   assert.equal(writes.length, 1);
   assert.equal(polls, 2);

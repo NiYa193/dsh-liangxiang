@@ -30,8 +30,10 @@ Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CON
    不在持有写凭据的进程中执行候选代码、安装脚本或测试。
 3. 创建短期 `automation/promote-<run>-<attempt>` 分支和 main 批次 PR；PR 的测试合并
    运行上述必需检查，App 创建的 PR 正常触发 CI，无需每晚人工批准工作流。
-4. 仅接受 GitHub Actions App `15368` 在该测试合并 SHA 上提供的全部真实 success。
-   检查其父提交、PR 来源/目标/head 和 main 未变；main 变化、冲突、失败或超时均停止。
+4. GitHub 把 PR 检查关联到候选 head。先确认候选的父提交恰为冻结的 main/dev，
+   再验证 GitHub 测试合并的父提交及文件树与该完整候选一致；只接受 Actions App
+   `15368` 在这一候选 SHA 上的全部真实 success。检查 PR 来源/目标/head 和 main
+   未变；main 变化、树不一致、冲突、失败或超时均停止。
 5. 通过标准 PR merge API 合并，指定冻结的 head，严格分支保护继续生效，不使用绕过。
    新进入 dev 的提交留给下一批。长期分支使用 merge 保留来源历史，不反复 squash。
 6. 成功后或失败关闭批次 PR 后删除本次临时分支；分支被别人改动则拒绝删除并报错。
