@@ -31,7 +31,11 @@ export function apiClient(token, fetcher = fetch) {
       signal: AbortSignal.timeout(30_000),
     });
     if (response.status === 204) return null;
-    if (!response.ok) throw new Error(`GitHub ${method} ${path}: HTTP ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(`GitHub ${method} ${path}: HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
     return response.json();
   };
 }
@@ -76,8 +80,20 @@ export async function waitAndMerge(api, checksApi, state, {
       throw new Error('main advanced during verification; a new batch must be tested');
     }
     if (pr.mergeable === false) throw new Error('Batch conflicts with main');
-    if (pr.merge_commit_sha) {
-      const mergeSha = sha(pr.merge_commit_sha);
+    // API 2026-03-10 removed merge_commit_sha from PR payloads. Read the
+    // exact test-merge ref; GET pulls above requests its background calculation.
+    let mergeRef;
+    try {
+      mergeRef = await api(`git/ref/pull/${state.pr}/merge`);
+    } catch (error) {
+      // A test merge may not exist yet. Authentication and other failures abort.
+      if (error.status !== 404) throw error;
+    }
+    if (mergeRef) {
+      if (mergeRef.ref !== `refs/pull/${state.pr}/merge` || mergeRef.object?.type !== 'commit') {
+        throw new Error('GitHub returned an unexpected test-merge reference');
+      }
+      const mergeSha = sha(mergeRef.object.sha);
       // Validate the test merge's parents before accepting checks attached to it.
       const commit = await api(`git/commits/${mergeSha}`);
       if (commit.parents?.[0]?.sha !== state.base || commit.parents?.[1]?.sha !== state.candidate) {
