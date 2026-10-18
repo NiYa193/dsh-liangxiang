@@ -138,16 +138,19 @@ const bareButton: CSSProperties = {
 
 function ArchiveAvatar({
   state,
+  policyVersion,
   reducedMotion,
   size = 34,
 }: {
   state: LiangDayArchive['liangziState']
+  policyVersion?: string
   reducedMotion: boolean
   size?: number
 }): ReactElement {
   return (
     <LiangAvatar
       state={state}
+      {...(policyVersion === undefined ? {} : { policyVersion })}
       pulse={false}
       reducedMotion={reducedMotion}
       size={size}
@@ -267,7 +270,7 @@ function MonthSummary({
         ? <EmptyDayMark />
         : waiting
           ? <ArchiveAvatar state="waiting" reducedMotion={reducedMotion} size={48} />
-          : <ArchiveAvatar state={period.liangziState} reducedMotion={reducedMotion} size={48} />}
+          : <ArchiveAvatar state={period.liangziState} policyVersion={period.liangziPolicyVersion} reducedMotion={reducedMotion} size={48} />}
       {temporary && (
         <span
           aria-hidden="true"
@@ -356,7 +359,7 @@ function DayCell({
           ? <span aria-hidden="true" style={{ height: compact ? '24px' : '38px' }} />
           : archive === undefined
             ? <EmptyDayMark size={compact ? 24 : 38} />
-            : <ArchiveAvatar state={archive.liangziState} reducedMotion={reducedMotion} size={compact ? 24 : 34} />}
+            : <ArchiveAvatar state={archive.liangziState} policyVersion={archive.liangziPolicyVersion} reducedMotion={reducedMotion} size={compact ? 24 : 34} />}
       <span
         style={{
           maxWidth: '100%',
@@ -462,7 +465,7 @@ function WeekCell({
       </span>
       {future || period === null
         ? <EmptyDayMark size={compact ? 26 : 38} />
-        : <ArchiveAvatar state={period.liangziState} reducedMotion={reducedMotion} size={compact ? 26 : 40} />}
+        : <ArchiveAvatar state={period.liangziState} policyVersion={period.liangziPolicyVersion} reducedMotion={reducedMotion} size={compact ? 26 : 40} />}
       {temporary && <span aria-hidden="true" style={{ position: 'absolute', top: '6px', right: '7px', color: color.warn, fontSize: '9px' }}>暂</span>}
     </button>
   )

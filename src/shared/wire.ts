@@ -9,6 +9,7 @@
  */
 import {
   assertRequestId,
+  liangziPolicyForVersion,
   assertValidCase,
   assertVoteType,
   isVoteType,
@@ -41,6 +42,7 @@ export type AuthorityMode = (typeof AUTHORITY_MODES)[number]
 
 /** Host-owned manual configuration; never inferred from network reachability. */
 export type HostAuthorityPreference = 'online' | 'local'
+export interface WireDayEnd { enabled: boolean, voteType: 'up' | 'down', available: boolean }
 
 export function isAuthorityMode(value: unknown): value is AuthorityMode {
   return typeof value === 'string' && (AUTHORITY_MODES as readonly string[]).includes(value)
@@ -48,6 +50,7 @@ export function isAuthorityMode(value: unknown): value is AuthorityMode {
 
 /** Raw global counts of one published snapshot (ratios derived client-side). */
 export interface WireGlobalCounts {
+  liangziPolicyVersion?: string
   caseId: string
   upVotes: number
   downVotes: number
@@ -113,6 +116,8 @@ export interface LiangxiangWireState {
   /** Short safe reason for the latest online-authority failure; never a secret. */
   authorityReason: string | null
   snapshotRefreshSeconds: number
+  /** Additive preference only; never a balance or spend authority. */
+  dayEnd?: WireDayEnd
   businessDate: string
   /** Scalar signal only; 梁祠 arrays use the separate `/api/history` route. */
   archiveVersion: number
@@ -276,12 +281,14 @@ export function parseWireState(raw: unknown): LiangxiangWireState {
       ? null
       : requireString(record.authorityReason, 'state.authorityReason'),
     snapshotRefreshSeconds: requireCount(record.snapshotRefreshSeconds, 'state.snapshotRefreshSeconds'),
+    ...(record.dayEnd === undefined ? {} : { dayEnd: parseWireDayEnd(record.dayEnd) }),
     businessDate: requireString(record.businessDate, 'state.businessDate'),
     archiveVersion: record.archiveVersion === undefined
       ? 0
       : requireCount(record.archiveVersion, 'state.archiveVersion'),
     activeCase: parseCase(record.activeCase, 'state.activeCase'),
     global: {
+      ...(globalRecord.liangziPolicyVersion === undefined ? {} : { liangziPolicyVersion: parseLiangziVersion(globalRecord.liangziPolicyVersion) }),
       caseId: requireString(globalRecord.caseId, 'state.global.caseId'),
       upVotes,
       downVotes,
@@ -382,4 +389,17 @@ export function parseWireVoteResponse(raw: unknown): WireVoteResponse {
     result: parseWireVoteResult(record.result),
     state: parseWireState(record.state),
   }
+}
+
+function parseLiangziVersion(raw: unknown): string {
+  const version = requireString(raw, 'state.global.liangziPolicyVersion')
+  try { liangziPolicyForVersion(version) }
+  catch { throw new WireError('state.global.liangziPolicyVersion', `unsupported Liangzi policy ${version}`) }
+  return version
+}
+
+function parseWireDayEnd(raw: unknown): WireDayEnd {
+  const r = asRecord(raw, 'state.dayEnd')
+  if (r.voteType !== 'up' && r.voteType !== 'down') throw new WireError('state.dayEnd.voteType', 'must be up/down')
+  return { enabled: requireBoolean(r.enabled, 'state.dayEnd.enabled'), voteType: r.voteType, available: requireBoolean(r.available, 'state.dayEnd.available') }
 }

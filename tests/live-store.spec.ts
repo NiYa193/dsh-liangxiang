@@ -3,7 +3,7 @@
  * dropping, vote retry with the SAME request id, bounded SSE failure ->
  * offline, manual refresh reconnect.
  */
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createLiveLiangxiangStore, type LiveStoreTransport } from '../src/client/live-store.ts'
 import { FakeAuthoritativeLiangService, type LiangServiceConfig } from '../src/host/fake-service.ts'
 import type { LiangxiangWireState } from '../src/shared/wire.ts'
@@ -333,6 +333,26 @@ describe('live store', () => {
     expect(store.getSnapshot().connection).toBe('live')
     expect(store.getSnapshot().activeCase.id).toBe(before)
     store.dispose()
+  })
+
+  it('uses the wire cadence for hover refresh, accepts live changes, and preserves explicit refresh', async () => {
+    const service = makeService()
+    const controls = fakeTransport(service)
+    const store = createLiveLiangxiangStore(controls.transport)
+    let now = Date.UTC(2026, 7, 16, 4)
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    try {
+      store.start(); await settled()
+      const count = () => controls.requests.filter(r => r.path === '/liangxiang/api/refresh').length
+      store.refresh(); await settled(); expect(count()).toBe(1)
+      now += 2_001; store.refresh(); await settled(); expect(count()).toBe(1)
+      store.refresh({ force: true }); await settled(); expect(count()).toBe(2)
+      const wire = service.getWireState()
+      controls.pushFrame({ ...wire, revision: wire.revision + 1, snapshotRefreshSeconds: 5 })
+      now += 5_000; store.refresh(); await settled(); expect(count()).toBe(3)
+      controls.pushFrame({ ...wire, revision: 0, snapshotRefreshSeconds: 1 })
+      now += 2_001; store.refresh(); await settled(); expect(count()).toBe(3)
+    } finally { clock.mockRestore(); store.dispose() }
   })
 
   it('reconcile() POSTs /reconcile to drop local observation and re-read incense', async () => {

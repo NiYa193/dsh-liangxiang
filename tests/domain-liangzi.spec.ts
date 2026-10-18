@@ -7,6 +7,10 @@ import {
   DomainError,
   assertValidThresholdPolicy,
   deriveLiangziState,
+  LEGACY_LIANGZI_THRESHOLDS,
+  LEGACY_LIANGZI_POLICY_VERSION,
+  LIANGZI_POLICY_VERSION,
+  liangziPolicyForVersion,
   formatLiangPosition,
   formatRatioPercents,
   liangziStateForUpRatio,
@@ -23,7 +27,9 @@ describe('zero votes', () => {
 
 describe('exact threshold boundaries from integer counts', () => {
   const cases: Array<[up: number, down: number, expected: LiangziState]> = [
-    [0, 100, 'liang_gong'], //   0%
+    [0, 100, 'xiao_nan_liang'],
+    [24_999_999, 75_000_001, 'xiao_nan_liang'],
+    [25, 75, 'liang_gong'], //   0%
     [49_999, 50_001, 'liang_gong'], // 49.999%
     [50_000, 50_000, 'liang_zong'], // 50%
     [69_999, 30_001, 'liang_zong'], // 69.999%
@@ -42,7 +48,9 @@ describe('exact threshold boundaries from integer counts', () => {
 
 describe('ratio-level boundaries', () => {
   const cases: Array<[ratio: number, expected: LiangziState]> = [
-    [0, 'liang_gong'],
+    [0, 'xiao_nan_liang'],
+    [0.24999999, 'xiao_nan_liang'],
+    [0.25, 'liang_gong'],
     [0.49999, 'liang_gong'],
     [0.5, 'liang_zong'],
     [0.69999, 'liang_zong'],
@@ -62,7 +70,8 @@ describe('ratio-level boundaries', () => {
 describe('state bands and their displayed percentages', () => {
   it('exposes the frozen band of every state', () => {
     expect(liangziUpRatioBand('waiting')).toEqual({ minInclusive: null, maxExclusive: null })
-    expect(liangziUpRatioBand('liang_gong')).toEqual({ minInclusive: null, maxExclusive: 0.5 })
+    expect(liangziUpRatioBand('xiao_nan_liang')).toEqual({ minInclusive: null, maxExclusive: 0.25 })
+    expect(liangziUpRatioBand('liang_gong')).toEqual({ minInclusive: 0.25, maxExclusive: 0.5 })
     expect(liangziUpRatioBand('liang_zong')).toEqual({ minInclusive: 0.5, maxExclusive: 0.7 })
     expect(liangziUpRatioBand('liang_shen')).toEqual({ minInclusive: 0.7, maxExclusive: 0.85 })
     expect(liangziUpRatioBand('liang_sheng')).toEqual({ minInclusive: 0.85, maxExclusive: 0.95 })
@@ -71,7 +80,8 @@ describe('state bands and their displayed percentages', () => {
 
   it('renders the band as user-facing copy', () => {
     expect(liangziRatioRangeText('waiting')).toBe('尚无打梁')
-    expect(liangziRatioRangeText('liang_gong')).toBe('夯率 < 50%')
+    expect(liangziRatioRangeText('xiao_nan_liang')).toBe('夯率 < 25%')
+    expect(liangziRatioRangeText('liang_gong')).toBe('25% ≤ 夯率 < 50%')
     expect(liangziRatioRangeText('liang_sheng')).toBe('85% ≤ 夯率 < 95%')
     expect(liangziRatioRangeText('liang_zu')).toBe('夯率 ≥ 95%')
   })
@@ -175,5 +185,18 @@ describe('threshold policy validation', () => {
     expect(() => deriveLiangziState(-1, 0)).toThrow(DomainError)
     expect(() => deriveLiangziState(0, Number.NaN)).toThrow(DomainError)
     expect(() => deriveLiangziState(1.5, 2)).toThrow(DomainError)
+  })
+})
+
+describe('versioned Liangzi rules', () => {
+  it('preserves legacy states and range copy while the new rule splits the lower half', () => {
+    expect(liangziPolicyForVersion(LEGACY_LIANGZI_POLICY_VERSION)).toBe(LEGACY_LIANGZI_THRESHOLDS)
+    for (const up of [0, 1, 24, 25, 49]) {
+      expect(deriveLiangziState(up, 100 - up, LEGACY_LIANGZI_THRESHOLDS)).toBe('liang_gong')
+    }
+    expect(liangziRatioRangeText('liang_gong', LEGACY_LIANGZI_THRESHOLDS)).toBe('夯率 < 50%')
+    expect(deriveLiangziState(24, 76, liangziPolicyForVersion(LIANGZI_POLICY_VERSION))).toBe('xiao_nan_liang')
+    expect(formatLiangPosition(24_999_999, 75_000_001)).toBe('24.999999%')
+    expect(() => liangziPolicyForVersion('unknown')).toThrow(DomainError)
   })
 })

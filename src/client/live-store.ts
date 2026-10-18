@@ -17,6 +17,8 @@ import type { LiangHistoryArchive, VoteResult, VoteType } from '../domain/index.
 import { parseWireState, parseWireVoteResponse, type HostAuthorityPreference } from '../shared/wire.ts'
 import { mergeHistoryArchive, parseV1HistoryResponse } from '../shared/history-v1.ts'
 import { AUTHORITY_MODE_ACTION_HEADER, AUTHORITY_MODE_ACTION_VALUE } from '../shared/index.ts'
+import { DAY_END_ACTION_HEADER, DAY_END_ACTION_VALUE, type DayEndPreferences } from '../shared/day-end.ts'
+import { snapshotRefreshMs } from '../shared/snapshot-cadence.ts'
 import {
   createOfflineViewState,
   wireToViewState,
@@ -110,6 +112,8 @@ export interface LiveLiangxiangStore extends LiangxiangStore {
   /** Abort in-flight work and close the stream. */
   dispose(): void
   /** Persist and apply an explicit mode selection; never called by reconnect. */
+  setDayEndPreferences(preferences: DayEndPreferences): Promise<void>
+  noteVoteActivity(): void
   selectAuthorityMode(preference: HostAuthorityPreference): Promise<void>
   /** LOCAL_FAKE_DEV: ask the host to cycle the prepared 今日梁案 list. */
   cycleLocalCase(): void
@@ -139,7 +143,8 @@ export function createLiveLiangxiangStore(
   let starting = false
   let refreshInFlight = false
   let reconcileInFlight = false
-  let lastLiveRefreshAt = 0
+  let lastLiveRefreshAt = Number.NEGATIVE_INFINITY
+  let liveRefreshMs = MIN_LIVE_REFRESH_MS
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let reconnectBackoffMs = RECONNECT_INITIAL_MS
   const listeners = new Set<() => void>()
@@ -234,6 +239,7 @@ export function createLiveLiangxiangStore(
     }
     if (wire.revision > lastRevision) {
       lastRevision = wire.revision
+      liveRefreshMs = Math.max(MIN_LIVE_REFRESH_MS, snapshotRefreshMs(wire.snapshotRefreshSeconds))
       publishWire(wireToViewState(wire, 'live'))
     } else if (state.connection !== 'live') {
       // Reconnect delivering an already-known revision: only flip the
@@ -330,7 +336,7 @@ export function createLiveLiangxiangStore(
   const pullLatest = (force: boolean): void => {
     if (disposed || refreshInFlight || starting) return
     const now = Date.now()
-    if (!force && now - lastLiveRefreshAt < MIN_LIVE_REFRESH_MS) return
+    if (!force && now - lastLiveRefreshAt < liveRefreshMs) return
     refreshInFlight = true
     lastLiveRefreshAt = now
     transport.fetchJson(REFRESH_PATH, { method: 'POST' })
@@ -409,6 +415,20 @@ export function createLiveLiangxiangStore(
         })
     },
     selectAuthorityMode,
+    noteVoteActivity: () => {
+      if (disposed || !state.dayEnd?.enabled) return
+      void transport.fetchJson('/liangxiang/api/vote-activity', {
+        method: 'POST', headers: { [DAY_END_ACTION_HEADER]: DAY_END_ACTION_VALUE },
+      }).catch(() => undefined)
+    },
+    setDayEndPreferences: async (preferences) => {
+      if (disposed) throw new Error('梁相连接已关闭')
+      const raw = await transport.fetchJson('/liangxiang/api/day-end', {
+        method: 'POST', body: JSON.stringify(preferences),
+        headers: { [DAY_END_ACTION_HEADER]: DAY_END_ACTION_VALUE },
+      })
+      if (!disposed) applyWire(raw)
+    },
     cycleLocalCase: () => {
       if (disposed || starting) return
       if (state.authorityMode !== 'LOCAL_FAKE_DEV') return

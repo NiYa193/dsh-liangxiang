@@ -1,5 +1,5 @@
 /**
- * Decode the six inlined 梁子 portraits once. DSH still serves a single
+ * Decode the seven inlined 梁子 portraits once. DSH still serves a single
  * client.js, so the bytes stay in the bundle; this only avoids re-decoding
  * the same data URI on every remount.
  */

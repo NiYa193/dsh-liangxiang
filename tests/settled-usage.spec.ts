@@ -92,6 +92,27 @@ describe('real pinned DSH request settlement', () => {
     f.dispose()
   })
 
+  it('settles V4.1 Flash aliases, Pro routes and unknown routes per attempt and never replays their credit', () => {
+    const session = nativeUsageSession('v41-rates')
+    const f = feed([session])
+    const models = ['deepseek-flash', 'DeepSeek-V4.1-Flash-1017', 'DEEPSEEK-V4.1-PRO[1M]', 'unlisted-route']
+    for (const [index, model] of models.entries()) {
+      const step = index + 1
+      f.append(session, 'step/start', { turn: 1, step })
+      // Final source identity wins over a session route changed by a model picker.
+      f.append(session, 'request/context', { provider: 'deepseek-official', model: 'deepseek-v4-pro' })
+      f.append(session, 'assistant/message', finalMessage(sample(40_000, 10_000, 30_000, 20_000), model, 'deepseek-official', step))
+      f.append(session, 'step/end', { turn: 1, step })
+    }
+    expect(nativeUsageFold(session.snapshotEvents())).toEqual({
+      uncachedInputTokens: 160_000, outputTokens: 40_000, cacheReadTokens: 120_000, cacheWriteTokens: 80_000,
+    })
+    expect(f.usage.effectiveTokensFor(date)).toBe(250_000)
+    for (const batch of f.batches) f.usage.observe(session.id, batch, { kind: 'catchup' })
+    expect(f.usage.effectiveTokensFor(date)).toBe(250_000)
+    f.dispose()
+  })
+
   it('baselines legacy history and an in-flight attempt, then credits only new work', () => {
     const session = nativeUsageSession()
     session.append('step/start', { turn: 1, step: 1 })

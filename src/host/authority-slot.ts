@@ -108,7 +108,7 @@ export class AuthoritySlot implements LiangHostService {
     else this.cycleLocalCase = () => cycle.call(inner)
   }
 
-  private emit(): void {
+  protected emit(): void {
     for (const listener of this.listeners) {
       try {
         listener()

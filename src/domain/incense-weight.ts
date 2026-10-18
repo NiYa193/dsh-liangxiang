@@ -107,8 +107,7 @@ function matches(pattern: string, value: string): boolean {
  */
 export function canonicalModelId(modelId: string): string {
   const trimmed = modelId.trim().toLowerCase()
-  const bracket = trimmed.indexOf('[')
-  return bracket === -1 ? trimmed : trimmed.slice(0, bracket)
+  return trimmed.replace(/\[[1-9]\d{0,8}[km]?\]$/, '')
 }
 
 /**
@@ -123,7 +122,8 @@ export function incenseWeightBpsForModel(
     return policy.fallbackWeightBps
   }
   const canonical = canonicalModelId(modelId)
-  if (canonical.length > 160) return policy.fallbackWeightBps
+  // A display label or malformed suffix must not inherit a Pro-looking prefix.
+  if (!/^[a-z0-9][a-z0-9._-]{0,159}$/.test(canonical)) return policy.fallbackWeightBps
   return policy.rules.find(rule => matches(rule.model, canonical))?.weightBps
     ?? policy.fallbackWeightBps
 }

@@ -1,48 +1,62 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { HOVER_TEXT } from '../shared/index.ts'
-import type { BadgePoint, Viewport } from './badge-position.ts'
-import { placeBadgeFeedback, type FeedbackRect } from './badge-feedback.ts'
-import { SQUISH_LABEL_LINGER_MS } from './badge-squish.ts'
+import { type BadgePoint, type Viewport } from './badge-position.ts'
+import { placeBadgeFeedback, placeBadgeSpeech, reconcileBadgeComments, SPEECH_ROW_HEIGHT, type BadgeComment, type FeedbackRect, type PresentedComment } from './badge-feedback.ts'
+import { SQUISH_EXIT_MS } from './badge-squish.ts'
 import { color, font } from './theme.ts'
 
-export interface BadgeComment { id: number, text: string, createdAt: number }
-interface Props {
-  position: BadgePoint
-  viewport: Viewport
-  open: boolean
-  comments: BadgeComment[]
-  suppressed: boolean
-  reducedMotion: boolean
-}
+interface Props { position: BadgePoint, viewport: Viewport, open: boolean, comments: BadgeComment[], suppressed: boolean, reducedMotion: boolean }
 const css = `
-[data-liangxiang-badge-tooltip], [data-liangxiang-danmu-line] {
-  width: max-content; max-width: 100%; box-sizing: border-box;
-  padding: 5px 9px; border: 1px solid ${color.border}; border-radius: 10px;
-  background: ${color.bgLayer}; color: ${color.textPrimary};
-  font: 600 11px/16px ${font.family};
-  overflow-wrap: anywhere;
+[data-liangxiang-feedback] { font: 500 11px/18px ${font.family}; }
+[data-liangxiang-badge-tooltip] {
+  position: fixed; width: max-content; padding: 4px 8px; border: 1px solid ${color.border}; border-radius: 8px;
+  background: ${color.bgLayer}; color: ${color.textPrimary}; font-size: 11px; line-height: 18px;
+  opacity: 0; transition: opacity 100ms ease;
 }
-[data-liangxiang-badge-tooltip] { opacity: 0; transition: opacity 100ms ease; }
-[data-liangxiang-root]:has([data-liangxiang-badge]:hover, [data-liangxiang-badge]:focus-visible) [data-liangxiang-badge-tooltip][data-suppressed="false"] {
-  opacity: 1; transition-delay: 280ms;
+[data-liangxiang-root]:has([data-liangxiang-badge]:hover, [data-liangxiang-badge]:focus-visible) [data-liangxiang-badge-tooltip][data-suppressed="false"] { opacity: 1; transition-delay: 180ms; }
+[data-liangxiang-root]:has([data-squish-pressed="true"], [data-liangxiang-danmu]) [data-liangxiang-badge-tooltip] { opacity: 0 !important; transition-delay: 0ms; }
+[data-liangxiang-root]:has([data-dragging="true"]) [data-liangxiang-feedback] { opacity: 0; }
+[data-liangxiang-danmu] { position: fixed; pointer-events: none; }
+[data-liangxiang-danmu-row] {
+  position: absolute; top: 0; width: 100%; display: flex; opacity: 1;
+  transition: transform 300ms cubic-bezier(.22,.8,.22,1), opacity ${SQUISH_EXIT_MS}ms cubic-bezier(.3,0,.5,1);
 }
-[data-liangxiang-root]:has([data-squish-pressed="true"]) [data-liangxiang-badge-tooltip] { opacity: 0 !important; transition-delay: 0ms; }
-[data-liangxiang-danmu-row] { position: absolute; top: 0; width: 100%; transition: transform 220ms cubic-bezier(.2,.8,.2,1); }
-[data-liangxiang-danmu-line] { max-width: calc(100vw - 16px); animation: liangxiang-danmu ${SQUISH_LABEL_LINGER_MS}ms both; }
-@keyframes liangxiang-danmu {
-  0% { opacity: 0; transform: translateY(-6px); }
-  8%, 78% { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(8px); }
+[data-liangxiang-danmu][data-align="start"] [data-liangxiang-danmu-row] { justify-content: flex-start; }
+[data-liangxiang-danmu][data-align="center"] [data-liangxiang-danmu-row] { justify-content: center; }
+[data-liangxiang-danmu][data-align="end"] [data-liangxiang-danmu-row] { justify-content: flex-end; }
+[data-liangxiang-danmu-row][data-exiting="true"] {
+  opacity: 0;
+  transition-duration: 300ms, ${SQUISH_EXIT_MS}ms;
+  transition-timing-function: cubic-bezier(.22,.8,.22,1), cubic-bezier(.3,0,.5,1);
 }
-[data-liangxiang-feedback][data-reduced-motion="true"] * { animation: none !important; transition: none !important; }
+[data-liangxiang-danmu-line] {
+  display: block; width: max-content; max-width: 100%; box-sizing: border-box; padding: 1px 7px;
+  white-space: nowrap; border-radius: 6px; color: ${color.textPrimary};
+  background: light-dark(color-mix(in srgb, ${color.bgLayer} 20%, #fffaf2), color-mix(in srgb, ${color.bgLayer} 85%, ${color.textPrimary}));
+  box-shadow: 0 2px 6px rgba(0,0,0,.08), inset 0 0 0 .5px light-dark(color-mix(in srgb, ${color.ritualGold} 18%, transparent), color-mix(in srgb, ${color.textPrimary} 20%, transparent));
+  animation: liangxiang-speech-line 160ms cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes liangxiang-speech-line { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: translateY(0); } }
+[data-liangxiang-feedback][data-reduced-motion="true"] * { animation: none !important; transition: none !important; filter: none !important; }
 `
 
-/** Cosmetic lane measured against the actual panel, including welcome/update dialogs. */
 export function BadgeFeedback({ position, viewport, open, comments, suppressed, reducedMotion }: Props) {
   const tooltipRef = useRef<HTMLDivElement>(null)
   const [panel, setPanel] = useState<FeedbackRect | null>(null)
   const [tooltipWidth, setTooltipWidth] = useState(66)
-  const [laneWidth, setLaneWidth] = useState(216)
+  const [laneWidth, setLaneWidth] = useState(140)
+  const [presented, setPresented] = useState<PresentedComment[]>([])
+  const lane = placeBadgeSpeech(position, viewport, laneWidth, panel)
+  const capacity = lane?.capacity ?? 0
+  useLayoutEffect(() => {
+    setPresented(previous => capacity > 0 ? reconcileBadgeComments(previous, comments, capacity, Date.now()) : [])
+  }, [comments, capacity])
+  useEffect(() => {
+    const deadlines = presented.flatMap(row => row.exitingAt === undefined ? [] : [row.exitingAt + SQUISH_EXIT_MS])
+    if (!deadlines.length) return
+    const timer = window.setTimeout(() => setPresented(current => current.filter(row => row.exitingAt === undefined || Date.now() - row.exitingAt < SQUISH_EXIT_MS)), Math.max(0, Math.min(...deadlines) - Date.now()))
+    return () => window.clearTimeout(timer)
+  }, [presented])
   useLayoutEffect(() => {
     const root = tooltipRef.current?.closest('[data-liangxiang-root]')
     const element = open ? root?.querySelector<HTMLElement>('[data-liangxiang-panel]') : null
@@ -51,7 +65,7 @@ export function BadgeFeedback({ position, viewport, open, comments, suppressed, 
       const label = tooltipRef.current?.getBoundingClientRect()
       if (label) setTooltipWidth(label.width)
       const widths = Array.from(root?.querySelectorAll<HTMLElement>('[data-liangxiang-danmu-line]') ?? [], line => line.getBoundingClientRect().width)
-      if (widths.length) setLaneWidth(Math.max(...widths))
+      if (widths.length) setLaneWidth(Math.max(140, ...widths))
     }
     measure()
     element?.addEventListener('animationend', measure)
@@ -59,20 +73,19 @@ export function BadgeFeedback({ position, viewport, open, comments, suppressed, 
     if (element) observer.observe(element)
     if (tooltipRef.current) observer.observe(tooltipRef.current)
     return () => { observer.disconnect(); element?.removeEventListener('animationend', measure) }
-  }, [open, position.x, position.y, viewport.width, viewport.height, comments])
+  }, [open, position.x, position.y, viewport.width, viewport.height, presented])
   const tooltip = placeBadgeFeedback(position, viewport, tooltipWidth, 28, panel)
-  const width = Math.min(laneWidth, viewport.width - 16)
-  const lane = placeBadgeFeedback(position, viewport, width, 96, panel)
   return (
     <div aria-hidden="true" data-liangxiang-feedback="" data-reduced-motion={reducedMotion} style={{ pointerEvents: 'none' }}>
       <style>{css}</style>
       <div ref={tooltipRef} data-liangxiang-badge-tooltip="" data-suppressed={suppressed || tooltip === null}
-        data-align={tooltip?.align} style={{ position: 'fixed', left: tooltip?.x ?? 8, top: tooltip?.y ?? 8 }}>{HOVER_TEXT}</div>
-      {comments.length > 0 && (
-        <div data-liangxiang-danmu="" data-align={lane?.align} style={{ position: 'fixed', left: lane?.x ?? 8, top: lane?.y ?? 8, width, height: 96, visibility: lane ? 'visible' : 'hidden' }}>
-          {comments.map((comment, index) => (
-            <div key={comment.id} data-liangxiang-danmu-row={comment.id} style={{ transform: `translateY(${index * 30}px)` }}>
-              <div data-liangxiang-danmu-line="" style={{ marginInline: lane?.align === 'center' ? 'auto' : lane?.align === 'end' ? 'auto 0' : '0 auto' }}>{comment.text}</div>
+        data-align={tooltip?.align} style={{ left: tooltip?.x ?? 8, top: tooltip?.y ?? 8 }}>{HOVER_TEXT}</div>
+      {lane && presented.length > 0 && (
+        <div data-liangxiang-danmu="" data-align={lane.align} style={{ left: lane.x, top: lane.y, width: lane.width, height: lane.height }}>
+          {presented.map(comment => (
+            <div key={comment.id} data-liangxiang-danmu-row={comment.id} data-slot={comment.slot} data-exiting={comment.exitingAt !== undefined}
+              style={{ transform: `translateY(${comment.slot * SPEECH_ROW_HEIGHT}px)` }}>
+              <span data-liangxiang-danmu-line="">{comment.text}</span>
             </div>
           ))}
         </div>

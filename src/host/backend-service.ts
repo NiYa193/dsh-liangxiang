@@ -27,7 +27,7 @@ import type {
   V1Snapshot,
   V1VoteResult,
 } from '../shared/backend-v1.ts'
-import { createBusinessDateProvider, type Clock } from '../shared/business-date.ts'
+import { businessDayEndsAt, createBusinessDateProvider, type Clock } from '../shared/business-date.ts'
 import { DEFAULT_CASE_TITLE, PLUGIN_PACKAGE_NAME } from '../shared/index.ts'
 import {
   emptyHistoryArchive,
@@ -77,6 +77,9 @@ export class BackendLiangService implements LiangHostService {
   private readonly identityRef: { current: CommunityKeypair | null }
 
   private installationId: string | null = null
+  private readonly clock: Clock
+  private serverOffset = 0
+  private dayEndsAt = 0
   private bootstrap: V1Bootstrap | null = null
   private activeCase: V1Case | null = null
   private personal: V1PersonalState | null = null
@@ -117,6 +120,7 @@ export class BackendLiangService implements LiangHostService {
   private disposed = false
 
   constructor(deps: BackendLiangServiceDeps) {
+    this.clock = deps.clock
     this.client = deps.client
     this.claimDebounceMs = deps.claimDebounceMs ?? CLAIM_DEBOUNCE_MS
     this.warn = deps.warn ?? ((message) => console.warn(message))
@@ -212,6 +216,11 @@ export class BackendLiangService implements LiangHostService {
       return
     }
     this.scheduleClaim()
+  }
+
+  dayEndTiming(): { now: number, endsAt: number, businessDate: string } | null {
+    if (this.bootstrap === null) return null
+    return { now: this.clock.now() + this.serverOffset, endsAt: this.dayEndsAt, businessDate: this.businessDate }
   }
 
   /** Cadence hook: pull the published snapshot (and re-bootstrap on rollover). */
@@ -330,6 +339,7 @@ export class BackendLiangService implements LiangHostService {
       archiveVersion: this.archiveVersion,
       activeCase: toDomainCase(activeCase),
       global: {
+        liangziPolicyVersion: snapshot.policy_version,
         caseId: snapshot.case_id,
         upVotes: snapshot.up_votes,
         downVotes: snapshot.down_votes,
@@ -500,6 +510,7 @@ export class BackendLiangService implements LiangHostService {
     }
     try {
       const response = await this.client.snapshot()
+      this.serverOffset = response.server_time - this.clock.now()
       if (response.business_date !== this.businessDate || response.active_case.id !== this.activeCase?.id) {
         // Rollover: personal state and case must be re-read together.
         await this.refreshBootstrap()
@@ -536,6 +547,8 @@ export class BackendLiangService implements LiangHostService {
   }
 
   private adoptBootstrap(bootstrap: V1Bootstrap): void {
+    this.serverOffset = bootstrap.server_time - this.clock.now()
+    this.dayEndsAt = businessDayEndsAt(createBusinessDateProvider(bootstrap.business_timezone), bootstrap.server_time)
     this.bootstrap = bootstrap
     this.activeCase = bootstrap.active_case
     this.personal = bootstrap.authoritative_personal_state

@@ -23,7 +23,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import {
-  DEFAULT_LIANGZI_THRESHOLDS,
+  liangziPolicyForVersion,
   LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
   addBusinessDays,
   clampVoteSpend,
@@ -97,7 +97,6 @@ export class LiangxiangBackendService {
   private readonly config: BackendConfig
   private readonly clock: Clock
   private readonly dates: BusinessDateProvider
-  private readonly policy: LiangziThresholdPolicy
   private readonly warn: (message: string) => void
   private archiveCheckedBusinessDate: string | null = null
 
@@ -106,7 +105,6 @@ export class LiangxiangBackendService {
     this.config = deps.config
     this.clock = deps.clock ?? systemClock
     this.dates = createBusinessDateProvider(deps.config.timezone)
-    this.policy = DEFAULT_LIANGZI_THRESHOLDS
     this.warn = deps.warn ?? ((message) => console.warn(message))
   }
 
@@ -272,7 +270,7 @@ export class LiangxiangBackendService {
         finalized_at: now,
         archive_version: archiveVersion,
         aggregation_policy_version: LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
-        liangzi_policy_version: LIANGZI_POLICY_VERSION,
+        liangzi_policy_version: source.liangziPolicyVersion,
       })
     }
 
@@ -291,7 +289,7 @@ export class LiangxiangBackendService {
         finalized_at: now,
         archive_version: archiveVersion,
         aggregation_policy_version: LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
-        liangzi_policy_version: LIANGZI_POLICY_VERSION,
+        liangzi_policy_version: days.at(-1)!.liangzi_policy_version,
       })
     }
     for (const month of pendingMonths.values()) {
@@ -308,7 +306,7 @@ export class LiangxiangBackendService {
         finalized_at: now,
         archive_version: archiveVersion,
         aggregation_policy_version: LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
-        liangzi_policy_version: LIANGZI_POLICY_VERSION,
+        liangzi_policy_version: days.at(-1)!.liangzi_policy_version,
       })
     }
   }
@@ -582,8 +580,8 @@ export class LiangxiangBackendService {
         model_weights: this.config.incenseWeightPolicy,
       },
       liangzi_policy: {
-        version: LIANGZI_POLICY_VERSION,
-        boundaries: [...this.policy.boundaries] as [number, number, number, number],
+        version: caseRow.liangzi_policy_version,
+        boundaries: liangziPolicyForVersion(caseRow.liangzi_policy_version).boundaries,
       },
       active_case: toV1Case(caseRow),
       authoritative_personal_state: this.personalState(installationId, caseRow, now),
@@ -828,11 +826,11 @@ export class LiangxiangBackendService {
         archiveVersion: row.archive_version,
         aggregationPolicyVersion: row.aggregation_policy_version,
         liangziPolicyVersion: row.liangzi_policy_version,
-        ...deriveArchiveResult(row.up_votes, row.down_votes, Number(row.unique_voters ?? 0)),
+        ...deriveArchiveResult(row.up_votes, row.down_votes, Number(row.unique_voters ?? 0), liangziPolicyForVersion(row.liangzi_policy_version)),
       }
     })
-    const weeks = this.store.weekArchives(cursor).map(row => archivePeriodRow(row, 'week', this.policy))
-    const months = this.store.monthArchives(cursor).map(row => archivePeriodRow(row, 'month', this.policy))
+    const weeks = this.store.weekArchives(cursor).map(row => archivePeriodRow(row, 'week', liangziPolicyForVersion(row.liangzi_policy_version)))
+    const months = this.store.monthArchives(cursor).map(row => archivePeriodRow(row, 'month', liangziPolicyForVersion(row.liangzi_policy_version)))
     return historyArchiveToV1({
       archiveVersion: this.store.archiveVersion(),
       businessDate: activeCase.business_date,
@@ -1339,10 +1337,10 @@ export class LiangxiangBackendService {
       up_votes: 0,
       down_votes: 0,
       unique_voters: 0,
-      policy_version: LIANGZI_POLICY_VERSION,
+      policy_version: caseRow.liangzi_policy_version,
       captured_at: now,
     }
-    return toV1Snapshot(row, this.policy, this.store.lifetimeTotals())
+    return toV1Snapshot(row, liangziPolicyForVersion(row.policy_version), this.store.lifetimeTotals())
   }
 
   private isPublishDue(latest: SnapshotRow | undefined, stats: StatsRow, now: number): boolean {
@@ -1365,7 +1363,7 @@ export class LiangxiangBackendService {
       up_votes: stats.up_votes,
       down_votes: stats.down_votes,
       unique_voters: stats.unique_voters,
-      policy_version: LIANGZI_POLICY_VERSION,
+      policy_version: caseRow.liangzi_policy_version,
       captured_at: now,
     }
     this.store.insertSnapshot(row)
@@ -1386,7 +1384,7 @@ export class LiangxiangBackendService {
       up_votes: stats.up_votes,
       down_votes: stats.down_votes,
       unique_voters: stats.unique_voters,
-      policy_version: LIANGZI_POLICY_VERSION,
+      policy_version: caseRow.liangzi_policy_version,
       captured_at: now,
     }
     try {
@@ -1477,7 +1475,7 @@ function archivePeriodRow(
   kind: 'week' | 'month',
   policy: LiangziThresholdPolicy,
 ): import('../domain/index.ts').LiangWeekArchive | import('../domain/index.ts').LiangMonthArchive {
-  const derived = deriveArchiveResult(row.up_votes, row.down_votes, Number(row.unique_voters ?? 0))
+  const derived = deriveArchiveResult(row.up_votes, row.down_votes, Number(row.unique_voters ?? 0), policy)
   const common = {
     startDate: row.start_date,
     endDate: row.end_date,

@@ -16,6 +16,7 @@ ART = ROOT / 'src' / 'client' / 'artwork'
 OUT = ROOT / 'src' / 'client' / 'liangzi-art.ts'
 STATES = [
     ('waiting', 'waiting'),
+    ('nan', 'xiao_nan_liang'),
     ('gong', 'liang_gong'),
     ('zong', 'liang_zong'),
     ('shen', 'liang_shen'),
@@ -118,8 +119,10 @@ def main() -> None:
     for file, state in STATES:
         jpg = ART / f'{file}.jpg'
         png = ART / f'{file}.png'
-        rgba = punch(decode_jpg(jpg))
-        write_png(png, rgba)
+        # The approved new portrait already has alpha; never round-trip it through JPEG.
+        if file != 'nan':
+            rgba = punch(decode_jpg(jpg))
+            write_png(png, rgba)
         generated.append((state, png))
         print(f'{file}: {png.stat().st_size} bytes')
 
@@ -139,16 +142,16 @@ def main() -> None:
         for webp in webps:
             webp.unlink(missing_ok=True)
 
-    order = ['waiting', 'liang_gong', 'liang_zong', 'liang_shen', 'liang_sheng', 'liang_zu']
+    order = ['waiting', 'xiao_nan_liang', 'liang_gong', 'liang_zong', 'liang_shen', 'liang_sheng', 'liang_zu']
     lines = [
         '/**',
         ' * Compressed 梁子 portraits (256px lossless WebP with punched-out',
         ' * sticker background, inlined so the DSH client bundle stays one file).',
-        ' * Source stickers live beside this module as artwork/*.jpg;',
+        ' * Source stickers live beside this module as artwork/*.jpg (legacy) or artwork/nan.png (native alpha);',
         ' * regenerate with scripts/punch-liangzi-art.py.',
         ' *',
         ' * Art bible: one round-faced engineer, progressively 夯 into an ancestor.',
-        ' * Semantics (WAITING / 梁工…梁祖) are frozen — only the pixels change.',
+        ' * Semantics (WAITING / 小难梁…梁祖) are frozen — only the pixels change.',
         ' */',
         "import type { LiangziState } from '../domain/index.ts'",
         '',

@@ -2,7 +2,7 @@
  * `/liangxiang/api/*` handlers over the DSH web server seam (docs/044):
  *
  *   GET  /liangxiang/api/state      full wire state
- *   GET  /liangxiang/api/events     SSE push (one frame per revision + heartbeat)
+ *   GET  /liangxiang/api/events     SSE push (changed state + heartbeat)
  *   GET  /liangxiang/api/history    full 梁祠 archive or immutable version delta
  *   POST /liangxiang/api/vote       minimal vote intent -> result + fresh state
  *   POST /liangxiang/api/refresh    force host re-read (hover / panel open)
@@ -20,6 +20,7 @@ import { AUTHORITY_MODE_ACTION_HEADER, AUTHORITY_MODE_ACTION_VALUE, VOTE_RATE_LI
 import { parseWireVoteRequest, type HostAuthorityPreference } from '../shared/wire.ts'
 import { BackendClientError } from './backend-client.ts'
 import { parseDevCreditBody, resolveDevCreditTokens } from './dev-credit.ts'
+import { DAY_END_ACTION_HEADER, DAY_END_ACTION_VALUE, parseDayEndPreferences, type DayEndPreferences } from '../shared/day-end.ts'
 import type { LiangHostService } from './service.ts'
 
 const MAX_VOTE_BODY_BYTES = 4096
@@ -35,6 +36,7 @@ interface SseConnection {
   res: ServerResponse
   unsubscribe: () => void
   heartbeat: ReturnType<typeof setInterval>
+  lastContent: string | null
 }
 
 function writeJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -82,6 +84,8 @@ export interface LiangxiangApiOptions {
   selectAuthorityMode: (preference: HostAuthorityPreference) => void | Promise<void>
   /** Lock mutating gameplay routes during the short authority handoff. */
   isAuthorityModeChanging?: () => boolean
+  setDayEndPreferences?: (preferences: DayEndPreferences) => Promise<void>
+  noteManualGesture?: () => void
 }
 
 export function createLiangxiangApi(
@@ -97,9 +101,17 @@ export function createLiangxiangApi(
     clearInterval(connection.heartbeat)
   }
 
-  const writeFrame = (res: ServerResponse): void => {
+  const writeFrame = (connection: SseConnection): void => {
     const state = service.getWireState()
-    res.write(`id: ${state.revision}\ndata: ${JSON.stringify(state)}\n\n`)
+    // A successful authority read can advance revision without changing any
+    // delivered field. Keep cadence/recovery intact while avoiding identical
+    // full-state frames. Include every other field, especially epoch, authority
+    // availability, broadcast expiry and archive/configuration cursors.
+    const { revision, ...content } = state
+    const serialized = JSON.stringify(content)
+    if (serialized === connection.lastContent) return
+    connection.res.write(`id: ${revision}\ndata: {"revision":${revision},${serialized.slice(1)}\n\n`)
+    connection.lastContent = serialized
   }
 
   const handleEvents = (req: IncomingMessage, res: ServerResponse): void => {
@@ -111,9 +123,10 @@ export function createLiangxiangApi(
     })
     const connection: SseConnection = {
       res,
+      lastContent: null,
       unsubscribe: service.subscribe(() => {
         try {
-          writeFrame(res)
+          writeFrame(connection)
         } catch (error) {
           warn(`[dsh-liangxiang] SSE write failed: ${error instanceof Error ? error.message : String(error)}`)
           dropConnection(connection)
@@ -125,7 +138,7 @@ export function createLiangxiangApi(
     }
     connections.add(connection)
     req.on('close', () => dropConnection(connection))
-    writeFrame(res)
+    writeFrame(connection)
   }
 
   const handleVote = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -209,6 +222,8 @@ export function createLiangxiangApi(
       '/liangxiang/api/refresh': 'POST',
       '/liangxiang/api/reconcile': 'POST',
       '/liangxiang/api/mode': 'POST',
+      '/liangxiang/api/day-end': 'POST',
+      '/liangxiang/api/vote-activity': 'POST',
       '/liangxiang/api/local/cycle-case': 'POST',
       '/liangxiang/api/dev/credit': 'POST',
     }
@@ -267,6 +282,30 @@ export function createLiangxiangApi(
       }
       await service.reconcileNow?.()
       writeJson(res, 200, service.getWireState())
+      return
+    }
+    if (pathname === '/liangxiang/api/vote-activity') {
+      if (req.headers[DAY_END_ACTION_HEADER] !== DAY_END_ACTION_VALUE) { writeJson(res, 403, { error: 'explicit gesture required' }); return }
+      options.noteManualGesture?.()
+      writeJson(res, 200, { ok: true })
+      return
+    }
+    if (pathname === '/liangxiang/api/day-end') {
+      if (req.headers[DAY_END_ACTION_HEADER] !== DAY_END_ACTION_VALUE
+        || typeof req.headers['content-type'] !== 'string' || !req.headers['content-type'].startsWith('application/json')) {
+        writeJson(res, 403, { error: 'explicit day-end action header required' }); return
+      }
+      if (options.setDayEndPreferences === undefined) { writeJson(res, 503, { error: 'day-end settings unavailable' }); return }
+      try {
+        const raw: unknown = JSON.parse(await readBoundedBody(req))
+        const preferences = parseDayEndPreferences(raw)
+        if (Object.keys(raw as object).some(k => k !== 'enabled' && k !== 'voteType')) throw new Error('unknown day-end setting')
+        await options.setDayEndPreferences(preferences)
+        writeJson(res, 200, service.getWireState())
+      } catch (error) {
+        if (error instanceof OversizedBodyError) { res.setHeader('connection', 'close'); writeJson(res, 413, { error: 'day-end body too large' }); return }
+        writeJson(res, 400, { error: 'invalid or unavailable day-end settings' })
+      }
       return
     }
     if (pathname === '/liangxiang/api/mode') {

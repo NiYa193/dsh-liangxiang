@@ -73,7 +73,7 @@ export function ReleaseNotesDialog({ onClose }: ReleaseNotesDialogProps): ReactE
         <QqGroupCard context="release-notes" />
         <p
           data-liangxiang-release-notes-thanks=""
-          style={{ margin: '11px 0 0', color: color.textTertiary, fontSize: '10px', lineHeight: 1.5, textAlign: 'center' }}
+          style={{ margin: '11px 0 0', color: color.textSecondary, fontSize: '10px', lineHeight: 1.5, textAlign: 'center' }}
         >
           {RELEASE_NOTES_THANKS}
         </p>
