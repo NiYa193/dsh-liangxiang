@@ -131,15 +131,21 @@ export class DayEndService extends AuthoritySlot {
       && timing.now < timing.endsAt - STOP_BEFORE_END_MS
   }
 
+  private canPrepareVote(authority: LiangHostService): boolean {
+    return this.manualPending === 0
+      && this.clock.now() >= Math.max(this.gestureUntil, this.lastManualAt + MANUAL_IDLE_MS)
+      && this.inWindow(authority)
+  }
+
   private async runDayEnd(): Promise<void> {
     if (this.running || !this.inWindow(this.current)) { this.schedule(); return }
     this.running = true
     const authority = this.current
     try {
       await this.enqueue(authority, async () => {
-        if (this.manualPending > 0 || this.clock.now() < this.gestureUntil || !this.inWindow(authority)) return
+        if (!this.canPrepareVote(authority)) return
         await authority.refreshNow?.()
-        if (this.manualPending > 0 || this.clock.now() < this.gestureUntil || !this.inWindow(authority)) return
+        if (!this.canPrepareVote(authority)) return
         const wire = authority.getWireState()
         if (!wire.authorityAvailable) return
         const mode = wire.authorityMode === 'LOCAL_FAKE_DEV' ? 'local' : 'online'
@@ -154,7 +160,7 @@ export class DayEndService extends AuthoritySlot {
           // reuses its ID, direction, case and count, even if preferences change.
           await this.save(s => ({ ...s, jobs: { ...s.jobs, [mode]: prepared } }))
         }
-        if (job.done || !this.inWindow(authority) || this.manualPending > 0 || this.clock.now() < this.gestureUntil) return
+        if (job.done || !this.canPrepareVote(authority)) return
         const outcome = await authority.vote({ caseId: job.caseId, voteType: job.voteType, requestId: job.requestId, count: job.count })
         if (outcome.result.status === 'accepted' || outcome.result.status === 'rejected') {
           const completed: DayEndJob = { ...job, done: true }

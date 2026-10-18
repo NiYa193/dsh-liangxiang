@@ -1,189 +1,90 @@
-# TROUBLESHOOTING
+# 常见问题
 
-## 本地启动报 `session_projcache ... does not match its schema`
+## 在线模式一直连不上
 
-这不是已有进程。已有进程只会占用端口；先用 `lsof -nP -iTCP:3080 -sTCP:LISTEN` 即可确认。
+可能是运行 DSH 的机器无法访问社区服务器。包括福建在内的部分地区有连接不稳定反馈；
+具体取决于网络、运营商和代理配置，不代表所有用户都会遇到。
 
-这是 DSH `0.1.2-alpha.4` 的已知跨版本缓存问题。`0.1.2-alpha.5` 已兼容 v3/v4/v5 会话投影缓存，并会备份、跳过仍无法解析的单条衍生记录。投影缓存只是从会话日志折叠出的加速副本，不是会话日志，也不是梁相香火/投票账本。
+1. 确认 DSH 所在机器的网络可用，必要时让 **DSH 进程**使用代理；浏览器代理不一定覆盖 Host。
+2. 参考 [`INSTALL.md`](INSTALL.md#在线连接与代理)，使用 TUN 或 DSH 主目录 `.env` 的 HTTP 代理配置，完全重启 DSH。
+3. 连接恢复后插件会自动重连；不需要反复切模式、重装或清空账本。
 
-先停掉开发 WebUI并升级隔离开发 Profile：
+“今日梁案（本地）”表示显式选择了离线玩法；“无法连接天庭”表示在线服务暂不可用。
+网络故障不会自动切到离线。两种模式分别记账，不合并香火或档案。
+
+管理员可分别检查公开健康端点与后端日志，区分外网路径、服务状态和身份故障；
+仅服务器本机回环请求成功，不能证明用户能访问。不要通过关闭认证、扩大后端监听或放宽保护来排障。
+
+## 找不到插件市场 / 搜不到梁相
+
+新版 DSH 使用 **插件 → 发现**。首次需在实验性插件中启用自定义插件市场，并添加可信索引源；
+DSH 不预置目录。也可在 **插件 → 添加插件** 输入 `dsh-liangxiang`。
+步骤见 [`INSTALL.md`](INSTALL.md#desktop应用内安装) 与 [官网安装指南](https://liang.today/guide/#desktop)。
+
+不要求另装旧 `dshmarket`。第三方市场应使用明确兼容当前 DSH 的版本，不能靠重装梁相修复市场自身的接口错误。
+
+## Desktop 安装后没有入口
+
+确认安装在当前 Desktop 的 **插件 → 已安装** 中且已启用，按应用提示刷新或重启。
+Desktop 的 `desktop` Profile 独占；普通 CLI 的 `web` 安装不会进入桌面应用。
+不要用手动改 `DSH_HOME` 的旧办法混写 Desktop 数据。
+
+命令行用户应确认安装与启动使用同一个 Profile。页面边缘出现“今日梁相”即加载成功。
+
+## 升级后仍是旧版本
+
+在 **梁相案牍 → 当前版本** 核对。Desktop 从已安装插件更新；没有更新按钮时卸载插件后重新安装，保留数据目录。
+Cmd / Web 退出后执行：
 
 ```bash
-pnpm run dev:repair-cache
-pnpm run dev:install
-pnpm run dev:web
+npx --yes @deepseek-ai/dsh plugin --profile web add dsh-liangxiang@latest
+npx --yes @deepseek-ai/dsh web
 ```
 
-`dev:repair-cache` 现在只说明 alpha.5 的自恢复策略，不移动任何文件。DSH 若遇到真正坏掉的单条缓存，会在原目录生成 `.bak.<时间>` 备份并从会话日志重建。以下内容始终不会被移动：
+普通卸载不删除香火账本。候选源码不是 npm `latest`，不要用开发候选号判断正式市场是否滞后。
+如果服务刚重启而旧页面加载失败，先重新加载页面并按 DSH 提示完成认证，不必删除数据。
 
-- `$DSH_HOME/sessions/`：权威压缩会话日志；
-- `$DSH_HOME/storages/liangxiang.json`：社区身份与在线投影；
-- `$DSH_HOME/storages/liangxiang_local.json`：离线账本与梁祠。
+## 日终上香点不动 / 没有执行
 
-Node `22.23.1` + pnpm `11.7.0` 只约束自动销毁的干净 Profile 冒烟，不约束日常 `dev:install` / `dev:web`。若日常开发命令在进入 DSH 前被仓库脚本以版本不匹配拦截，这是开发脚本回归，不应通过强迫升级本机环境来掩盖。
+正常状态显示 **已开启 / 已关闭**，保存时显示 **保存中…**；**暂不可用**表示 Host 设置或连接尚未就绪。
+点击整格切换；右键夯/拉只保存默认方向，不投票，也不自动开启开关。悬停可看时刻、方向与运行条件。
 
-## 设置里找不到插件市场
+DSH Host 必须运行；浏览器可以关闭。在线采用服务端业务时区的 23:59，临近收盘停止新尝试。
+手动上香优先，剩余香火、服务端限额、睡眠或断网都可能影响实际数量；不承诺清空余额，也不跨日补投昨天。
+实现边界见 [`DAY_END_INCENSE.md`](DAY_END_INCENSE.md)。
 
-先退出 WebUI，对同一个 `DSH_HOME` 执行 `plugin --profile web add dshmarket`，再打开并刷新。
+## 香火不增加 / 记账不可用
 
-注意：DSH 0.1.2-alpha.4+ 已移除旧的 `installSettingsSection` / `settingsNamespace` 导出。若市场或其他第三方插件因此让整个插件树失败，该版本尚未覆盖 alpha.4+，不能靠重装梁相解决。源码联调用隔离的 `liangxiang-dev` Profile，移除其中无关的市场残留；日常 `web` Profile 则应等待对应插件发布明确兼容版本，或暂时使用 CLI 安装包。
+- 默认 50,000 Pro 当量一炷；Pro 路由 ×1，Flash、其他与未知 ×0.5，见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)。
+- 仅结算实际最终用量；对话未产生足够用量时，进度增长但尚未凝香是正常行为。
+- 在线以服务器业务日为准，改浏览器时钟不能解决日切问题。
+- “记账不可用”需检查 DSH 版本、用量接口与 Host 日志；当前兼容触点见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。
+- 显示异常时可用 **梁相案牍 → 显示异常？ → 核对香火**，它会丢弃未确认的本地观察后重读服务端，需确认。
 
-```bash
-DSH_HOME="$PWD/.dsh-home" pnpm exec dsh plugin --profile liangxiang-dev remove dshmarket
-```
+## 梁位没变化 / 打梁失败
 
-## Desktop 里安装成功，界面没有「今日梁相」
+零票显示 `--`；有票的梁位来自同版权威快照，自己的成功投票会立即更新。
+香火不足、旧梁案、限流、网络或身份故障都可能拒绝操作，先看界面反馈。
+客户端网络重试复用同一 request ID，避免重复扣香；不要手工改 ID 重放已成功的请求。
 
-命令写进了默认 `~/.dsh`，DSH Desktop 读的是自己的 harness 目录（Windows 上通常是 `%APPDATA%\dsh-desktop\harness`）。先完全退出 Desktop，设好 `DSH_HOME` 再 `plugin add`。详见 [`INSTALL.md`](INSTALL.md) 的 DSH Desktop 一节。
+## 本地包安装报 404 / 找不到 dsh
 
-## 重装后案牍仍是旧版本（例如 0.8.6-beta）
-
-profile 里钉着旧精确号或本地 tarball。正式通道应是浮动的 `latest`。先退出 WebUI，再执行和安装相同的命令（不要先 remove）：
-
-```bash
-export DSH_HOME="$HOME/.dsh"
-npx --yes @deepseek-ai/dsh plugin --profile web add dsh-liangxiang
-```
-
-启动一次带版本浮动能力（v1.0.0 起）的 Host 后，`$DSH_HOME/profiles/web/package.json` 的依赖应是 `latest`，不应再是 `file:…tgz`、`beta` 或旧精确号。清单已排除本包的 pnpm 24 小时冷静期，以后升级继续这条命令即可。
-
-若仍钉死：先启动一次让 Host 改写清单，退出后再 `add dsh-liangxiang`。只有旧 Host 从未改写过清单时，才需要 `remove` 再 `add dsh-liangxiang`。
-
-刚发版当天若市场或 pnpm 先拿到了上一个够龄号：启动一次（写入冷静期排除）后再执行同一条 `add`，不要 remove。也可以从 GitHub Release 下载当前公开稳定版 tarball（例如 `./dsh-liangxiang-1.1.6.tgz`）装一次，启动后会自动切回 `latest`。
-
-## 更新脚本提示没有 `dsh` 命令
-
-没有全局安装 DSH CLI。两种用法等价：
+相对 tarball 路径加 `./`，否则可能被当成 npm 包名：
 
 ```bash
-dsh plugin --profile web add ./dsh-liangxiang-1.1.6.tgz
 npx --yes @deepseek-ai/dsh plugin --profile web add ./dsh-liangxiang-1.1.6.tgz
 ```
 
-`scripts/update-plugin.sh` 现在会在找不到 `dsh` 时自动改用 npx。也可以显式指定：`--dsh npx`。
+无需全局命令，`npx --yes @deepseek-ai/dsh` 可代替 `dsh`。Desktop 用户使用应用内安装。
 
-## 本地 tarball 报 `ERR_PNPM_FETCH_404`
+## 开发 Profile 或会话缓存报错
 
-典型日志是：
+先核对当前支持的 DSH 版本与 [`COMPATIBILITY.md`](COMPATIBILITY.md)，升级隔离开发 Profile 后重启。
+DSH 的会话投影缓存是衍生数据，不能通过删除权威会话日志或梁相账本来“修复”。
+重复安装内置 Web App 依赖可能破坏 DSH 模块实例；用 `scripts/assert-profile-modules.mjs` 诊断，
+保留 bundles 声明，按开发安装脚本恢复正确模块图。`dev:repair-cache` 只提供无损说明，不搬走会话或账本。
 
-```text
-GET https://registry.npmjs.org/dsh-liangxiang-1.1.6.tgz: Not Found - 404
-```
+## 提交问题时提供什么
 
-这不是包坏了，是 pnpm 把参数当成了 **npm 包名**。DSH 的 `plugin add` 只是把参数转给 pnpm，而且只有以 `./` 或 `../` 开头的路径才会按你当前目录重写。
-
-会 404 的写法：
-
-```bash
-# 少了 ./
-npx --yes @deepseek-ai/dsh plugin --profile web add dsh-liangxiang-1.1.6.tgz
-```
-
-能装上的写法：
-
-```bash
-export DSH_HOME="$HOME/.dsh"
-cd "$HOME/Desktop/liangxiang"
-npx --yes @deepseek-ai/dsh plugin --profile web add ./dsh-liangxiang-1.1.6.tgz
-```
-
-## 本轮运行失败：`Cannot read properties of undefined (reading 'prepare')`
-
-**症状**：DSH 里任何用到工具的回合立刻失败；紧接着同一会话报 `An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'`。
-
-**原因**：profile 里存在**两份**同一个 in-box 包。`dsh plugin add @deepseek-ai/dsh-web-app` 会把该 bundle 的整个闭包（`dsh-tools`、`dsh-session`、`dsh-storage-domain`…）装进 `<profile>/node_modules`，遮蔽 launcher 维护的 `<DSH_HOME>/profiles/node_modules`。DSH 用 `unique symbol` 连接内部接缝（`dsh-tools` 的 `TOOL_RUNTIME_SCHEDULER`，由 `dsh-agent-loop` 读取），两个模块实例就是两个 symbol，查表得到 `undefined`。第二条错误是后果：assistant 的 `tool_calls` 已经写进会话，却永远等不到工具结果。
-
-**诊断**：
-
-```bash
-node scripts/assert-profile-modules.mjs <DSH_HOME>/profiles/<profile>
-```
-
-会列出被遮蔽的包，并指出哪些 anchor 对同一个包的解析不一致。
-
-**修复**：
-
-```bash
-pnpm --dir <DSH_HOME>/profiles/<profile> remove @deepseek-ai/dsh-web-app   # 保留 bundles 声明，去掉依赖
-```
-
-然后**重启** WebUI（内存里的旧模块图不会自愈）。已经报错的会话不用删：DSH 在加载时会用同 `callId` 的合成错误结果补齐孤立的 tool call（`packages/core/session/src/repair.ts`），重启后旧会话可继续；想干净就新开一个会话。
-
-## 面板显示「无法连接天庭」
-
-Host 通道不可用，或在线 bootstrap 超时。检查：
-
-- WebUI 终端是否有 `[dsh-liangxiang] host half active` 以及 `DEV_STAGING_ONLY`；
-- `curl http://127.0.0.1:<webui>/liangxiang/api/state` 是否 200；
-- 在线模式：本机 `curl -m 5 https://api.liang.today/v1/health`（不要只 curl 服务器的 localhost）。
-
-面板会保留最近一次状态继续渲染；重新打开面板会再试一次。
-
-## 面板显示「记账不可用」
-
-DSH 的 `sessionProjections` / `sessions` 没注入（组合里缺插件，或版本变更）。香火环会停在 0 炷；投票按钮因此禁用。查 `COMPATIBILITY.md` 的当前触点表与 `compat/dsh/usage-observer.ts` 的告警。
-
-## 香火一直是 0（在线模式）
-
-先看 Host 日志里的 `business_date`。在线模式以 backend bootstrap 返回的业务日为权威，
-Host 会把本机观测桶对齐到该日期；浏览器日期和 Host 本地时区都不能决定在线资格。
-若 claim 仍被报 `wrong_date`，说明 bootstrap/claim 跨过了服务端日切或后端配置异常，
-应检查服务端 `LIANGXIANG_BUSINESS_TZ`、时钟与重连日志，不能靠改浏览器日期修复。
-
-也可能是当天确实还没产生足够用量：`LIANGXIANG_TOKEN_PER_INCENSE=50000` 表示
-5 万 Pro 当量才有第一炷。DeepSeek Pro 类权重为 1；Flash、未知和其他 route 权重
-为 0.5，因此通常需要约 10 万 raw Input+Output Token。本地演示可以显式调小策略值。
-
-## 打梁报 502 / 「打梁失败」
-
-Host 与后端之间的请求失败。**用同一个 `request_id` 重试是安全的**（幂等域是 `(installation_id, request_id)`，重放不会二次扣香）；换新 id 才会有二次扣香风险，客户端不会那样做。
-
-## Host 日志在哪里
-
-DSH 控制台不再持续打印梁相日志。精简记录在：
-
-```bash
-"$DSH_HOME/logs/liangxiang.log"
-```
-
-未设置 `DSH_HOME` 时是 `~/.dsh/logs/liangxiang.log`。文件最多 5MB，超出后丢掉最旧的行。
-需要定位问题时把这个文件拿出来即可。
-
-## Host 日志 `backend GET /bootstrap timed out`
-
-进程在 VPS 上仍可能是 `active`，本机 `curl 127.0.0.1:<port>/v1/health` 也仍可能 200。这表示**外网到该端口被挡住了**（华为云安全组 / 防护），不是梁相又切回了本地。
-
-核对：
-
-1. 安全组只需公网放行 `80/tcp` 与 `443/tcp`；后端端口 `4180` 必须只监听回环地址。
-2. 本机 `curl -m 5 https://api.liang.today/v1/health` 应在 1 秒内返回 `status":"ok"`。
-3. 面板若写「今日梁案（本地）」，那是欢迎页选了本地，或旧占位帧；连不上时应是「今日梁案」+「无法连接天庭」。
-
-## 梁位不动
-
-- 零票时是 `--`，不是 0%（不伪造 50/50）。
-- 已发布快照按 cadence 更新，但**被接受的投票会在自己的事务里发布快照**，所以你自己的票应当立刻可见。若不可见：看后端日志里那次 `POST /v1/votes` 的 status，409 说明是业务拒绝（香火不足/幂等冲突/旧梁案）。
-
-## 后端拒绝启动
-
-```
-configuration rejected: VERIFIED_PRODUCTION is blocked: Decision Gate A = A3 …
-```
-
-这是设计好的门禁，不是 bug（见 [`075`](075-backend-decision.md)）。用 `LIANGXIANG_AUTHORITY_MODE=DEV_STAGING_ONLY`（默认值）。
-
-## `fetch failed: bad port`
-
-Node 的 fetch（undici）会拒绝 WHATWG「bad port」名单上的端口（4045、**4190**、5060、6000、6666…）。换一个端口，默认 4180 不在名单内。
-
-## `ExperimentalWarning: SQLite is an experimental feature`
-
-`node:sqlite` 在 Node 22 仍是实验特性，只是警告。用 Node 24 或 `--no-warnings=ExperimentalWarning` 可消除。
-
-## 徽章不见了 / 拖到看不见的地方
-
-位置存在浏览器 `localStorage`，读取时会按当前窗口尺寸夹回可视区。真丢了就清掉这一项：
-
-```js
-localStorage.removeItem('liangxiang:badge-position:v2')
-```
+提供系统、DSH/梁相版本、复现步骤和脱敏错误。Host 诊断日志为 `$DSH_HOME/logs/liangxiang.log`；
+不要公开完整日志、API key、签名、安装身份、会话内容或本机个人目录。生产运维另见 [`121-vps-deploy.md`](121-vps-deploy.md)。

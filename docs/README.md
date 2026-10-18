@@ -32,7 +32,8 @@
 - PR #6 入口与旁白的现行交互、视觉及验收：`PR6_FEEDBACK_REDESIGN.md`。
 - 日终上香（Issues #3/#5）与权威刷新节奏（#4）：`DAY_END_INCENSE.md`。
 - PR #7、DSH 重试漏算及会话迁移回归：`PR7_REVIEW.md`。
-- PR #7 三平台 CI 待启用方案：`PR7_CI_PROPOSAL.yml`。
+- 连接消息去重与保留的实时性边界：`CONNECTION_EFFICIENCY.md`。
+- 本轮功能、资料、安装与集成验证结果：`RELEASE_READINESS_1_2.md`。
 - `npm-readme.md` 是发布 README 输入；必须由现行权威校验，不能反向定义产品。
 
 参考文件若仍出现旧名称、旧 Phase、旧端点或“future/占位”描述，以当前源码、测试、
@@ -58,6 +59,7 @@
 
 - `LIANGXIANG_CURSOR_MASTER_R3.md`：旧 Cursor 一体化执行包，过长且混有多代事实。
 - `131-liangci-cursor-prompt.md`：一次性 Cursor 实施 Prompt。
+- `PR7_CI_PROPOSAL.yml`：CI 启用前的历史方案；现行工作流以 `.github/workflows/` 与 `CI.md` 为准。
 - `PRODUCT_FREEZE_V0.1.md`、`SEMANTIC_CORRECTION_R2.md`：旧冻结/纠偏交接物；有效规则
   已进入 `AGENTS.md`。
 - `assets/`：文档图片和旧设计输出，不能作为数据模型、文案或状态契约。

@@ -2,7 +2,7 @@
  * `/liangxiang/api/*` handlers over the DSH web server seam (docs/044):
  *
  *   GET  /liangxiang/api/state      full wire state
- *   GET  /liangxiang/api/events     SSE push (one frame per revision + heartbeat)
+ *   GET  /liangxiang/api/events     SSE push (changed state + heartbeat)
  *   GET  /liangxiang/api/history    full 梁祠 archive or immutable version delta
  *   POST /liangxiang/api/vote       minimal vote intent -> result + fresh state
  *   POST /liangxiang/api/refresh    force host re-read (hover / panel open)
@@ -36,6 +36,7 @@ interface SseConnection {
   res: ServerResponse
   unsubscribe: () => void
   heartbeat: ReturnType<typeof setInterval>
+  lastContent: string | null
 }
 
 function writeJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -100,9 +101,17 @@ export function createLiangxiangApi(
     clearInterval(connection.heartbeat)
   }
 
-  const writeFrame = (res: ServerResponse): void => {
+  const writeFrame = (connection: SseConnection): void => {
     const state = service.getWireState()
-    res.write(`id: ${state.revision}\ndata: ${JSON.stringify(state)}\n\n`)
+    // A successful authority read can advance revision without changing any
+    // delivered field. Keep cadence/recovery intact while avoiding identical
+    // full-state frames. Include every other field, especially epoch, authority
+    // availability, broadcast expiry and archive/configuration cursors.
+    const { revision, ...content } = state
+    const serialized = JSON.stringify(content)
+    if (serialized === connection.lastContent) return
+    connection.res.write(`id: ${revision}\ndata: {"revision":${revision},${serialized.slice(1)}\n\n`)
+    connection.lastContent = serialized
   }
 
   const handleEvents = (req: IncomingMessage, res: ServerResponse): void => {
@@ -114,9 +123,10 @@ export function createLiangxiangApi(
     })
     const connection: SseConnection = {
       res,
+      lastContent: null,
       unsubscribe: service.subscribe(() => {
         try {
-          writeFrame(res)
+          writeFrame(connection)
         } catch (error) {
           warn(`[dsh-liangxiang] SSE write failed: ${error instanceof Error ? error.message : String(error)}`)
           dropConnection(connection)
@@ -128,7 +138,7 @@ export function createLiangxiangApi(
     }
     connections.add(connection)
     req.on('close', () => dropConnection(connection))
-    writeFrame(res)
+    writeFrame(connection)
   }
 
   const handleVote = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {

@@ -1,204 +1,111 @@
-# INSTALL — 安装与运行
+# 安装、升级与运行
 
-前置：插件本身**不绑定**特定 DSH / Node 版本，也不需要任何 API key（只有在 WebUI 里真正和模型对话才需要）。DSH 宿主自己可能仍要求 Node 22.19+；自建社区后端需要 Node 自带的 `node:sqlite`（约 22.5+）。
+推荐使用 [DSH 官方 Desktop](https://www.deepseek.com/zh/harness/) 的内置插件市场。
+安装后页面边缘出现“今日梁相”；单击打开今日梁案，可拖动入口调整位置。
+公开正式包是 **dsh-liangxiang@1.1.6**，1.2.0 候选源码尚未正式发布。
 
-全程先**完全退出** DeepSeek Harness WebUI，做完再启动，浏览器刷新一次。卸载和升级都**不删除**香火账本。
+## Desktop：应用内安装
 
-## 用户：安装 / 升级 / 卸载
+1. 打开 **插件 → 发现**。
+2. 搜索 **梁相** 或 `liangxiang`，核对包名为 `dsh-liangxiang`。
+3. 点击安装、确认来源，完成后选择 **立即启用**；按应用提示刷新或重启。
 
-DSH 有两种用法。全局装过 CLI 就写 `dsh`；否则每次用 `npx --yes @deepseek-ai/dsh` 替换下面的 `dsh`。`web` 若不是你的 profile 名，换成实际名字。
+首次没有“发现”时，在 **插件 → 实验性插件 → 更多** 开启 **自定义插件市场**。
+DSH 不预置市场目录；空白页需添加你信任且收录梁相的索引源。
+也可直接在 **插件 → 添加插件** 输入 `dsh-liangxiang` 安装，无需命令行。
+详见 [DSH 官方市场说明](https://deepseek-harness.github.io/deepseek-harness/guide/plugin-market)。
+
+更新与卸载在 **插件 → 已安装 → 梁相** 完成。若所用市场没有更新按钮，先卸载插件，再按原流程重新安装。
+卸载不删除本机香火账本；不要额外清理 DSH 的数据目录。升级后在 **梁相案牍 → 当前版本** 核对版本与更新说明。
+
+Desktop 的 `desktop` Profile 由桌面应用独占管理。普通 npm CLI 的 `web` 命令不能用于它；
+不再使用手动改 Desktop 家目录或混用桌面 pnpm 的旧安装方法。
+
+## Cmd：命令行 WebUI
+
+按 [DSH 官方说明](https://github.com/deepseek-ai/deepseek-harness#run) 准备运行环境。
+退出对应 WebUI 后，安装并启动：
 
 ```bash
-dsh …                                    # 全局模式
-npx --yes @deepseek-ai/dsh …             # 没有全局 dsh 时
-```
-
-### 插件市场（推荐）
-
-打开 WebUI → **设置 → 插件市场** → 搜索 `liangxiang` → 安装。
-
-如果还没有插件市场：
-
-```bash
-export DSH_HOME="$HOME/.dsh"
-npx --yes @deepseek-ai/dsh plugin --profile web add dshmarket
+npx --yes @deepseek-ai/dsh plugin --profile web add dsh-liangxiang
 npx --yes @deepseek-ai/dsh web
 ```
 
-用 DSH Desktop 时，先把 `DSH_HOME` 指到桌面自己的 harness，再装。
+已有全局 `dsh` 时可替换命令开头。安装和启动必须使用同一个 Profile；自定义 Profile
+把 `web` 换成实际名称，并在启动命令中使用 `--profile`。该选项应写在 `add` / `remove` 之前。
+不要运行 `npm i dsh-liangxiang`，它只安装普通依赖，不注册 DSH 插件。
 
-![在插件市场搜索 liangxiang，卡片显示 dsh-liangxiang 已安装，分类为娱乐](assets/dshmarket-search-liangxiang.jpg)
-
-也已列入 [1024 Store](https://deepseek1024.com/) 和 [awesome-deepseek-harness](https://github.com/Dominic789654/awesome-deepseek-harness)。安装仍按上面的 dsh-market 走。
-
-已装过旧 `@beta` 时：打开同一市场 → **检查更新**（或卡片上的更新）。市场比的是 npm `latest`（`1.0.0` 高于 `0.8.6-beta`）。点更新后刷新；看不到更新就强制检查一次（缓存大约 30 分钟）。
-
-### npm（命令行）
-
-安装和升级都写无标签包名，解析 npm `latest`，不要钉 `@beta` 或某一号：
+更新到当前公开正式版：
 
 ```bash
-export DSH_HOME="$HOME/.dsh"
-npx --yes @deepseek-ai/dsh plugin --profile web add dsh-liangxiang
+npx --yes @deepseek-ai/dsh plugin --profile web add dsh-liangxiang@latest
+npx --yes @deepseek-ai/dsh web
 ```
 
-插件本身没有收窄的版本范围。Host 启动时只改清单：精确号、本地 `.tgz`、残留的 `beta` 一律改成 `latest`，并在 profile 的 `pnpm-workspace.yaml` 写入：
-
-```yaml
-minimumReleaseAgeExclude:
-  - dsh-liangxiang
-```
-
-这是为了躲开 pnpm 11 默认 24 小时发布冷静期，并让以后升级继续走同一条命令。启动不跑 `pnpm add`。未启动过带此逻辑的 Host 时，也可以自己把上面两行加进 `$DSH_HOME/profiles/web/pnpm-workspace.yaml`，再执行一次 `add dsh-liangxiang`。旧书签里的 `add @beta` 仍能装到正式包，但文档不再教这条。
-
-卸载：`npx --yes @deepseek-ai/dsh plugin --profile web remove dsh-liangxiang`
-
-国内 npm 慢时：`npm config set registry https://registry.npmmirror.com`
-
-> npm 公开稳定版是 `dsh-liangxiang@1.1.6`。请写无标签包名；不要从开发分支安装。不要运行 `npm i dsh-liangxiang`，那不是 DSH 插件安装方式。
-
-### GitHub Release / 本地 tarball
-
-先进入安装包目录，再写 **`./文件名.tgz`**。少写 `./` 会去 npm 拉这个文件名，报 `ERR_PNPM_FETCH_404`。子命令是 `plugin add`。
+卸载：
 
 ```bash
-export DSH_HOME="$HOME/.dsh"
-cd "$HOME/Desktop/liangxiang"
+npx --yes @deepseek-ai/dsh plugin --profile web remove dsh-liangxiang
+```
+
+命令行安装、更新、卸载均在独立临时 Profile 核验；不会因删除插件依赖而删除账本。
+不要为了安装梁相再装旧 `dshmarket`；已使用社区市场的用户可按其兼容说明继续操作。
+
+### 本地发行包
+
+从 [GitHub Releases](https://github.com/liang-today/dsh-liangxiang/releases) 下载正式包后，
+在文件所在目录执行；本地相对路径必须带 `./`，避免被当成 npm 包名：
+
+```bash
 npx --yes @deepseek-ai/dsh plugin --profile web add ./dsh-liangxiang-1.1.6.tgz
 ```
 
-卸载：`npx --yes @deepseek-ai/dsh plugin --profile web remove dsh-liangxiang`
+源码候选 tarball 的安装由干净 Profile 门禁验证，不代表公开正式包已升级。
 
-卸掉再装**不会**自动回到欢迎页。欢迎标记在浏览器 `localStorage`，与插件是否安装无关。重装后在本页控制台执行：
+## 在线连接与代理
 
-```js
-localStorage.removeItem('liangxiang:welcome:v2')
-location.reload()
+在线模式需要运行 DSH 的机器能访问社区服务器。若一直无法连接，可能是网络问题；
+包括福建在内的部分地区有连接不稳定反馈，可尝试让 DSH 使用代理后重试，具体取决于网络与运营商。
+只给浏览器配置代理，未必覆盖发请求的 DSH Host。
+
+可使用代理软件的 TUN 模式，或在 DSH 实际使用的 `$DSH_HOME/.env` 设置 HTTP 代理，
+完全退出并重启 DSH。以下端口需替换为自己的 HTTP 代理端口：
+
+```dotenv
+HTTPS_PROXY="http://127.0.0.1:7890"
+HTTP_PROXY="http://127.0.0.1:7890"
 ```
 
-### DSH Desktop
+这里不要填写 SOCKS URL；配置放在 DSH 主目录，而不是项目 `.env`。
+见 [DSH 官方代理说明](https://deepseek-harness.github.io/deepseek-harness/guide/network-proxy)。
+梁相保持在线偏好并自动重连；需要本机自玩时，可在案牍手动选择离线模式，两边账本不合并。
 
-Desktop 读的是自己的家目录。不设 `DSH_HOME` 时，命令会写进 `~/.dsh`，界面上看不见入口。
+## 开发与自建 Backend
 
-先完全退出 Desktop。Windows PowerShell：
-
-```powershell
-$env:DSH_HOME = "$env:APPDATA\dsh-desktop\harness"
-$env:PATH = "$env:DSH_HOME\.desktop-bin;$env:PATH"
-dsh plugin --profile web add dsh-liangxiang
-```
-
-Desktop 自带 pnpm 10（`%DSH_HOME%\.desktop-bin`）。本机 PATH 上的 pnpm 11 会报 `ERR_PNPM_UNEXPECTED_STORE`。不要用全局 `dsh` 对着默认 `~/.dsh` 装完再指望 Desktop 看见。
-
-### 源码（开发 profile，不改日常 `~/.dsh`）
+源码开发使用隔离 Profile，不修改日常 DSH 或 Desktop：
 
 ```bash
-git clone https://github.com/liang-today/dsh-liangxiang.git
-cd dsh-liangxiang
-pnpm install && pnpm run dev:install && pnpm run dev:web   # 安装
-git pull && pnpm install && pnpm run dev:install           # 升级
-pnpm run dev:uninstall                                     # 卸载
-```
-
-## 国内网络
-
-- **npm**：`@deepseek-ai/dsh` 与 `dsh-liangxiang` 都在 npmjs，也被 npmmirror 同步。若官方源超时，可改用：
-
-  ```bash
-  npm config set registry https://registry.npmmirror.com
-  ```
-
-  或单次：`npm_config_registry=https://registry.npmmirror.com dsh plugin --profile web add dsh-liangxiang`
-- **社区后端**：本机 DSH Host 直连 `https://api.liang.today`。内地一般可访问，偶发跨境抖动时插件会在 3 秒内放弃等待、进入 DSH 主界面，并显示「无法连接天庭」，后台继续重连。
-- **官网 / GitHub**：`liang.today` 是 GitHub Pages；源码自编译依赖 GitHub。这两条在内地可能较慢或不可达，优先走 npm `latest`。
-- **离线兜底**：连不上社区时不要改 registry 以外的配置；在梁相案牍手动选离线模式即可本机自玩。
-
-## 一、从仓库开发运行（推荐）
-
-```bash
-node --version             # 记录本机版本；日常开发沿用已工作的本机工具链
-pnpm --version
 pnpm install
-pnpm run dev:install     # 构建 + 装入 liangxiang-dev profile（含模块图断言）
-pnpm run dev:web         # 启动 WebUI，默认 http://127.0.0.1:3080
-```
-
-Node 22.23.1 + pnpm 11.7.0 是下方“临时干净 Profile”自动化的审计基线，不是日常 `dev:install` / `dev:web` 的启动门禁。已经工作的本机开发工具链不应被仓库脚本主动拦截。
-
-右缘会出现一个圆形入口，图标就是当前梁子状态，悬停显示 `今日梁相`；可以拖到任意位置。
-
-`dev:web` 再跑一次时，若 3080 已被本机已有的 `liangxiang-dev` 占用，脚本会直接告诉你打开 http://127.0.0.1:3080。要换新进程：`LIANGXIANG_DEV_RESTART=1 pnpm run dev:web`。换口：`LIANGXIANG_DEV_PORT=3081 pnpm run dev:web`。
-
-源码开发 Profile 不需要插件市场。若旧 Profile 残留的 `dshmarket` 报 `installSettingsSection` / `settingsNamespace` 不存在，说明该市场版本的 peer range 不覆盖 DSH alpha.4+；只从隔离 Profile 移除它：
-
-```bash
-DSH_HOME="$PWD/.dsh-home" pnpm exec dsh plugin --profile liangxiang-dev remove dshmarket
-```
-
-这不会触碰日常 `~/.dsh`。需要验证最终 tgz 的安装体验时，另建临时 `web` Profile；不要把市场混进源码联调 Profile。
-
-DSH `0.1.2-alpha.5` 已能读取 v3/v4/v5 会话投影缓存，并会自行备份、跳过无法解析的衍生记录。梁相不会再在启动前搬走缓存。旧命令仍保留为无损提示：
-
-```bash
-pnpm run dev:repair-cache  # 不移动任何文件；提示先升级开发 Profile
 pnpm run dev:install
 pnpm run dev:web
 ```
 
-若 alpha.5 仍报告单条坏缓存，DSH 会把该记录改名为带 `.bak.<时间>` 后缀的备份并从会话日志重建；会话和梁相两个账本不受影响。
+默认开发入口为本机 3080。脚本使用隔离 `DSH_HOME`；需要离线首次默认时设置
+`LIANGXIANG_BACKEND_URL=local`。已有保存偏好不会被环境变量覆盖。
+开发卸载使用 `pnpm run dev:uninstall`。精确兼容环境见 [`COMPATIBILITY.md`](COMPATIBILITY.md)。
 
-若 pnpm 11 因刚发布不足 24 小时的 DSH Preview 拒绝临时干净安装，不要放宽日常 Profile。只有下方自动销毁的干净冒烟 Profile 才允许显式使用 `LIANGXIANG_ALLOW_FRESH_DSH=1`。
-
-默认是在线（烘焙社区后端）。首次欢迎页或「梁相案牍」可手动切换在线/离线；断网不会自动切换。`LIANGXIANG_BACKEND_URL=local` 只设置尚无保存偏好时的首次离线默认。离线模式可用 CLI 模拟入账：
-
-```bash
-LIANGXIANG_BACKEND_URL=local pnpm run dev:web   # 终端 A：首次默认离线
-pnpm run dev:credit                            # 终端 B：+1 炷
-pnpm run dev:credit -- 9                       # +9 炷
-```
-
-想跑自建在线链路：
+验证最终安装包：
 
 ```bash
-# 终端 A
-LIANGXIANG_BACKEND_DB=.liangxiang-backend/dev.sqlite pnpm run backend:start   # http://127.0.0.1:4180
-# 终端 B
-LIANGXIANG_BACKEND_URL=http://127.0.0.1:4180 pnpm run dev:web
+pnpm run verify
+pnpm run smoke:browser-clean-profile
+pnpm run smoke:online
 ```
 
-此时 authority mode 变为 `DEV_STAGING_ONLY`（服务端记账的社区软信任，见 [`075`](075-backend-decision.md)）。公网 VPS 配方见 [`121-vps-deploy.md`](121-vps-deploy.md)。
+自动门禁只使用临时 Profile、SQLite 和 localhost。不要降低日常依赖安装政策或忽略兼容检查。
+Profile 中的内置 DSH bundle 由运行时提供，不把官方 Web App 闭包重复装入其 node_modules；
+可用 `node scripts/assert-profile-modules.mjs <profile-directory>` 只读核对。
 
-一键自检：`pnpm run smoke:online`（会断言拒绝 `VERIFIED_PRODUCTION`、claim 折算、幂等只扣一次、50 并发只接受 1 票、快照发布）。
-
-浏览器级干净安装基线（临时 Profile，结束后自动清理）：
-
-```bash
-LIANGXIANG_ALLOW_FRESH_DSH=1 LIANGXIANG_SMOKE_BROWSER=1 bash scripts/smoke-clean-profile.sh
-```
-
-离线玩法第一次启用时会创建 `<DSH_HOME>/storages/liangxiang_local.json`，保存离线香火、打梁、梁案进度和梁祠；社区身份与在线投影仍在 `liangxiang.json`。两边不会互相导入。
-
-## 二、开发者打包注意
-
-```bash
-pnpm pack
-dsh plugin --profile <你的 profile> add ./dsh-liangxiang-1.1.6.tgz
-```
-
-1. **不要**把 in-box bundle（如 `@deepseek-ai/dsh-web-app`）装成 profile 依赖。它只需要出现在 `dsh.profile.bundles` 里；装进 `<profile>/node_modules` 会遮蔽 launcher 的模块回退目录，造成同一个包出现两个实例，工具调用会直接报 `Cannot read properties of undefined (reading 'prepare')`。装完可以跑 `node scripts/assert-profile-modules.mjs <DSH_HOME>/profiles/<profile>` 自检。
-2. **tarball 不含后端**（`lib/backend.js` 不在包内，插件包只有 Host + Client 两半）。默认在线模式直接连接梁相社区；只有自建社区节点时，才需要从仓库部署后端。
-
-## 三、环境变量
-
-全部可选，见 [`.env.example`](../.env.example)。最常用：
-
-| 变量 | 作用 |
-|---|---|
-| `LIANGXIANG_BACKEND_URL` | 默认烘焙社区地址（在线）。`local` 只设置无持久化偏好时的首次离线默认 |
-| `LIANGXIANG_TOKEN_PER_INCENSE` | 每炷香的 Token 数（默认 50,000；调小便于演示） |
-| `LIANGXIANG_SNAPSHOT_SECONDS` | 快照/轮询节奏（默认 1s） |
-| `LIANGXIANG_BUSINESS_TZ` | 业务时区（默认 `Asia/Shanghai`）；在线模式下**后端**的这项才是权威 |
-| `LIANGXIANG_BACKEND_DB` | 后端 SQLite 路径（默认 `.liangxiang-backend/liangxiang.sqlite`，`:memory:` 可用） |
-| `DSH_HOME` | 脚本默认用项目内 `.dsh-home`，不碰你真实的 `~/.dsh` |
-
-普通卸载/更新不删除 `liangxiang.json` 或 `liangxiang_local.json`；后端数据就是配置的 SQLite 文件。
+普通插件包不包含 Backend，也不要求用户自建服务器。自建节点从仓库运行后端，部署、备份、
+迁移和版本检查统一走 [`121-vps-deploy.md`](121-vps-deploy.md) 与仓库部署脚本。
+全部可选配置见 [`.env.example`](../.env.example)，排障见 [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)。

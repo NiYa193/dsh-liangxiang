@@ -89,6 +89,48 @@ describe('one opt-in day-end dump', () => {
     expect(s.inner.getWireState().personal.usedIncenseToday).toBe(8)
   })
 
+  it('retains the 2s quiet window when automatic work has queued behind a long manual vote', async () => {
+    const s = setup()
+    const original = s.inner.vote.bind(s.inner)
+    let finish: (() => void) | undefined
+    const held = new Promise<void>(resolve => { finish = resolve })
+    const vote = vi.spyOn(s.inner as LiangHostService, 'vote').mockImplementationOnce(async intent => { await held; return original(intent) })
+    const refresh = vi.spyOn(s.inner, 'refreshNow')
+    const manual = s.service.vote({ caseId: s.inner.getWireState().activeCase.id, voteType: 'down', requestId: 'manual-long', count: 1 })
+    // The 5s busy retry has already queued automatic work behind this request.
+    await vi.advanceTimersByTimeAsync(7_000)
+    expect(vote).toHaveBeenCalledTimes(1)
+    finish?.(); await manual
+    await vi.advanceTimersByTimeAsync(1_999)
+    expect(vote).toHaveBeenCalledTimes(1)
+    expect(refresh).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(vote).toHaveBeenCalledTimes(2)
+    expect(vote.mock.calls[1]?.[0]).toMatchObject({ voteType: 'up', count: 7 })
+    expect(s.inner.getWireState().personal.usedIncenseToday).toBe(8)
+  })
+
+  it.each(['refresh', 'persist'] as const)('yields to a manual gesture arriving during automatic %s', async stage => {
+    const s = setup()
+    let finish: (() => void) | undefined
+    const held = new Promise<void>(resolve => { finish = resolve })
+    if (stage === 'refresh') vi.spyOn(s.inner, 'refreshNow').mockImplementationOnce(async () => { await held })
+    else {
+      const save = vi.mocked(s.persistence.setDayEndState).getMockImplementation()
+      vi.mocked(s.persistence.setDayEndState).mockImplementationOnce(async next => { await held; await save?.(next) })
+    }
+    const vote = vi.spyOn(s.inner as LiangHostService, 'vote')
+    await vi.advanceTimersByTimeAsync(1_000)
+    s.service.noteManualGesture()
+    finish?.()
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(vote).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(vote).toHaveBeenCalledTimes(1)
+    expect(vote.mock.calls[0]?.[0]).toMatchObject({ voteType: 'up', count: 8 })
+  })
+
   it('protects a held gesture before any manual request exists, with bounded cancellation', async () => {
     const s = setup()
     const vote = vi.spyOn(s.inner as LiangHostService, 'vote')
@@ -136,6 +178,63 @@ describe('one opt-in day-end dump', () => {
     expect(calls).toBeGreaterThan(0)
     await vi.advanceTimersByTimeAsync(20_000)
     expect(vote).toHaveBeenCalledTimes(calls)
+  })
+
+  it('rereads authority after a within-window recovery and sends one ordinary intent', async () => {
+    const s = setup()
+    // Controlled Host availability seam; no public network or real-time wait.
+    let available = false
+    const wire = s.inner.getWireState.bind(s.inner)
+    vi.spyOn(s.inner, 'getWireState').mockImplementation(() => ({ ...wire(), authorityMode: 'DEV_STAGING_ONLY', authorityAvailable: available }))
+    const refresh = vi.spyOn(s.inner, 'refreshNow')
+    const original = s.inner.vote.bind(s.inner)
+    const vote = vi.spyOn(s.inner as LiangHostService, 'vote').mockImplementation(intent => {
+      expect(refresh).toHaveBeenCalledTimes(1)
+      expect(s.state().jobs.online).toMatchObject({ requestId: intent.requestId, done: false })
+      return original(intent)
+    })
+    await vi.advanceTimersByTimeAsync(11_000)
+    expect(vote).not.toHaveBeenCalled()
+    expect(s.state().jobs.online).toBeUndefined()
+    available = true
+    refresh.mockClear()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(vote).toHaveBeenCalledTimes(1)
+    expect(vote.mock.calls[0]?.[0]).toMatchObject({ voteType: 'up', count: 8 })
+    expect(s.state().jobs.online?.done).toBe(true)
+    expect(s.inner.getWireState().personal.remainingIncense).toBe(0)
+    await vi.advanceTimersByTimeAsync(40_000)
+    expect(vote).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not replay a pending yesterday intent after an outage lasting beyond midnight', async () => {
+    const s = setup()
+    let available = false
+    const wire = s.inner.getWireState.bind(s.inner)
+    vi.spyOn(s.inner, 'getWireState').mockImplementation(() => ({ ...wire(), authorityMode: 'DEV_STAGING_ONLY', authorityAvailable: available }))
+    const yesterday = { businessDate: '2026-10-19', caseId: wire().activeCase.id,
+      requestId: 'day-end-unknown-old', voteType: 'down' as const, count: 8, done: false }
+    // Model a restored durable intent whose response was unknown before outage.
+    await s.persistence.setDayEndState({ ...structuredClone(DEFAULT_DAY_END), enabled: true, jobs: { online: yesterday } })
+    s.service.attachDayEndPersistence(s.persistence)
+    const vote = vi.spyOn(s.inner as LiangHostService, 'vote')
+    await vi.advanceTimersByTimeAsync(120_000)
+    expect(vote).not.toHaveBeenCalled()
+    available = true
+    s.inner.refreshNow()
+    s.inner.creditSimulatedUsage(3 * 50_000)
+    expect(s.inner.getWireState()).toMatchObject({ businessDate: '2026-10-20', personal: { remainingIncense: 3, usedIncenseToday: 0 } })
+    const nextWindow = Date.UTC(2026, 9, 20, 15, 59)
+    await vi.advanceTimersByTimeAsync(nextWindow - Date.now() - 1)
+    expect(vote).not.toHaveBeenCalled()
+    expect(s.state().jobs.online).toEqual(yesterday)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(vote).toHaveBeenCalledTimes(1)
+    const today = vote.mock.calls[0]?.[0]
+    expect(today).toMatchObject({ voteType: 'up', count: 3 })
+    expect(today?.requestId).not.toBe(yesterday.requestId)
+    expect(today?.caseId).not.toBe(yesterday.caseId)
+    expect(s.state().jobs.online).toMatchObject({ businessDate: '2026-10-20', done: true })
   })
 
   it('does not vote after a late startup or while a mode transition owns the ledger', async () => {

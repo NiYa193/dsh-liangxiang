@@ -2,46 +2,53 @@
 
 **众香成势，梁子显相。梁相还得梁人出！**
 
-梁相是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 WebUI 插件。每天一道梁案：使用 DSH 烧掉的 Token 凝成香火，一炷夯或拉；社区香火汇成梁位，显出今日梁子。日终之后，结果收入梁祠。
+梁相是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的插件。每天一道梁案：对话消耗的 Token 凝成香火，一炷夯或拉；社区香火汇成梁位，显出今日梁子，日终收入梁祠。
 
 独立社区项目，非 DeepSeek 官方产品。
 
-官网：[liang.today](https://liang.today/) · 部署指南：[liang.today/guide](https://liang.today/guide/)
+官网：[liang.today](https://liang.today/) · [完整安装指南](https://liang.today/guide/)
 
 ![插件主界面](assets/main-frame.jpg)
-
 ![插件主面板](assets/plugin-panel.jpg)
-
 ![梁祠](assets/liangci.jpg)
 
-## 安装
+## Desktop：插件市场安装（推荐）
 
-先完全退出 WebUI。设置 → **插件市场** → 搜 `liangxiang`。没有插件市场时先装 `dshmarket`，步骤见 [部署指南](https://liang.today/guide/#market)。也已列入 [1024 Store](https://deepseek1024.com/) 和 [awesome-deepseek-harness](https://github.com/Dominic789654/awesome-deepseek-harness)。
+1. 打开 DSH Desktop 的 **插件 → 发现**。
+2. 搜索 **梁相** 或 `dsh-liangxiang`。
+3. 点击安装，按应用提示完成加载；页面边缘出现“今日梁相”即装好。
 
-也可以直接写入 profile：
+首次没有“发现”或搜索不到时，按[指南](https://liang.today/guide/#desktop)启用原生市场并添加可信市场索引。市场界面由 DSH 提供，目录来源由用户选择；不需要另装旧 `dshmarket`。
+
+Desktop 的 Profile 由桌面应用独占管理，使用应用内市场操作。不要用普通 npm CLI 写入 Desktop 的目录。
+
+## Cmd：命令行安装
+
+退出对应的 WebUI 后执行：
 
 ```bash
-export DSH_HOME="$HOME/.dsh"
 npx --yes @deepseek-ai/dsh plugin --profile web add dsh-liangxiang
 npx --yes @deepseek-ai/dsh web
 ```
 
-已全局安装 `dsh` 时，把开头的 `npx --yes @deepseek-ai/dsh` 换成 `dsh`。`web` 若不是你的 profile 名，换成实际名字。页面边缘出现「今日梁相」即表示装好。升级重复同一条命令，不要写 `@beta` 或精确号；卸载用 `plugin --profile web remove dsh-liangxiang`。
+已有全局 `dsh` 时可替换命令开头；`web` 换成实际 Profile。升级继续使用插件安装命令，卸载用 `plugin --profile web remove dsh-liangxiang`。更新或卸载插件不删除香火账本。
 
-不要运行 `npm i dsh-liangxiang`：那只会落入当前目录的 `node_modules`，不会进入 DSH。包是给 `dsh plugin add` 用的。
-
-DSH Desktop 必须先把 `DSH_HOME` 指到桌面自己的 harness 目录，再执行同一条 `plugin add`。默认的 `~/.dsh` 桌面客户端不读。详见 [部署指南 · DSH Desktop](https://liang.today/guide/#desktop)。
+不要运行 `npm i dsh-liangxiang`：那不会把插件装进 DSH。命令行、本地安装包和开发方式见 [`docs/INSTALL.md`](docs/INSTALL.md)。
 
 ## 玩法
 
-- 新香客备 10 炷，对话还能继续攒；同一台机器当天重装不会再领一份
-- 按 DeepSeek Harness 的 **Input + Output Token** 折算：Pro 类 ×1，Flash 类与其他模型 ×0.5；默认 50,000 Pro 当量凝成一炷
-- 一炷一票，只能夯或拉；点一下一炷，长按 1.5 秒倾炉
-- **梁位**是社区夯率；梁子按门槛显相：待开梁 / 小难梁 / 梁工 / 梁总 / 梁神 / 梁圣 / 梁祖
-- 日终结果收入梁祠
+- 新香客备 10 炷，同一台机器当天重装不重复领取；继续对话还能攒香。
+- Input + Output Token 按固定倍率折算：**Pro ×1，Flash 与其他模型 ×0.5**；默认 50,000 Pro 当量一炷。
+- 点一下一炷，长按 1.5 秒倾炉；只能夯或拉。
+- 梁位是社区夯率，个人剩余香火不决定梁子等级。
+- 结果收入梁祠，可看日梁、周梁与月梁。
+
+源码候选新增小难梁、拍打弹幕和可选的 23:59 日终上香，见[当前架构](docs/CURRENT_ARCHITECTURE.md)。公开稳定包仍为 **v1.1.6**；候选源码不代表正式包或社区服务器已升级。
+
+## 在线连接
+
+在线模式持续无法开启时，可能是本机网络无法访问社区服务器。部分地区（如福建）可能遇到此类问题，可尝试让运行 DSH 的网络环境使用代理，然后重试；只给浏览器设置代理未必能覆盖 DSH Host。
+
+插件会自动重连；需要本机自玩时，可在梁相案牍手动切到离线模式。在线与离线香火分别记账，不互相迁移。详见[排障说明](docs/TROUBLESHOOTING.md)。
 
 > 梁位是社区软信任玩法，不代表实名人数、真实民意或任何个人、机构立场。
-
-公开稳定版是 **v1.1.6**。用户请安装 `dsh-liangxiang`（npm `latest`）；开发、排障与实现说明在 [`docs/INSTALL.md`](docs/INSTALL.md)。
-
-当前源码另有尚未发布的模型规则与最终请求结算修复，见 [`香火规则`](docs/INCENSE_POLICY.md)；npm 正式包仍以已发布版本为准。
