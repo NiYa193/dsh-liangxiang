@@ -2,7 +2,13 @@
 
 来源：https://github.com/liang-today/dsh-liangxiang/pull/6，贡献者 XChen446，
 原始提交 d4f2add224caaa20d3d99e6099ebea934112e322。
-整合分支 codex/pr-6-dsh-latest；候选 1.2.0-rc.2，供本机隔离环境手工验收。
+整合分支 codex/pr-6-dsh-latest；候选 1.2.0-rc.4，供本机隔离环境手工验收。
+
+## rc.4 后续设计
+
+用户手工反馈后，入口延时、旁白视觉、统一退场与面板位置关系已重新设计。
+当前行为以 [PR6_FEEDBACK_REDESIGN.md](PR6_FEEDBACK_REDESIGN.md) 为准；
+以下 rc.1/rc.2 是历史验收记录。#6 保持合并关闭，只追加新 commit。
 
 ## 审查结论
 

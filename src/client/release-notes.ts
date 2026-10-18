@@ -5,11 +5,11 @@
  * test deliberately fails when a version bump forgets to refresh this copy.
  * This is cosmetic localStorage only and never participates in authority.
  */
-export const RELEASE_NOTES_VERSION = '1.2.0-rc.3'
+export const RELEASE_NOTES_VERSION = '1.2.0-rc.4'
 export const RELEASE_NOTES_TITLE = `梁相 v${RELEASE_NOTES_VERSION} 更新`
 export const RELEASE_NOTES_ITEMS = [
   '梁子添新相：梁位低于 25% 显出小难梁，25% 到不足 50% 仍是梁工。',
-  '拍梁子更有趣：双击开玩，连拍弹幕逐行下沉，单击开合不打架。',
+  '拍梁子更顺手：点即打开，连拍化作轻巧旁白，进退都柔和。',
   '攒香更准确：请求用量各算各的，Pro 一倍，Flash 与其他模型半倍。',
   '适配 DSH 新版本：安装、升级与使用更顺畅。',
 ] as const

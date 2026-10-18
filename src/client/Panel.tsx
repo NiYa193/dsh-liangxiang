@@ -117,6 +117,8 @@ export interface PanelProps {
   positionPulse?: boolean
   /** Where to draw relative to the (freely placeable) badge. */
   placement?: PanelPlacement
+  /** Space made for the connected decorative speech, never a business region. */
+  badgeGap?: number
   pinnedHint?: 'epithet' | null
   onToggleHint?: (kind: 'epithet') => void
   /** Presentation-only tweened counts from the container. */ 
@@ -360,10 +362,10 @@ const voteButtonBase: CSSProperties = {
 }
 
 /** Anchor the panel above or below the badge — never beside it. */
-function placementStyle(placement: PanelPlacement): CSSProperties {
+function placementStyle(placement: PanelPlacement, gap = PANEL_GAP): CSSProperties {
   const stack = placement.stack === 'below'
-    ? { top: `calc(100% + ${PANEL_GAP}px)` }
-    : { bottom: `calc(100% + ${PANEL_GAP}px)` }
+    ? { top: `calc(100% + ${gap}px)` }
+    : { bottom: `calc(100% + ${gap}px)` }
   const horizontal = placement.align === 'end'
     ? { left: `calc(${BADGE_SIZE}px - ${PANEL_WIDTH}px)` }
     : { left: '0px' }
@@ -374,7 +376,8 @@ function placementStyle(placement: PanelPlacement): CSSProperties {
 const PANEL_CSS = `
 [data-liangxiang-panel] { --liangxiang-ember-readable: color-mix(in srgb, var(--liangxiang-ember, #c95f38) 64%, var(--dsw-alias-label-primary, #1c2130)); }
 [data-liangxiang-panel] {
-  animation: liangxiang-panel-enter ${duration.enterMs}ms cubic-bezier(.2,.7,.2,1) both;
+  animation: liangxiang-panel-enter 110ms cubic-bezier(.2,.8,.2,1) both;
+  transition: top 200ms cubic-bezier(.2,.8,.2,1), bottom 200ms cubic-bezier(.2,.8,.2,1);
 }
 [data-liangxiang-panel] button:focus-visible {
   outline: 2px solid ${color.brand};
@@ -508,7 +511,7 @@ const PANEL_CSS = `
   100% { opacity: 0; }
 }
 @keyframes liangxiang-panel-enter {
-  from { opacity: 0; transform: translateY(10px) scale(0.96); }
+  from { opacity: 0.8; transform: translateY(3px) scale(0.995); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 @keyframes liangxiang-position-pop {
@@ -931,7 +934,7 @@ export function Panel(props: PanelProps): ReactElement {
       data-liangxiang-panel=""
       data-liangxiang-authority={state.authorityMode}
       tabIndex={-1}
-      style={{ ...panelChrome(), ...placementStyle(placement) }}
+      style={{ ...panelChrome(), ...placementStyle(placement, props.badgeGap) }}
       onKeyDown={onKeyDown}
       onPointerDownCapture={(event: PointerEvent<HTMLElement>) => {
         if (!utilityOpen) return
