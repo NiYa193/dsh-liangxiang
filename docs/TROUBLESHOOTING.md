@@ -20,7 +20,7 @@ pnpm run dev:web
 - `$DSH_HOME/storages/liangxiang.json`：社区身份与在线投影；
 - `$DSH_HOME/storages/liangxiang_local.json`：离线账本与梁祠。
 
-Node `22.23.1` + pnpm `11.7.0` 只约束自动销毁的干净 Profile 冒烟，不约束日常 `dev:install` / `dev:web`。若日常开发命令在进入 DSH 前被仓库脚本以版本不匹配拦截，这是开发脚本回归，不应通过强迫升级本机环境来掩盖。
+Node `22.23.1` + pnpm `11.28.5` 只约束自动销毁的干净 Profile 冒烟，不约束日常 `dev:install` / `dev:web`。若日常开发命令在进入 DSH 前被仓库脚本以版本不匹配拦截，这是开发脚本回归，不应通过强迫升级本机环境来掩盖。
 
 ## 设置里找不到插件市场
 

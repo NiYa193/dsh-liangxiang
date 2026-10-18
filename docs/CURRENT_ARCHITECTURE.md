@@ -169,7 +169,7 @@ pnpm run smoke:online          # Backend/API/权威流变化时
 `LIANGXIANG_ALLOW_FRESH_DSH=1`，并直接运行 `bash scripts/smoke-clean-profile.sh`；
 默认路径不得绕过供应链等待期。clean-profile 默认在 Host 启动前锁定 `local`，只有
 显式传入 `LIANGXIANG_SMOKE_BACKEND_URL` 才允许它接触社区后端；脚本会先拒绝不满足
-Node `^22.19 || >=24` / pnpm `11.7.0` 的运行环境。
+Node `^22.19 || >=24` / pnpm `11.28.5` 的运行环境。
 
 - DSH 触点变化：记录准确源码路径/符号和 commit，更新 `COMPATIBILITY.md`。
 - 官网变化：进入独立官网仓运行其构建和链接检查，独立 commit/push。
