@@ -30,3 +30,12 @@ test('commit emails require a noreply identity, not a personal or placeholder ma
   assert.ok(inspectText('private-user@' + 'personal-domain.test').includes('personal-email'));
   assert.deepEqual(inspectText('fixture@example.com'), []);
 });
+
+test('a maintainer noreply email still requires the configured public name', () => {
+  const email = '16209318+NiYa193@users.noreply.github.com';
+  assert.doesNotThrow(() => assertMetadata(email, 'NiYa193'));
+  assert.doesNotThrow(() => assertMetadata(email, 'liangxiang-CI'));
+  assert.throws(() => assertMetadata(email, 'Private Fixture'), /public name/);
+  assert.throws(() => assertMetadata(email), /public name/);
+  assert.doesNotThrow(() => assertMetadata('123+contributor@users.noreply.github.com', 'Contributor'));
+});

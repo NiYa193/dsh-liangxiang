@@ -1,5 +1,9 @@
 {
   "version": 1,
+  "public_commit_identities": {
+    "16209318+niya193@users.noreply.github.com": ["NiYa193", "liangxiang-CI"],
+    "niya193@users.noreply.github.com": ["NiYa193", "liangxiang-CI"]
+  },
   "blocked_phrase_hashes": [
     {
       "length": 5,
