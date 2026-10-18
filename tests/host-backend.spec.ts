@@ -10,6 +10,8 @@ import { createBackendHttpApi } from '../src/backend/http.ts'
 import { LiangxiangBackendService } from '../src/backend/service.ts'
 import { openBackendStore } from '../src/backend/store.ts'
 import { BackendClientError, createBackendClient, type BackendClient } from '../src/host/backend-client.ts'
+import { DayEndService } from '../src/host/day-end-service.ts'
+import { DEFAULT_DAY_END, type DayEndState } from '../src/shared/day-end.ts'
 import { BackendLiangService } from '../src/host/backend-service.ts'
 import { generateCommunityKeypair, type CommunityKeypair } from '../src/host/community-keys.ts'
 import { wireToViewState } from '../src/client/store.ts'
@@ -137,12 +139,14 @@ async function startStack(
   env: Record<string, string | undefined> = {},
   hostOptions: {
     claimDebounceMs?: number
+    clockOffsetMs?: number
     timezone?: string
     start?: number
     signedIdentity?: CommunityKeypair
     existingFingerprintOwner?: CommunityKeypair
     beforeBootstrap?: (host: BackendLiangService, clock: ReturnType<typeof createMutableClock>) => void
     backendReportedWeights?: typeof DEFAULT_INCENSE_WEIGHT_POLICY
+    beforeClaimAcknowledgement?: (tokens: number) => Promise<void>
   } = {},
 ): Promise<Stack> {
   const config = resolveBackendConfig(
@@ -184,13 +188,22 @@ async function startStack(
   if (address === null || typeof address === 'string') throw new Error('backend did not bind a port')
 
   const identityRef = { current: hostOptions.signedIdentity ?? null }
+  const client = createBackendClient({
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    signer: () => identityRef.current,
+  })
+  if (hostOptions.beforeClaimAcknowledgement !== undefined) {
+    const submitClaim = client.submitClaim.bind(client)
+    client.submitClaim = async (...args) => {
+      const response = await submitClaim(...args)
+      await hostOptions.beforeClaimAcknowledgement?.(args[1])
+      return response
+    }
+  }
   const host = new BackendLiangService({
-    client: createBackendClient({
-      baseUrl: `http://127.0.0.1:${address.port}`,
-      signer: () => identityRef.current,
-    }),
+    client,
     timezone: hostOptions.timezone ?? config.timezone,
-    clock,
+    clock: { now: () => clock.now() + (hostOptions.clockOffsetMs ?? 0) },
     warn: () => undefined,
     claimDebounceMs: hostOptions.claimDebounceMs ?? 0,
     identityRef,
@@ -234,8 +247,12 @@ async function waitFor(predicate: () => boolean, label: string, timeoutMs = 2_00
   throw new Error(`timed out waiting for ${label}`)
 }
 
-function claimedOnBackend(s: Stack, tokens: number): boolean {
-  return s.backend.dailyState(INSTALLATION).authoritative_personal_state.claimed_effective_tokens === tokens
+function claimAcknowledged(s: Stack, tokens: number): boolean {
+  const backend = s.backend.dailyState(INSTALLATION).authoritative_personal_state
+  const host = frame(s).personal
+  return backend.claimed_effective_tokens === tokens
+    && host.remainingIncense === backend.remaining_incense
+    && host.usedIncenseToday === backend.used_incense
 }
 
 function frame(s: Stack) {
@@ -490,7 +507,7 @@ describe('online bootstrap', () => {
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(50_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     expect(frame(s).personal.effectiveTokensToday).toBe(50_000)
-    await waitFor(() => claimedOnBackend(s, 50_000), 'the claim to land on the backend date')
+    await waitFor(() => claimAcknowledged(s, 50_000), 'the claim to land on the backend date')
   })
 
   it('paints local incense immediately, without waiting for the remote claim', async () => {
@@ -536,7 +553,7 @@ describe('online bootstrap', () => {
     const s = await startStack({}, { claimDebounceMs: 0 })
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(50_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 50_000), 'the first stick to be claimed')
+    await waitFor(() => claimAcknowledged(s, 50_000), 'the first stick to be claimed')
     await s.host.reconcileNow()
     expect(frame(s).personal.effectiveTokensToday).toBe(50_000)
     observePro(s.host, SESSION, usage(50_000, 0, 0, 3_000), { kind: 'live', firstLiveSeq: 0 })
@@ -550,7 +567,7 @@ describe('online bootstrap', () => {
     const s = await startStack({}, { claimDebounceMs: 0 })
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(50_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 50_000), 'the first stick to be claimed')
+    await waitFor(() => claimAcknowledged(s, 50_000), 'the first stick to be claimed')
     await s.host.reconcileNow()
     expect(s.backend.dailyState(INSTALLATION).authoritative_personal_state.claimed_effective_tokens).toBe(50_000)
     // Same session: watermarks keep the original 50k from being dumped again.
@@ -559,7 +576,7 @@ describe('online bootstrap', () => {
     // The backend updates its ledger before the HTTP response reaches the
     // host. Wait for both sides of that boundary before asserting the view.
     await waitFor(
-      () => claimedOnBackend(s, 100_000)
+      () => claimAcknowledged(s, 100_000)
         && wireToViewState(frame(s), 'live').personal.remainingIncense === 2,
       'the post-reconcile suffix to reach the backend ledger and host snapshot',
     )
@@ -570,7 +587,7 @@ describe('online bootstrap', () => {
     const s = await startStack({}, { claimDebounceMs: 0 })
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(50_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 50_000), 'the first stick to be claimed')
+    await waitFor(() => claimAcknowledged(s, 50_000), 'the first stick to be claimed')
     const caseId = frame(s).activeCase.id
     const spent = await s.host.vote({ caseId, voteType: 'up', requestId: 'req-e2e-spent01' })
     expect(spent.result.status).toBe('accepted')
@@ -590,7 +607,7 @@ describe('online bootstrap', () => {
     const s = await startStack({}, { claimDebounceMs: 0 })
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(50_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 50_000), 'the first stick to be claimed')
+    await waitFor(() => claimAcknowledged(s, 50_000), 'the first stick to be claimed')
     // Another host (or tab) raised the shared ledger to 200k out of band.
     s.backend.applyTokenClaim(INSTALLATION, {
       claimed_effective_tokens: 200_000,
@@ -619,12 +636,35 @@ describe('online bootstrap', () => {
     expect(frame(s).personal.effectiveTokensToday).toBe(0)
   })
 
+  it('waits for the host acknowledgement even when the backend has already recorded the claim', async () => {
+    let releaseResponse: () => void = () => undefined
+    const responseHeld = new Promise<void>((resolve) => { releaseResponse = resolve })
+    const s = await startStack({}, {
+      beforeClaimAcknowledgement: async (tokens) => {
+        if (tokens >= 50_000) await responseHeld
+      },
+    })
+    try {
+      observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
+      observePro(s.host, SESSION, usage(50_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
+      await waitFor(
+        () => s.backend.dailyState(INSTALLATION).authoritative_personal_state.claimed_effective_tokens === 50_000,
+        'the server-side claim before delivering its response',
+      )
+      expect(frame(s).personal.remainingIncense).toBe(0)
+      expect(claimAcknowledged(s, 50_000)).toBe(false)
+      releaseResponse()
+      await waitFor(() => claimAcknowledged(s, 50_000), 'the host acknowledgement')
+      expect(wireToViewState(frame(s), 'live').personal.remainingIncense).toBe(1)
+    } finally { releaseResponse() }
+  })
+
   it('turns observed DSH usage into an authoritative claim (input+output, all buckets)', async () => {
     const s = await startStack()
     // 10k uncached + 20k cacheRead + 5k cacheWrite = 35k input; +15k output = 50k.
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(10_000, 20_000, 5_000, 15_000), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 50_000), 'the claim to be recorded')
+    await waitFor(() => claimAcknowledged(s, 50_000), 'the claim to be recorded')
 
     const wire = frame(s)
     expect(wire.accounting.inputTokensToday).toBe(35_000)
@@ -644,7 +684,7 @@ describe('online voting', () => {
       firstLiveSeq: 0,
     })
     await waitFor(
-      () => claimedOnBackend(s, count * 50_000 + extraTokens),
+      () => claimAcknowledged(s, count * 50_000 + extraTokens),
       'the claim to be recorded',
     )
     return s
@@ -751,7 +791,7 @@ describe('online rollover', () => {
     expect(initial).toMatchObject({ full: true, archiveVersion: 0, days: [] })
 
     observePro(s.host, SESSION, usage(50_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 50_000), 'history test claim')
+    await waitFor(() => claimAcknowledged(s, 50_000), 'history test claim')
     const caseId = frame(s).activeCase.id
     await s.host.vote({ caseId, voteType: 'up', requestId: 'req-history-e2e1' })
 
@@ -772,7 +812,7 @@ describe('online rollover', () => {
     const s = await startStack()
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(100_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 100_000), 'the claim to be recorded')
+    await waitFor(() => claimAcknowledged(s, 100_000), 'the claim to be recorded')
     const yesterday = frame(s)
     await s.host.vote({ caseId: yesterday.activeCase.id, voteType: 'up', requestId: 'req-e2e-day1-01' })
 
@@ -800,7 +840,7 @@ describe('online rollover', () => {
     const s = await startStack({}, { claimDebounceMs: 0 })
     observePro(s.host, SESSION, usage(0, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     observePro(s.host, SESSION, usage(6_000_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
-    await waitFor(() => claimedOnBackend(s, 6_000_000), 'day-1 claim to land')
+    await waitFor(() => claimAcknowledged(s, 6_000_000), 'day-1 claim to land')
 
     // Roll over. The host still holds day-1's watermark (6M) and business date.
     s.clock.advance(DAY_MS)
@@ -814,7 +854,7 @@ describe('online rollover', () => {
     observePro(s.host, SESSION, usage(6_002_000, 0, 0, 0), { kind: 'live', firstLiveSeq: 0 })
     // The first 1K may already have landed before the second observation.
     // Wait for both deltas, so a skipped second claim cannot pass this test.
-    await waitFor(() => claimedOnBackend(s, 2_000), 'both day-2 claims to land')
+    await waitFor(() => claimAcknowledged(s, 2_000), 'both day-2 claims to land')
   })
 
   it('picks up a published case on the existing snapshot poll', async () => {
@@ -835,5 +875,28 @@ describe('online rollover', () => {
     s.backend.publishCase('悬停应立刻看到')
     await s.host.refreshNow()
     expect(frame(s).activeCase.title).toBe('悬停应立刻看到')
+  })
+})
+
+
+describe('signed online day-end authority', () => {
+  it('uses the backend business clock despite a different Host zone and wall-clock offset', async () => {
+    const identity = generateCommunityKeypair('e'.repeat(64))
+    const s = await startStack({ LIANGXIANG_BUSINESS_TZ: 'Europe/London', LIANGXIANG_SNAPSHOT_SECONDS: '17' }, {
+      start: Date.UTC(2026, 9, 19, 22, 59, 1), timezone: 'Asia/Shanghai', clockOffsetMs: 6 * 3_600_000, signedIdentity: identity,
+    })
+    expect(frame(s).snapshotRefreshSeconds).toBe(17)
+    expect(s.host.dayEndTiming()).toEqual({ now: s.clock.now(), endsAt: Date.UTC(2026, 9, 19, 23), businessDate: '2026-10-19' })
+    let state: DayEndState = { ...structuredClone(DEFAULT_DAY_END), enabled: true }
+    const ritual = new DayEndService(s.host, { now: () => s.clock.now() + 6 * 3_600_000 }, () => false, () => undefined)
+    try {
+      ritual.attachDayEndPersistence({ getDayEndState: () => state, setDayEndState: async next => { state = structuredClone(next) } })
+      ritual.startDayEnd()
+      await waitFor(() => state.jobs.online?.done === true, 'signed day-end receipt')
+      const personal = s.backend.dailyState(identity.installationId).authoritative_personal_state
+      expect(personal.used_incense).toBe(10)
+      expect(personal.remaining_incense).toBe(0)
+      expect(state.jobs.local).toBeUndefined()
+    } finally { ritual.dispose() }
   })
 })

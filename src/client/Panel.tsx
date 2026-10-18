@@ -1,3 +1,4 @@
+import { liangziPolicyForVersion, LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 /**
  * The expanded 梁相 panel — exactly four visual regions (frozen UI contract):
  *
@@ -121,6 +122,9 @@ export interface PanelProps {
   /** Presentation-only tweened counts from the container. */ 
   displayTotalIncense?: number
   displayUniqueVoters?: number
+  onDayEndToggle?: () => void
+  onDayEndDirection?: (voteType: VoteType) => void
+  dayEndPending?: boolean
   onVote: (voteType: VoteType) => void
   /** Synthetic/read-screen click. Pointer holds must not also fire this. */
   onVoteClick?: (voteType: VoteType) => void
@@ -373,7 +377,7 @@ function placementStyle(placement: PanelPlacement): CSSProperties {
 const PANEL_CSS = `
 [data-liangxiang-panel] { --liangxiang-ember-readable: color-mix(in srgb, var(--liangxiang-ember, #c95f38) 64%, var(--dsw-alias-label-primary, #1c2130)); }
 [data-liangxiang-panel] {
-  animation: liangxiang-panel-enter ${duration.enterMs}ms cubic-bezier(.2,.7,.2,1) both;
+  animation: liangxiang-panel-enter 110ms cubic-bezier(.2,.8,.2,1) both;
 }
 [data-liangxiang-panel] button:focus-visible {
   outline: 2px solid ${color.brand};
@@ -507,8 +511,8 @@ const PANEL_CSS = `
   100% { opacity: 0; }
 }
 @keyframes liangxiang-panel-enter {
-  from { opacity: 0; transform: translateY(10px) scale(0.96); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0.8; }
+  to { opacity: 1; }
 }
 @keyframes liangxiang-position-pop {
   0% { transform: translateY(6px) scale(0.92); opacity: 0.35; }
@@ -574,6 +578,38 @@ const PANEL_CSS = `
 [data-liangxiang-utility-action]:focus-visible {
   border-color: ${color.brand};
   background: color-mix(in srgb, ${color.brand} 5%, ${color.bgLayer});
+}
+[data-liangxiang-utility-action="day-end"][aria-pressed="true"] {
+  border-color: color-mix(in srgb, ${color.ritualGold} 55%, ${color.border});
+  background: color-mix(in srgb, ${color.ritualGold} 9%, ${color.bgLayer});
+}
+[data-liangxiang-day-end-hint] {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 4;
+  width: 200px;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: 1px solid ${color.border};
+  background: ${color.bgLayer};
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
+  color: ${color.textPrimary};
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: left;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(3px);
+  pointer-events: none;
+  transition: opacity 60ms ease, transform 60ms ease;
+}
+[data-liangxiang-day-end-control]:hover [data-liangxiang-day-end-hint],
+[data-liangxiang-utility-action="day-end"]:focus-visible + [data-liangxiang-day-end-hint] {
+  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
 }
 [data-liangxiang-ritual] [data-liangxiang-hint] {
   position: absolute;
@@ -822,6 +858,7 @@ export function Panel(props: PanelProps): ReactElement {
     welcomeVisible, onChooseOnline, onChooseLocal, releaseNotesVisible, onReleaseNotesClose,
     avatarPulse, condensedIncense, voteFeedback,
     onVote,
+    onDayEndToggle = () => undefined, onDayEndDirection = () => undefined, dayEndPending = false,
     onVoteClick = () => undefined,
     onVotePointerDown = () => undefined,
     onVotePointerUp = () => undefined,
@@ -918,7 +955,7 @@ export function Panel(props: PanelProps): ReactElement {
   const earnedCompact = formatCompactCount(earnedObserved)
   const remainingCompact = formatCompactCount(personal.remainingIncense)
   const summary = `当前梁子状态：${LIANGZI_STATE_LABELS[snapshot.liangziState]}`
-    + `（${liangziRatioRangeText(snapshot.liangziState)}）。`
+    + `（${liangziRatioRangeText(snapshot.liangziState, liangziPolicyForVersion(snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION))}）。`
     + `${LIANG_POSITION_LABEL} ${percents.up}（即${VOTE_UP_NAME} ${percents.up}，${VOTE_DOWN_NAME} ${percents.down}）。`
     + `今日生成香火 ${earnedExact} 炷，剩余 ${remainingExact} 炷，距下一炷还差 ${toNextExact} 当量（Pro 口径）。`
     + `${AUTHORITY_MODE_NOTES[state.authorityMode]}。`
@@ -1207,7 +1244,7 @@ export function Panel(props: PanelProps): ReactElement {
                 <span aria-hidden="true" data-liangxiang-liang-position-causal="" style={{ ...positionGlueStyle, color: color.textTertiary }}>→</span>
                 <span
                   data-liangxiang-liangzi-title=""
-                  title={`${LIANGZI_STATE_LABELS[snapshot.liangziState]}：${liangziRatioRangeText(snapshot.liangziState)}`}
+                  title={`${LIANGZI_STATE_LABELS[snapshot.liangziState]}：${liangziRatioRangeText(snapshot.liangziState, liangziPolicyForVersion(snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION))}`}
                   style={{ ...positionFactStyle, color: color.ritualEmberText }}
                 >
                   {LIANGZI_STATE_LABELS[snapshot.liangziState]}
@@ -1217,6 +1254,7 @@ export function Panel(props: PanelProps): ReactElement {
           >
             <LiangAvatar
               state={snapshot.liangziState}
+              policyVersion={snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION}
               pulse={avatarPulse}
               crossing={avatarPulse}
               reducedMotion={reducedMotion}
@@ -1283,15 +1321,16 @@ export function Panel(props: PanelProps): ReactElement {
           data-liangxiang-vote="up"
           disabled={authorityUnavailable}
           aria-disabled={votingDisabled}
-          title={votingDisabled ? disabledReason : `${VOTE_UP_NAME}一炷香，长按倾炉`}
+          title={votingDisabled ? disabledReason : `${VOTE_UP_NAME}一炷香，长按倾炉；右键设日终默认夯`}
           data-charging={chargeVoteType === 'up' ? '' : undefined}
           data-armed={chargeVoteType === 'up' && charge >= DUMP_ARMED_CHARGE ? '' : undefined}
-          onContextMenu={(event) => event.preventDefault()}
+          onContextMenu={(event) => { event.preventDefault(); onVotePointerCancel(); onDayEndDirection('up') }}
           onClick={() => {
             if (outOfIncense) onInsufficientVote('up')
             else onVoteClick('up')
           }}
           onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); onDayEndDirection('up'); return }
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
             if (outOfIncense) onInsufficientVote('up')
@@ -1330,15 +1369,16 @@ export function Panel(props: PanelProps): ReactElement {
           data-liangxiang-vote="down"
           disabled={authorityUnavailable}
           aria-disabled={votingDisabled}
-          title={votingDisabled ? disabledReason : `${VOTE_DOWN_NAME}一炷香，长按倾炉`}
+          title={votingDisabled ? disabledReason : `${VOTE_DOWN_NAME}一炷香，长按倾炉；右键设日终默认拉`}
           data-charging={chargeVoteType === 'down' ? '' : undefined}
           data-armed={chargeVoteType === 'down' && charge >= DUMP_ARMED_CHARGE ? '' : undefined}
-          onContextMenu={(event) => event.preventDefault()}
+          onContextMenu={(event) => { event.preventDefault(); onVotePointerCancel(); onDayEndDirection('down') }}
           onClick={() => {
             if (outOfIncense) onInsufficientVote('down')
             else onVoteClick('down')
           }}
           onKeyDown={(event) => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) { event.preventDefault(); onDayEndDirection('down'); return }
             if (event.key !== 'Enter' && event.key !== ' ') return
             event.preventDefault()
             if (outOfIncense) onInsufficientVote('down')
@@ -1638,7 +1678,7 @@ export function Panel(props: PanelProps): ReactElement {
               >
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <strong style={{ fontSize: '12px', letterSpacing: '1px', color: color.textPrimary }}>{UTILITY_LABEL}</strong>
-                  <span style={{ fontSize: '9px', color: color.textTertiary }}>一卷在手 · 模式分明</span>
+                  <span style={{ fontSize: '9px', color: color.textSecondary }}>一卷在手 · 模式分明</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' }}>
                   <button
@@ -1648,18 +1688,32 @@ export function Panel(props: PanelProps): ReactElement {
                   >
                     <HomepageIcon />
                     <strong style={{ fontSize: '11px' }}>{UTILITY_HOME_LABEL}</strong>
-                    <span style={{ fontSize: '9px', color: color.textTertiary }}>{UTILITY_HOME_HINT}</span>
+                    <span style={{ fontSize: '9px', color: color.textSecondary }}>{UTILITY_HOME_HINT}</span>
                   </button>
-                  <button
-                    type="button"
-                    data-liangxiang-utility-action="reconcile"
-                    disabled={offline}
-                    onClick={onReconcileAsk}
-                  >
-                    <HeavenHearIcon size={19} />
-                    <strong style={{ fontSize: '11px' }}>{UTILITY_RECONCILE_LABEL}</strong>
-                    <span style={{ fontSize: '9px', color: color.textTertiary }}>{UTILITY_RECONCILE_HINT}</span>
-                  </button>
+                  <div data-liangxiang-day-end-control="" style={{ position: 'relative', minWidth: 0 }}>
+                    <button
+                      type="button"
+                      data-liangxiang-utility-action="day-end"
+                      aria-pressed={state.dayEnd?.enabled ?? false}
+                      aria-busy={dayEndPending}
+                      aria-label={`日终上香：${state.dayEnd?.enabled ? '已开启' : '已关闭'}，23:59 默认${state.dayEnd?.voteType === 'down' ? '拉' : '夯'}`}
+                      aria-describedby="liangxiang-day-end-hint"
+                      disabled={dayEndPending || !state.dayEnd?.available}
+                      onClick={onDayEndToggle}
+                      style={{ width: '100%', height: '100%' }}
+                    >
+                      <HeavenHearIcon size={19} />
+                      <strong style={{ fontSize: '11px', whiteSpace: 'nowrap' }}>日终上香</strong>
+                      <span data-liangxiang-day-end-state="" style={{ fontSize: '10px', color: color.textSecondary, whiteSpace: 'nowrap' }}>
+                        {dayEndPending ? '保存中…' : !state.dayEnd?.available ? '暂不可用' : state.dayEnd.enabled ? '已开启' : '已关闭'}
+                      </span>
+                    </button>
+                    <span id="liangxiang-day-end-hint" data-liangxiang-day-end-hint="" role="tooltip">
+                      {state.dayEnd?.available
+                        ? `23:59 按限额尽量上香，DSH 运行时生效。右键夯 / 拉设置默认方向（当前：${state.dayEnd.voteType === 'down' ? '拉' : '夯'}）。`
+                        : '日终设置暂不可用，请确认 DSH 已连接并加载新版插件。'}
+                    </span>
+                  </div>
                   <button
                     type="button"
                     data-liangxiang-utility-action="mode"
@@ -1669,7 +1723,7 @@ export function Panel(props: PanelProps): ReactElement {
                   >
                     <ModeSwitchIcon online={targetMode === 'online'} />
                     <strong style={{ fontSize: '11px' }}>{modeChanging ? '切换中…' : modeLabel}</strong>
-                    <span style={{ fontSize: '9px', color: color.textTertiary }}>{modeHint}</span>
+                    <span style={{ fontSize: '9px', color: color.textSecondary }}>{modeHint}</span>
                   </button>
                   <button
                     type="button"
@@ -1678,9 +1732,16 @@ export function Panel(props: PanelProps): ReactElement {
                     onClick={onShowVersion}
                   >
                     <VersionSealIcon />
-                    <strong style={{ fontSize: '11px' }}>v{PLUGIN_VERSION}</strong>
+                    <strong style={{ fontSize: '10px', whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>v{PLUGIN_VERSION}</strong>
                   </button>
                 </div>
+                <details style={{ marginTop: '7px', fontSize: '9px', color: color.textSecondary }}>
+                  <summary style={{ cursor: 'pointer' }}>显示异常？</summary>
+                  <button type="button" data-liangxiang-utility-action="reconcile" disabled={offline} onClick={onReconcileAsk}
+                    style={{ marginTop: '5px', border: `1px solid ${color.border}`, borderRadius: '6px', background: color.bgSubtle, color: color.textSecondary, padding: '4px 7px', font: `10px ${font.family}`, cursor: 'pointer' }}>
+                    {UTILITY_RECONCILE_LABEL} · {UTILITY_RECONCILE_HINT}
+                  </button>
+                </details>
                 {reconcilePending && (
                   <div
                     role="alertdialog"

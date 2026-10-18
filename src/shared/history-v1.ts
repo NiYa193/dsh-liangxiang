@@ -9,6 +9,7 @@ import {
   LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
   LIANG_ARCHIVE_SCHEMA_VERSION,
   deriveArchiveResult,
+  liangziPolicyForVersion,
   isBusinessDate,
   isoWeekFor,
   monthFor,
@@ -17,7 +18,7 @@ import {
   type LiangMonthArchive,
   type LiangWeekArchive,
 } from '../domain/index.ts'
-import { BACKEND_SCHEMA_VERSION, LIANGZI_POLICY_VERSION } from './backend-v1.ts'
+import { BACKEND_SCHEMA_VERSION } from './backend-v1.ts'
 import { WireError } from './wire.ts'
 
 export interface V1HistoryDay {
@@ -137,6 +138,13 @@ function policy(raw: unknown, field: string, expected: string): string {
   return value
 }
 
+function liangziPolicyVersion(raw: unknown, field: string): string {
+  const version = string(raw, field)
+  try { liangziPolicyForVersion(version) }
+  catch { throw new WireError(field, `unsupported Liangzi policy ${version}`) }
+  return version
+}
+
 function array(raw: unknown, field: string): unknown[] {
   if (!Array.isArray(raw)) throw new WireError(field, 'expected an array')
   return raw
@@ -166,15 +174,12 @@ function parseDay(raw: unknown, field: string, envelopeVersion: number): LiangDa
       `${field}.aggregation_policy_version`,
       LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
     ),
-    liangziPolicyVersion: policy(
-      value.liangzi_policy_version,
-      `${field}.liangzi_policy_version`,
-      LIANGZI_POLICY_VERSION,
-    ),
+    liangziPolicyVersion: liangziPolicyVersion(value.liangzi_policy_version, `${field}.liangzi_policy_version`),
     ...deriveArchiveResult(
       count(value.up_votes, `${field}.up_votes`),
       count(value.down_votes, `${field}.down_votes`),
       optionalCount(value.unique_voters, `${field}.unique_voters`),
+      liangziPolicyForVersion(liangziPolicyVersion(value.liangzi_policy_version, `${field}.liangzi_policy_version`)),
     ),
   }
 }
@@ -202,15 +207,12 @@ function parseWeek(raw: unknown, field: string, envelopeVersion: number): LiangW
       `${field}.aggregation_policy_version`,
       LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
     ),
-    liangziPolicyVersion: policy(
-      value.liangzi_policy_version,
-      `${field}.liangzi_policy_version`,
-      LIANGZI_POLICY_VERSION,
-    ),
+    liangziPolicyVersion: liangziPolicyVersion(value.liangzi_policy_version, `${field}.liangzi_policy_version`),
     ...deriveArchiveResult(
       count(value.up_votes, `${field}.up_votes`),
       count(value.down_votes, `${field}.down_votes`),
       optionalCount(value.unique_voters, `${field}.unique_voters`),
+      liangziPolicyForVersion(liangziPolicyVersion(value.liangzi_policy_version, `${field}.liangzi_policy_version`)),
     ),
   }
 }
@@ -238,15 +240,12 @@ function parseMonth(raw: unknown, field: string, envelopeVersion: number): Liang
       `${field}.aggregation_policy_version`,
       LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION,
     ),
-    liangziPolicyVersion: policy(
-      value.liangzi_policy_version,
-      `${field}.liangzi_policy_version`,
-      LIANGZI_POLICY_VERSION,
-    ),
+    liangziPolicyVersion: liangziPolicyVersion(value.liangzi_policy_version, `${field}.liangzi_policy_version`),
     ...deriveArchiveResult(
       count(value.up_votes, `${field}.up_votes`),
       count(value.down_votes, `${field}.down_votes`),
       optionalCount(value.unique_voters, `${field}.unique_voters`),
+      liangziPolicyForVersion(liangziPolicyVersion(value.liangzi_policy_version, `${field}.liangzi_policy_version`)),
     ),
   }
 }

@@ -14,6 +14,7 @@ export async function bootInstalledLiangxiang(
   // the isolated Profile smoke before Playwright starts.
   // Apply reduced motion on the page explicitly: some DSH-created browser
   // contexts do not retain the project-level media option across token auth.
+  const desiredDark = await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.addInitScript(({ welcomeSeen, releaseNotesSeen, releaseNotesVersion }) => {
     if (welcomeSeen) localStorage.setItem('liangxiang:welcome:v2', 'seen')
@@ -56,6 +57,18 @@ export async function bootInstalledLiangxiang(
     }
     await expect(dialog).toBeHidden()
   }
+  // The persisted DSH appearance can override the browser media preference.
+  // Select the actual app palette through its public Settings UI when needed.
+  const isDark = (): Promise<boolean> => page.evaluate(() => getComputedStyle(document.documentElement).colorScheme === 'dark')
+  if (await isDark() !== desiredDark) {
+    await page.getByRole('button', { name: 'Account menu', exact: true }).click()
+    await page.getByRole('menuitem', { name: /^(Settings|设置)/ }).click()
+    const settings = page.getByRole('dialog', { name: /^(Settings|设置)$/ })
+    await settings.getByRole('button', { name: desiredDark ? /^(Dark|深色)$/ : /^(Light|浅色)$/ }).click()
+    await settings.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+  }
+  await expect.poll(isDark).toBe(desiredDark)
+
 }
 
 export async function openPanel(page: Page): Promise<Locator> {

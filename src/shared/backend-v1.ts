@@ -9,7 +9,7 @@
  *    the frozen invariants fails validation instead of rendering nonsense;
  *  - the snapshot additionally carries the backend's own derived ratios and
  *    `liangzi_state` because the contract mandates them — the host re-derives
- *    the label from raw counts with this binary's frozen thresholds. A rolling
+ *    the label from raw counts with the recorded policy version. A rolling
  *    deploy with an older band table must not 502 an already-accepted vote;
  *  - a vote body is the minimum intent (`case_id`, `vote_type`,
  *    `request_id`, optional `count`). Identity travels in the installation header and personal
@@ -22,8 +22,10 @@
  * identity or server-verified usage.
  */
 import {
-  ACTIVE_LIANGZI_STATES,
+  liangziPolicyForVersion,
   DEFAULT_LIANGZI_THRESHOLDS,
+  LIANGZI_POLICY_VERSION,
+  type LiangziBoundaries,
   LIANGZI_STATES,
   deriveLiangziState,
   isBusinessDate,
@@ -66,8 +68,9 @@ export interface V1Broadcast {
   updated_at: number
 }
 
-/** Frozen id of the shipped Liangzi threshold policy (50/70/85/95). */
-export const LIANGZI_POLICY_VERSION = 'liangzi-v0.1-50-70-85-95'
+export { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
+/** Presentation capability only; it never changes balances or vote weight. */
+export const LIANGZI_POLICY_HEADER = 'x-liangxiang-liangzi-policy'
 
 /**
  * Authority modes. `VERIFIED_PRODUCTION` requires server-verifiable identity
@@ -153,7 +156,7 @@ export interface V1TokenPolicy {
 
 export interface V1LiangziPolicy {
   version: string
-  boundaries: [number, number, number, number]
+  boundaries: LiangziBoundaries
 }
 
 export interface V1Case {
@@ -523,16 +526,16 @@ export function parseV1PersonalState(raw: unknown, field = 'authoritative_person
 /**
  * Validate a published snapshot. Ratios must match the raw counts in the SAME
  * payload (AGENTS.md §12: never mix a stale ratio with a fresh Liangzi state).
- * `liangzi_state` is then derived with *this* binary's threshold policy. A
+ * `liangzi_state` is derived with the recorded, supported threshold policy. A
  * rolling deploy can leave the server on an older band table (e.g. 20% steps
  * painting 梁神 at 45% while this client expects 梁工); rejecting that frame
  * 502s an already-accepted vote and freezes 梁位. Counts stay authoritative;
- * the label is recomputed locally.
+ * the label is recomputed locally. Sealed archives retain their own policy.
  */
 export function parseV1Snapshot(
   raw: unknown,
   field = 'global_snapshot',
-  policy: LiangziThresholdPolicy = DEFAULT_LIANGZI_THRESHOLDS,
+  policy?: LiangziThresholdPolicy,
 ): V1Snapshot {
   const record = asRecord(raw, field)
   const upVotes = requireCount(record.up_votes, `${field}.up_votes`)
@@ -566,7 +569,16 @@ export function parseV1Snapshot(
       throw new WireError(`${field}.down_ratio`, 'does not match down_votes / total_incense')
     }
   }
-  const derived = deriveLiangziState(upVotes, downVotes, policy)
+  let policyVersion = requireString(record.policy_version, `${field}.policy_version`)
+  let registered: LiangziThresholdPolicy
+  try { registered = liangziPolicyForVersion(policyVersion) }
+  catch {
+    // Keep the pre-existing rolling-upgrade recovery for older, superseded live tables.
+    // Sealed archives are strict; live accepted-vote receipts must remain consumable.
+    registered = DEFAULT_LIANGZI_THRESHOLDS
+    policyVersion = LIANGZI_POLICY_VERSION
+  }
+  const derived = deriveLiangziState(upVotes, downVotes, policy ?? registered)
   return {
     case_id: requireString(record.case_id, `${field}.case_id`),
     business_date: requireBusinessDate(record.business_date, `${field}.business_date`),
@@ -579,7 +591,7 @@ export function parseV1Snapshot(
     liangzi_state: derived,
     captured_at: requireFinite(record.captured_at, `${field}.captured_at`),
     sequence: requireCount(record.sequence, `${field}.sequence`),
-    policy_version: requireString(record.policy_version, `${field}.policy_version`),
+    policy_version: policyVersion,
     lifetime_incense: record.lifetime_incense === undefined
       ? totalIncense
       : requireCount(record.lifetime_incense, `${field}.lifetime_incense`),
@@ -611,8 +623,8 @@ function parseTokenPolicy(raw: unknown, field: string): V1TokenPolicy {
 function parseLiangziPolicy(raw: unknown, field: string): V1LiangziPolicy {
   const record = asRecord(raw, field)
   const boundaries = record.boundaries
-  if (!Array.isArray(boundaries) || boundaries.length !== ACTIVE_LIANGZI_STATES.length - 1) {
-    throw new WireError(`${field}.boundaries`, 'expected exactly 4 boundaries')
+  if (!Array.isArray(boundaries) || (boundaries.length !== 4 && boundaries.length !== 5)) {
+    throw new WireError(`${field}.boundaries`, 'expected 4 or 5 boundaries')
   }
   const parsed = boundaries.map((value, index) => {
     const ratio = requireFinite(value, `${field}.boundaries[${index}]`)
@@ -626,7 +638,7 @@ function parseLiangziPolicy(raw: unknown, field: string): V1LiangziPolicy {
   }
   return {
     version: requireString(record.version, `${field}.version`),
-    boundaries: parsed as [number, number, number, number],
+    boundaries: parsed as unknown as LiangziBoundaries,
   }
 }
 
@@ -644,7 +656,6 @@ export function parseV1Bootstrap(raw: unknown): V1Bootstrap {
   const snapshot = parseV1Snapshot(
     record.global_snapshot,
     'bootstrap.global_snapshot',
-    DEFAULT_LIANGZI_THRESHOLDS,
   )
   const refresh = requireCount(record.snapshot_refresh_seconds, 'bootstrap.snapshot_refresh_seconds')
   if (refresh <= 0) throw new WireError('bootstrap.snapshot_refresh_seconds', 'must be positive')

@@ -15,6 +15,8 @@ import {
   BACKEND_API_PREFIX,
   DEVICE_HEADER,
   INSTALLATION_HEADER,
+  LIANGZI_POLICY_HEADER,
+  LIANGZI_POLICY_VERSION,
   PUBLIC_KEY_HEADER,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
@@ -120,7 +122,7 @@ export function createBackendClient(options: BackendClientOptions): BackendClien
     const timer = setTimeout(() => controller.abort(), requestTimeoutMs)
     try {
       const rawBody = init.body === undefined ? '' : JSON.stringify(init.body)
-      const headers: Record<string, string> = {}
+      const headers: Record<string, string> = { [LIANGZI_POLICY_HEADER]: LIANGZI_POLICY_VERSION }
       if (init.installationId !== undefined) headers[INSTALLATION_HEADER] = init.installationId
       if (init.body !== undefined) headers['content-type'] = 'application/json'
       const identity = options.signer?.() ?? null

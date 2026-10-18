@@ -170,11 +170,23 @@ if [ "$CLIENT_STATUS" != "200" ]; then
   echo "ERROR: client bundle returned HTTP ${CLIENT_STATUS:-none}" >&2
   exit 1
 fi
-if grep -Fq 'window.__ModuleLoader__.load(' "$CLIENT_BUNDLE" && \
-    grep -Fq '"dsh-liangxiang"' "$CLIENT_BUNDLE"; then
-  echo "client combo served with Liangxiang loader registration"
+# Compare the checked build itself, not a particular quoting/whitespace style.
+# Minification may emit template literals; the installed combo must still carry
+# exactly our verified CommonJS factory, rather than an old or missing plugin.
+if node - "$CLIENT_BUNDLE" "$REPO_ROOT/lib/client.js" <<'NODE'
+const { readFileSync } = require('node:fs')
+const combo = readFileSync(process.argv[2], 'utf8')
+// DSH strips each module's source-map/sourceURL trailer before combining
+// (packages/client/modules/src/index.ts prepareSource, audited 687f282e86).
+const expected = readFileSync(process.argv[3], 'utf8')
+  .replace(/(?:\r?\n)?\/\/# sourceURL=[^\r\n]*(?:\r?\n)?$/, '')
+  .replace(/(?:\r?\n)?\/\/# sourceMappingURL=[^\r\n]*(?:\r?\n)?$/, '').trim()
+if (!combo.includes(expected)) process.exit(1)
+NODE
+then
+  echo "client combo contains the verified Liangxiang build"
 else
-  echo "ERROR: client combo omitted the Liangxiang loader registration" >&2
+  echo "ERROR: client combo omitted or changed the verified Liangxiang build" >&2
   exit 1
 fi
 

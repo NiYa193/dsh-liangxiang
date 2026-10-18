@@ -3,7 +3,9 @@ import { badgeSelector, bootInstalledLiangxiang, panelSelector } from './helpers
 import { SQUISH_LABELS } from '../../src/client/badge-squish.ts'
 
 const tooltipSelector = '[data-liangxiang-badge-tooltip]'
-const lineSelector = '[data-liangxiang-danmu-line]'
+const speechSelector = '[data-liangxiang-danmu]'
+const activeRows = '[data-liangxiang-danmu-row][data-exiting="false"]'
+const activeLines = `${activeRows} [data-liangxiang-danmu-line]`
 
 async function dragBadge(page: Page, x: number, y: number): Promise<void> {
   const box = (await page.locator(badgeSelector).boundingBox())!
@@ -14,93 +16,125 @@ async function dragBadge(page: Page, x: number, y: number): Promise<void> {
   await page.mouse.up()
 }
 
-async function assertFeedbackFits(page: Page): Promise<void> {
-  const panel = await page.locator(panelSelector).isVisible() ? await page.locator(panelSelector).boundingBox() : null
-  const badge = (await page.locator(badgeSelector).boundingBox())!
+async function doubleTap(page: Page, interval: number): Promise<void> {
+  const box = (await page.locator(badgeSelector).boundingBox())!
+  const x = box.x + box.width / 2, y = box.y + box.height / 2
+  await page.mouse.click(x, y)
+  await page.waitForTimeout(interval)
+  await page.mouse.click(x, y)
+}
+
+async function playBurst(page: Page, rows = 3): Promise<void> {
+  const badge = page.locator(badgeSelector)
+  await doubleTap(page, 60)
+  for (let i = 1; i < rows; i++) { await page.waitForTimeout(150); await badge.click({ force: true }) }
+}
+
+async function assertSpeechFits(page: Page): Promise<void> {
+  const panel = (await page.locator(panelSelector).boundingBox())!
+  const badge = (await page.locator('[data-liangxiang-root]').boundingBox())!
+  const speech = (await page.locator(speechSelector).boundingBox())!
   const viewport = page.viewportSize()!
-  for (const line of await page.locator(lineSelector).all()) {
+  expect(speech.x).toBeGreaterThanOrEqual(panel.x - 1)
+  expect(speech.x + speech.width).toBeLessThanOrEqual(panel.x + panel.width + 1)
+  expect(speech.y).toBeGreaterThanOrEqual(7)
+  expect(speech.y + speech.height).toBeLessThanOrEqual(viewport.height - 7)
+  if (panel.y < badge.y) {
+    expect(speech.y).toBeGreaterThanOrEqual(panel.y + panel.height + 5)
+    expect(Math.abs(speech.y - badge.y - 3)).toBeLessThan(1)
+  }
+  else expect(speech.y + speech.height).toBeLessThanOrEqual(panel.y - 5)
+  for (const line of await page.locator(activeLines).all()) {
     const box = (await line.boundingBox())!
-    expect(box.x).toBeGreaterThanOrEqual(7)
-    expect(box.y).toBeGreaterThanOrEqual(7)
-    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - 7)
-    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 7)
-    for (const obstacle of [panel, badge]) {
-      if (obstacle === null) continue
-      expect(box.x + box.width <= obstacle.x || box.x >= obstacle.x + obstacle.width
-        || box.y + box.height <= obstacle.y || box.y >= obstacle.y + obstacle.height).toBe(true)
-    }
+    expect(box.x).toBeGreaterThanOrEqual(speech.x)
+    expect(box.x + box.width).toBeLessThanOrEqual(speech.x + speech.width)
+    expect(box.y + box.height).toBeLessThanOrEqual(speech.y + speech.height)
   }
 }
 
-test('double clicks never change the panel, before/after idle or during repeated play', async ({ page }) => {
+test('single clicks toggle; only short double/continuous clicks play without changing either panel state', async ({ page }) => {
   await bootInstalledLiangxiang(page)
   const badge = page.locator(badgeSelector)
   const panel = page.locator(panelSelector)
-  const gameplayRequests: string[] = []
+  const gameplay: string[] = []
   page.on('request', request => {
     const path = new URL(request.url()).pathname
-    if (request.method() === 'POST' && /\/api\/(?:vote|mode|reconcile|dev\/credit|local\/cycle-case)$/.test(path)) gameplayRequests.push(path)
+    if (request.method() === 'POST' && /\/api\/(?:vote|mode|reconcile|dev\/credit|local\/cycle-case)$/.test(path)) gameplay.push(path)
   })
   await badge.evaluate(element => {
-    const changes: string[] = []
+    const changes: Array<{ open: string | null, delay: number }> = []
+    let activated = 0
     Object.assign(window, { badgePanelChanges: changes })
-    new MutationObserver(records => {
-      if (records.some(record => record.attributeName === 'aria-expanded')) changes.push(element.getAttribute('aria-expanded')!)
-    }).observe(element, { attributes: true, attributeFilter: ['aria-expanded'] })
+    element.closest('[data-liangxiang-root]')!.addEventListener('click', () => { activated = performance.now() }, true)
+    new MutationObserver(() => changes.push({ open: element.getAttribute('aria-expanded'), delay: performance.now() - activated }))
+      .observe(element, { attributes: true, attributeFilter: ['aria-expanded'] })
   })
-  for (const delay of [50, 50, 180]) {
-    await badge.dblclick({ delay })
-    await expect(page.locator(lineSelector).first()).toBeVisible()
-    await expect(panel).toBeHidden()
-    await page.waitForTimeout(850)
+  for (const initiallyOpen of [false, true]) {
+    if (initiallyOpen) { await badge.click({ force: true }); await expect(panel).toBeVisible() }
+    const before = await page.evaluate(() => Reflect.get(window, 'badgePanelChanges').length)
+    for (const delay of [50, 100, 140]) {
+      await doubleTap(page, delay)
+      await expect(page.locator(speechSelector)).toBeVisible()
+      await page.waitForTimeout(300)
+      await expect(badge).toHaveAttribute('aria-expanded', String(initiallyOpen))
+    }
+    expect(await page.evaluate(() => Reflect.get(window, 'badgePanelChanges').length)).toBe(before)
+    // These are deliberately beyond the short double-click window. They must
+    // each toggle, even when native MouseEvent.detail still counts a double.
+    await badge.click({ force: true })
+    await page.waitForTimeout(260)
+    await expect(badge).toHaveAttribute('aria-expanded', String(!initiallyOpen))
+    await badge.click({ force: true })
+    await page.waitForTimeout(260)
+    await expect(badge).toHaveAttribute('aria-expanded', String(initiallyOpen))
   }
-  expect(await page.evaluate(() => Reflect.get(window, 'badgePanelChanges'))).toEqual([])
-  await badge.press('Enter')
-  await expect(panel).toBeVisible()
-  await badge.evaluate(() => { Reflect.get(window, 'badgePanelChanges').length = 0 })
-  await badge.dblclick({ delay: 60 })
-  await badge.dblclick({ delay: 60 })
-  await page.waitForTimeout(850)
-  await badge.dblclick({ delay: 180 })
-  await expect(panel).toBeVisible()
-  expect(await page.evaluate(() => Reflect.get(window, 'badgePanelChanges'))).toEqual([])
-  await panel.press('Escape')
-  await badge.press('Space')
-  await expect(panel).toBeVisible()
-  expect(gameplayRequests).toEqual([])
+  const changes = await page.evaluate(() => Reflect.get(window, 'badgePanelChanges'))
+  for (const change of changes) { expect(change.delay).toBeGreaterThanOrEqual(180); expect(change.delay).toBeLessThan(330) }
+  await panel.getByRole('button', { name: '关闭面板', exact: true }).click()
+  await expect(panel).toBeHidden()
+  await badge.click({ force: true })
+  await badge.press('Escape')
+  await page.waitForTimeout(260)
+  await expect(panel).toBeHidden()
+  expect(gameplay).toEqual([])
 })
 
-test('a double tap starts comments, further taps sink older rows, then hover and single click recover', async ({ page }) => {
+test('separate lines visibly fall on screen, keep a full exit runway, and fade for displacement and expiry', async ({ page }) => {
   await bootInstalledLiangxiang(page)
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   const badge = page.locator(badgeSelector)
   const tooltip = page.locator(tooltipSelector)
   await badge.hover()
   await expect.poll(() => tooltip.evaluate(el => getComputedStyle(el).opacity)).toBe('1')
-  await badge.dblclick({ delay: 50 })
-  await expect(page.locator(lineSelector)).toHaveCount(1)
+  await badge.press('Enter')
+  await playBurst(page)
+  await expect(page.locator(activeRows)).toHaveCount(3)
+  for (const text of await page.locator(activeLines).allTextContents()) expect(SQUISH_LABELS).toContain(text)
+  await page.waitForTimeout(340)
+  const oldest = await page.locator(activeRows).last().getAttribute('data-liangxiang-danmu-row')
+  const retiring = page.locator(`[data-liangxiang-danmu-row="${oldest}"]`)
+  const beforeY = (await retiring.boundingBox())!.y
+  await playBurst(page, 1)
+  await expect(retiring).toHaveAttribute('data-exiting', 'true')
+  await page.waitForTimeout(240)
+  const opacity = await retiring.evaluate(el => Number(getComputedStyle(el).opacity))
+  expect(opacity).toBeGreaterThan(0)
+  expect(opacity).toBeLessThan(1)
+  expect((await retiring.boundingBox())!.y).toBeGreaterThan(beforeY + 2)
+  const bounds = (await page.locator(speechSelector).boundingBox())!
+  const exitBounds = (await retiring.boundingBox())!
+  expect(exitBounds.y + exitBounds.height).toBeLessThanOrEqual(bounds.y + bounds.height + 1)
+  expect(await page.locator(speechSelector).evaluate(el => getComputedStyle(el).overflow)).toBe('visible')
+  await expect(retiring).toHaveCount(0)
+  await expect(page.locator(activeRows)).toHaveCount(3)
+  await assertSpeechFits(page)
   await expect.poll(() => tooltip.evaluate(el => getComputedStyle(el).opacity)).toBe('0')
-  const firstRow = await page.locator('[data-liangxiang-danmu-row]').getAttribute('data-liangxiang-danmu-row')
-  await page.waitForTimeout(160)
-  await badge.click()
-  await expect(page.locator(lineSelector)).toHaveCount(2)
-  await expect(page.locator(`[data-liangxiang-danmu-row="${firstRow}"]`)).toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 30)')
-  await page.waitForTimeout(160)
-  await badge.click()
-  await expect(page.locator(lineSelector)).toHaveCount(3)
-  for (const text of await page.locator(lineSelector).allTextContents()) expect(SQUISH_LABELS).toContain(text)
-  await badge.click({ clickCount: 8, delay: 20 })
-  expect(await page.locator(lineSelector).count()).toBeLessThanOrEqual(3)
-  await assertFeedbackFits(page)
-  await expect(page.locator(lineSelector)).toHaveCount(0, { timeout: 4_000 })
-  await expect(tooltip).toHaveText('今日梁相')
+  await expect(page.locator(speechSelector)).toHaveCount(0, { timeout: 4_000 })
   await expect.poll(() => tooltip.evaluate(el => getComputedStyle(el).opacity)).toBe('1')
-  await badge.click()
   await expect(page.locator(panelSelector)).toBeVisible()
-  await badge.click()
-  await expect(page.locator(panelSelector)).toBeHidden()
 })
 
-test('hover centers when possible and aligns only at actual left/right edges', async ({ page }) => {
+test('ordinary hover still centers when possible and clamps only at actual edges', async ({ page }) => {
   await bootInstalledLiangxiang(page)
   const width = page.viewportSize()!.width
   const badge = page.locator(badgeSelector)
@@ -117,43 +151,87 @@ test('hover centers when possible and aligns only at actual left/right edges', a
       const anchor = (await badge.boundingBox())!
       expect(Math.abs(box.x + box.width / 2 - anchor.x - anchor.width / 2)).toBeLessThan(1)
     }
-    await badge.dblclick({ delay: 50 })
-    await expect(page.locator('[data-liangxiang-danmu]')).toHaveAttribute('data-align', align)
-    await assertFeedbackFits(page)
   }
 })
 
-test('comments avoid the actual open panel at both corners and the middle', async ({ page }) => {
+test('independent falling lines stay within the panel column at every dock', async ({ page }) => {
   await bootInstalledLiangxiang(page)
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   const badge = page.locator(badgeSelector)
   const viewport = page.viewportSize()!
   await badge.press('Enter')
-  await expect(page.locator(panelSelector)).toBeVisible()
-  for (const [x, y] of [[12, viewport.height - 98], [viewport.width - 60, 12], [viewport.width / 2, 420]]) {
+  for (const [x, y] of [[12, viewport.height - 98], [viewport.width - 60, 12], [12, viewport.height - 60], [viewport.width / 2, 420]]) {
     await dragBadge(page, x!, y!)
-    await badge.dblclick({ delay: 60 })
-    await expect(page.locator(lineSelector).first()).toBeVisible()
-    await page.waitForTimeout(250)
-    await assertFeedbackFits(page)
+    await playBurst(page)
+    await page.waitForTimeout(230)
+    await expect(page.locator(speechSelector)).toHaveCount(1)
+    await assertSpeechFits(page)
+    expect(await page.locator(activeRows).count()).toBeLessThanOrEqual(3)
     await expect(page.locator(panelSelector)).toBeVisible()
-    if (x === 12) {
-      const panelBox = (await page.locator(panelSelector).boundingBox())!
-      const lane = (await page.locator('[data-liangxiang-danmu]').boundingBox())!
-      expect(lane.x - panelBox.x - panelBox.width).toBeGreaterThanOrEqual(9)
-      expect(lane.x - panelBox.x - panelBox.width).toBeLessThanOrEqual(11)
-    }
   }
-  await page.screenshot({ path: test.info().outputPath('badge-danmu.png') })
+  await page.screenshot({ path: test.info().outputPath('badge-speech.png') })
 })
 
-test('the whole badge rebounds while a drag stays quiet and cancels a pending toggle', async ({ page }) => {
+test('the main panel stays at identical coordinates throughout a burst and every exit frame', async ({ page }) => {
+  await bootInstalledLiangxiang(page)
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.locator(badgeSelector).press('Enter')
+  const panel = page.locator(panelSelector)
+  await panel.evaluate(element => {
+    const first = element.getBoundingClientRect()
+    const sample = { count: 0, maximum: 0, running: true }
+    Object.assign(window, { stationaryPanel: sample })
+    const frame = () => {
+      const current = element.getBoundingClientRect()
+      sample.maximum = Math.max(sample.maximum, Math.abs(first.x - current.x), Math.abs(first.y - current.y), Math.abs(first.width - current.width), Math.abs(first.height - current.height))
+      sample.count++
+      if (sample.running) requestAnimationFrame(frame)
+    }
+    requestAnimationFrame(frame)
+  })
+  await playBurst(page)
+  await page.waitForTimeout(340)
+  await playBurst(page, 1)
+  await expect(page.locator(speechSelector)).toHaveCount(0, { timeout: 4_000 })
+  const samples = await page.evaluate(() => {
+    const sample = Reflect.get(window, 'stationaryPanel')
+    sample.running = false
+    return { count: sample.count, maximum: sample.maximum }
+  })
+  expect(samples.count).toBeGreaterThan(30)
+  expect(samples.maximum).toBeLessThan(.1)
+})
+
+test('all live speech remains readable and opaque in the installed theme', async ({ page }) => {
+  await bootInstalledLiangxiang(page)
+  const badge = page.locator(badgeSelector)
+  await badge.press('Enter')
+  await playBurst(page)
+  await expect(page.locator(activeRows)).toHaveCount(3)
+  const ratios = await page.locator(speechSelector).evaluate(element => {
+    const ctx = document.createElement('canvas').getContext('2d')!
+    const rgb = (color: string): number[] => {
+      ctx.clearRect(0, 0, 1, 1); ctx.fillStyle = color; ctx.fillRect(0, 0, 1, 1)
+      return [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3)
+    }
+    const luminance = (values: number[]): number => values.map(v => {
+      const s = v / 255; return s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4
+    }).reduce((sum, v, index) => sum + v * [0.2126, 0.7152, 0.0722][index]!, 0)
+    return [...element.querySelectorAll('[data-exiting="false"]')].map(row => {
+      const line = row.querySelector('[data-liangxiang-danmu-line]')!
+      const bg = luminance(rgb(getComputedStyle(line).backgroundColor))
+      const fg = luminance(rgb(getComputedStyle(line).color))
+      return { contrast: (Math.max(fg, bg) + .05) / (Math.min(fg, bg) + .05), opacity: getComputedStyle(row).opacity }
+    })
+  })
+  for (const row of ratios) { expect(row.contrast).toBeGreaterThanOrEqual(4.5); expect(row.opacity).toBe('1') }
+})
+
+test('the whole badge rebounds and sounds only for a confirmed tap, never a drag', async ({ page }) => {
   await page.addInitScript(() => {
     const parameter = { setValueAtTime() {}, exponentialRampToValueAtTime() {} }
     Object.defineProperty(window, 'AudioContext', { value: class {
-      currentTime = 0
-      state = 'running'
-      destination = {}
+      currentTime = 0; state = 'running'; destination = {}
       createOscillator() {
         return { frequency: parameter, connect() {}, stop() {}, start() {
           const root = document.documentElement
@@ -167,7 +245,6 @@ test('the whole badge rebounds while a drag stays quiet and cancels a pending to
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   const badge = page.locator(badgeSelector)
   const tones = () => page.evaluate(() => Number(document.documentElement.dataset.liangxiangTestTones ?? 0))
-  await badge.click()
   const before = await tones()
   const box = (await badge.boundingBox())!
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -176,16 +253,16 @@ test('the whole badge rebounds while a drag stays quiet and cancels a pending to
   await page.mouse.move(box.x + 130, box.y - 70, { steps: 8 })
   await page.mouse.up()
   await expect(badge).not.toHaveAttribute('data-squish-release')
-  await page.waitForTimeout(500)
   await expect(page.locator(panelSelector)).toBeHidden()
   expect(await tones()).toBe(before)
   await badge.click()
   await expect(badge).toHaveAttribute('data-squish-release', 'true')
+  await expect(page.locator(panelSelector)).toBeVisible()
   expect(await tones()).toBe(before + 1)
   await expect(badge).not.toHaveAttribute('data-squish-release', { timeout: 2_000 })
 })
 
-test('cancel and keyboard activation clear pending gestures; reduced motion keeps feedback still', async ({ page }) => {
+test('cancel stays quiet; keyboard is immediate and reduced motion keeps speech still', async ({ page }) => {
   await bootInstalledLiangxiang(page)
   const badge = page.locator(badgeSelector)
   const box = (await badge.boundingBox())!
@@ -195,20 +272,20 @@ test('cancel and keyboard activation clear pending gestures; reduced motion keep
   await page.mouse.up()
   await expect(badge).not.toHaveAttribute('data-squish-pressed')
   await expect(badge).not.toHaveAttribute('data-squish-release')
-  await page.waitForTimeout(500)
   await expect(page.locator(panelSelector)).toBeHidden()
-  await badge.click()
-  await badge.press('Escape')
-  await page.waitForTimeout(500)
-  await expect(page.locator(panelSelector)).toBeHidden()
-  await badge.click()
   await badge.press('Enter')
   await expect(page.locator(panelSelector)).toBeVisible()
-  await page.waitForTimeout(500)
+  await badge.press('Space')
+  await expect(page.locator(panelSelector)).toBeHidden()
+  await badge.press('Enter')
   await expect(page.locator(panelSelector)).toBeVisible()
-  await badge.dblclick({ delay: 50 })
-  await expect(page.locator(lineSelector).first()).toBeVisible()
+  await expect(page.locator(speechSelector)).toHaveCount(0)
+  await playBurst(page, 1)
+  await expect(page.locator(speechSelector)).toBeVisible()
   expect(await badge.evaluate(el => getComputedStyle(el).transform)).toBe('none')
   expect(await badge.evaluate(el => el.getAnimations().length)).toBe(0)
   expect(await page.locator('[data-liangxiang-feedback]').evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0)
+  await page.locator(panelSelector).press('Escape')
+  await expect(page.locator(panelSelector)).toBeHidden()
+  await expect(page.locator(speechSelector)).toHaveCount(0)
 })

@@ -67,6 +67,8 @@ export default defineConfig([
     outDir: 'lib',
     format: 'cjs',
     platform: 'browser',
+    // Preserve the externally supplied DSH CommonJS bindings; do not compress expressions.
+    minify: { compress: false, mangle: { reserved: ['module', 'exports', 'require'] }, codegen: { removeWhitespace: true, legalComments: 'inline' } },
     dts: false,
     sourcemap: true,
     clean: false,

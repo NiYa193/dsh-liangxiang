@@ -8,7 +8,7 @@
  */
 import { DomainError, assertCount } from './errors.ts'
 import { assertBusinessDate, type BusinessDate } from './case.ts'
-import { deriveLiangziState, type LiangziState } from './liangzi.ts'
+import { deriveLiangziState, liangziPolicyForVersion, LIANGZI_POLICY_VERSION, type LiangziState, type LiangziThresholdPolicy } from './liangzi.ts'
 
 export const LIANG_ARCHIVE_SCHEMA_VERSION = 1
 export const LIANG_ARCHIVE_AGGREGATION_POLICY_VERSION = 'liang-archive-v1-weighted-counts'
@@ -74,6 +74,7 @@ export interface LiangHistoryArchive {
 
 export interface TemporaryLiangPeriod extends LiangArchiveResult {
   kind: 'week' | 'month'
+  liangziPolicyVersion: string
   periodId: string
   startDate: BusinessDate
   endDate: BusinessDate
@@ -148,6 +149,7 @@ export function deriveArchiveResult(
   upVotes: number,
   downVotes: number,
   uniqueVoters = 0,
+  policy?: LiangziThresholdPolicy,
 ): LiangArchiveResult {
   assertCount(upVotes, 'invalid_vote_count', 'upVotes')
   assertCount(downVotes, 'invalid_vote_count', 'downVotes')
@@ -163,7 +165,7 @@ export function deriveArchiveResult(
     totalIncense,
     upRatio: totalIncense === 0 ? null : upVotes / totalIncense,
     downRatio: totalIncense === 0 ? null : downVotes / totalIncense,
-    liangziState: deriveLiangziState(upVotes, downVotes),
+    liangziState: deriveLiangziState(upVotes, downVotes, policy),
   }
 }
 
@@ -185,6 +187,12 @@ export function sumDayArchives(
     }
   }
   return deriveArchiveResult(upVotes, downVotes, uniqueVoters)
+}
+
+/** Periods use the latest covered day's rule; raw counts, never tier averages, are summed. */
+export function archiveLiangziPolicyVersion(days: readonly Pick<LiangDayArchive, 'businessDate' | 'liangziPolicyVersion'>[]): string {
+  return days.reduce<(typeof days)[number] | undefined>((latest, day) =>
+    latest === undefined || day.businessDate >= latest.businessDate ? day : latest, undefined)?.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION
 }
 
 /** One-install / demo-seed proxy: do not multiply the same pilgrims across days. */
@@ -211,11 +219,11 @@ function temporaryPeriod(
       && day.businessDate < businessDate)
     .sort((left, right) => left.businessDate.localeCompare(right.businessDate))
   const summed = sumDayArchives(included)
-  const result = uniqueVoters === undefined
-    ? summed
-    : deriveArchiveResult(summed.upVotes, summed.downVotes, uniqueVoters)
+  const liangziPolicyVersion = archiveLiangziPolicyVersion(included)
+  const result = deriveArchiveResult(summed.upVotes, summed.downVotes, uniqueVoters ?? summed.uniqueVoters, liangziPolicyForVersion(liangziPolicyVersion))
   return {
     kind,
+    liangziPolicyVersion,
     periodId,
     startDate: bounds.startDate,
     endDate: bounds.endDate,
