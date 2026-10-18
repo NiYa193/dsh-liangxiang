@@ -123,7 +123,7 @@ pnpm run dev:install     # 构建 + 装入 liangxiang-dev profile（含模块图
 pnpm run dev:web         # 启动 WebUI，默认 http://127.0.0.1:3080
 ```
 
-Node 22.23.1 + pnpm 11.7.0 是下方“临时干净 Profile”自动化的审计基线，不是日常 `dev:install` / `dev:web` 的启动门禁。已经工作的本机开发工具链不应被仓库脚本主动拦截。
+Node 22.23.1 + pnpm 11.28.5 是下方“临时干净 Profile”自动化的审计基线，不是日常 `dev:install` / `dev:web` 的启动门禁。已经工作的本机开发工具链不应被仓库脚本主动拦截。
 
 右缘会出现一个圆形入口，图标就是当前梁子状态，悬停显示 `今日梁相`；可以拖到任意位置。
 

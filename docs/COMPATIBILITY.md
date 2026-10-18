@@ -13,7 +13,7 @@
 | DSH tag / commit | dsh-v0.2.1-rc.2 / 687f282e86 |
 | Cordis | 4.0.5 |
 | Session 持久化格式 | 4，取自 SessionHeader.version |
-| 验证运行时 | Node 22.23.1 / pnpm 11.7.0 |
+| 验证运行时 | Node 22.23.1 / pnpm 11.28.5 |
 | 上游源码工具链 | Node ^22.19.0 或 >=24；pnpm 11.28.5 |
 
 2026-10-18 查询时，DSH CLI 的 npm `latest` 为 0.2.0-rc.2，`next` 为

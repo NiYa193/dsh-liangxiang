@@ -1063,6 +1063,40 @@ the current client release.
 
 ### Git (HARD RULE — 每次修复都必须 commit + push)
 
+Privacy is a publication gate. Never publish private workflow/conversation
+labels, internal task identifiers, personal home paths, private contact data,
+or credentials in files, commit metadata/messages, PR descriptions or comments.
+Use the public GitHub handle and GitHub noreply email for maintained commits.
+Run `node scripts/install-privacy-hooks.mjs` once per clone; it installs shared
+pre-commit, commit-msg and pre-push checks for all worktrees. Never bypass them.
+Run `node scripts/ci/check-privacy.mjs --message <file>` on externally posted
+text before publishing it. Required upstream CI includes `privacy`.
+Policies use phrase digests; do not add private literals as rules or fixtures.
+Historical cleanup must preserve code and third-party attribution. Changes
+to protected published history require a prepared mapping/backup and explicit
+approval for the force update; never silently rewrite another active checkout.
+
+Community collaboration (approved 2026-10-19): upstream
+`liang-today/dsh-liangxiang` has two long-lived branches, `dev` and `main`.
+Every developer, including the maintainer, works in a personal fork. The local
+`origin` and default push remote must be the fork; `upstream` fetches the
+community repository and has a disabled push URL. Independent concurrent
+agents use separate worktrees/directories, never change each other's checkout.
+Submit feature PRs to upstream `dev`; after required CI and maintainer review,
+an administrator merges them. Authors cannot approve their own GitHub PRs;
+the single-maintainer setup uses manual administrator merge, not a claim of
+independent approval. See `CONTRIBUTING.md` and `docs/CI.md`.
+
+Personal fork pushes use local Codex verification only. Cloud CI runs on PRs
+to upstream dev/main, never on personal pushes or duplicate post-merge pushes.
+
+Only the trusted nightly controller promotes a frozen dev batch to main after
+full PR checks. Its temporary `automation/promote-*` branch is deleted after
+the attempt. Never force-push, bypass branch protection, copy a personal CLI
+token into CI, or put repository-write credentials in PR test jobs. Scheduled
+source merges do not authorize npm publication, Release/Tag, or deployment.
+Main workflow bootstrap/repair PRs remain explicit maintainer operations.
+
 After every completed change in this repository, **before considering the
 task done**:
 
