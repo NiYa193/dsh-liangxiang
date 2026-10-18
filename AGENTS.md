@@ -514,10 +514,10 @@ overrides. Stored or received rule metadata must not change these rates.
 Host sends the same rule data to Client for its tooltip. Details:
 `docs/INCENSE_POLICY.md`.
 
-Streaming usage is provisional: final `assistant/message` replaces its latest
-sample; `llm/retry` / `step/end` closes a failed/interrupted attempt with its
-last provider sample. A durable per-session settlement cursor prevents replay,
-restart and mode-switch double credit. First observations fence inherited and
+Streaming usage is provisional: current DSH's durable `assistant/message` or
+`assistant/attempt` settles the attempt from its final provider sample. Legacy
+chunks wait for a message, `llm/retry` or `step/end`. A durable per-session
+settlement cursor prevents replay, restart and mode-switch double credit. First observations fence inherited and
 pre-upgrade history. Never estimate missing usage or use a timer as finality.
 Daily 10-stick gifts remain in the existing accounting/UI, with no separate
 gift row or section.

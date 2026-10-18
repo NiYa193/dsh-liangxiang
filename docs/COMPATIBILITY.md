@@ -72,7 +72,8 @@ window.__ModuleLoader__.load({ id, factory }) 和 CJS factory 包装。
 
 ## 验证边界
 
-徽标与 DSH 适配的验证见 `PR6_REVIEW.md`；小难梁增量验证见 `ISSUE2_IMPLEMENTATION.md`。类型检查通过
+徽标与 DSH 适配的验证见 `PR6_REVIEW.md`；PR #7 的漏算回归、会话迁移/重启及 CI 处理见
+`PR7_REVIEW.md`；小难梁增量验证见 `ISSUE2_IMPLEMENTATION.md`。类型检查通过
 不代表安装/浏览器兼容；只有完成的真实 Profile、localhost Backend 和浏览器
 检查才记为已验证。未来未知 DSH 版本仍需重读接口并重复相关验证。
 
