@@ -1,6 +1,6 @@
 # 日终上香与刷新节奏
 
-2026-10-19；源码候选 1.2.0-rc.7。日终方案收敛自社区 Issues
+2026-10-19；源码候选 1.2.0-rc.8。日终方案收敛自社区 Issues
 [#3](https://github.com/liang-today/dsh-liangxiang/issues/3)、
 [#5](https://github.com/liang-today/dsh-liangxiang/issues/5)；刷新修复对应
 [#4](https://github.com/liang-today/dsh-liangxiang/issues/4)。
@@ -59,12 +59,12 @@ bootstrap 成功后采用后端值，切换模式与重新 bootstrap 后跟随�
 悬停绕开后端减负。显式打开面板仍能立即刷新。保留 additive wire 契约，旧客户端
 和旧 Host 的滚动升级路径不因删除字段而中断。
 
-## 验证
+## 验证入口
 
-- `pnpm run verify`：55 个文件、642 项单元/集成测试通过，包含真实签名 HTTP 日终投票、Host 时钟偏移、DST、手动请求与长按前保护、取消、重启/不确定回执重放、存储故障、日切与模式隔离。
-- 最终 tarball 在全新隔离 Profile 完成 72 项桌面/窄屏/实际暗色浏览器检查：71 通过、1 项按宿主窄屏设计跳过。新增日终操作覆盖右键不投票、长按先通知 Host、取消不扣香、跨标签页同步及工具匣 Axe WCAG A/AA。
-- 18 项 CI 控制器/隐私规则测试通过；客户端 617,020 B / gzip 397,292 B，仍在既有预算内。
-- `pnpm run smoke:online`：真实 tarball、隔离 DSH Host、HTTP/SQLite 在线链路通过；同一请求重复只扣一次，50 个并发请求争抢最后一炷只接受一个，快照与软信任门禁通过。
-- 本机隔离 Profile 已切到 rc.7，Backend 健康标识为 `1.2.0-rc.7-u1`。切换前完成备份，重启后对照梁案、个人香火、投票、统计、身份和档案，业务数据保持一致；SQLite `quick_check=ok`。
-- 对本机实际运行页重新加载后确认客户端为 rc.7，并分别在浅色、实际深色下点击开启和关闭、悬停显示说明、移开隐藏说明；偏好可读回，既有余额和已用香火不变。不可用与保存中有明确状态，避免旧页或连接尚未就绪时表现为无反馈。
-- rc.6 的徽标、弹幕布局及主面板固定契约不在本轮重新设计；其已验收源码保留在独立的个人 fork 工作分支。
+- `tests/day-end.spec.ts`：默认关闭、右键不启用、23:59 窗口、长手动请求后的 2 秒等待、异步准备再检查、长按取消、同意图重启重放、存储故障、窗口内恢复、跨日不补投和模式隔离。
+- `tests/host-backend.spec.ts`：无浏览器的 Host 通过真实签名 HTTP/SQLite 执行日终意图，校正 Host 时钟偏移并采用服务端时区。
+- `tests/storage.spec.ts`、`tests/host-routes.spec.ts`：偏好/回执持久化、显式操作与严格输入边界。
+- `tests/browser/day-end.spec.ts`：真实安装包中的开/关、右键方向、悬停说明、长按先通知 Host、取消不扣香、跨标签页一致及可访问性。
+
+完整候选的类型、lint、单元/集成、安装包浏览器、在线链路与隐私验证集中记录于
+[`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md)，不把模拟时钟回归描述为整夜公网实测。
