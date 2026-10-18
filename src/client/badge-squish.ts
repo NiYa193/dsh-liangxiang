@@ -11,8 +11,10 @@ export const SQUISH_LABELS = [
 ] as const
 
 export const SQUISH_COMMENT_GAP_MS = 140
+/** Only releases within this window form one play gesture. */
+export const SQUISH_DOUBLE_MS = 200
 export const SQUISH_LABEL_LINGER_MS = 2_400
-export const SQUISH_EXIT_MS = 200
+export const SQUISH_EXIT_MS = 420
 export const SQUISH_MAX_ROWS = 3
 export const SQUISH_ANIM_MS = 680
 

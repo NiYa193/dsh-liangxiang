@@ -12,23 +12,21 @@ describe('badge feedback geometry', () => {
   it('keeps speech beside the badge and inside the panel column', () => {
     const panel = { x: 12, y: 342, width: 256, height: 350 }
     const result = placeBadgeSpeech({ x: 12, y: 702 }, viewport, 160, panel)!
-    expect(result).toEqual({ x: 70, y: 670, width: 160, capacity: 3, tail: 'left', tailY: 56, lift: 32 })
+    expect(result).toEqual({ x: 70, y: 705, width: 160, capacity: 3, height: 86, align: 'start' })
     expect(result.x + result.width).toBeLessThanOrEqual(panel.x + panel.width)
-    expect(result.y).toBeGreaterThan(panel.y + panel.height - result.lift)
+    expect(result.y).toBeGreaterThan(panel.y + panel.height)
   })
   it('uses the inside of the right dock and reduces rows at top/bottom edges', () => {
     const right = placeBadgeSpeech({ x: 1140, y: 702 }, viewport, 160, { x: 932, y: 342, width: 256, height: 350 })!
-    expect(right.tail).toBe('right')
+    expect(right.align).toBe('end')
     expect(right.x).toBeGreaterThanOrEqual(932)
     expect(right.x + right.width).toBeLessThan(1140)
     const limited = placeBadgeSpeech({ x: 12, y: 420 }, viewport, 160, { x: 12, y: 30, width: 256, height: 380 })!
-    expect(limited.capacity).toBe(2)
-    expect(limited.lift).toBe(10)
-    expect(30 - limited.lift).toBeGreaterThanOrEqual(8)
+    expect(limited.capacity).toBe(3)
+    expect(limited.y).toBe(423)
     const top = placeBadgeSpeech({ x: 12, y: 12 }, viewport, 160, { x: 12, y: 70, width: 256, height: 714 })!
     expect(top.capacity).toBe(1)
-    expect(top.lift).toBe(0)
-    expect(top.y + 36).toBeLessThanOrEqual(70)
+    expect(top.y + top.height).toBeLessThanOrEqual(70)
   })
   it('declines speech if the available width cannot hold it', () => {
     expect(placeBadgeSpeech({ x: 12, y: 12 }, { width: 90, height: 70 }, 160, null)).toBeNull()
@@ -44,7 +42,7 @@ describe('speech presence', () => {
     const before = reconcileBadgeComments([], [c, b, a], 3, 0)
     const after = reconcileBadgeComments(before, [d, c, b], 3, 100)
     expect(after.filter(row => row.exitingAt === undefined)).toHaveLength(3)
-    expect(after.find(row => row.id === a.id)).toMatchObject({ slot: 3, exitingAt: 100 })
+    expect(after.find(row => row.id === a.id)).toMatchObject({ slot: 2.85, exitingAt: 100 })
     expect(reconcileBadgeComments(after, [d, c, b], 3, 100 + SQUISH_EXIT_MS - 1)).toHaveLength(4)
     expect(reconcileBadgeComments(after, [d, c, b], 3, 100 + SQUISH_EXIT_MS)).toHaveLength(3)
   })
@@ -52,15 +50,15 @@ describe('speech presence', () => {
     const before = reconcileBadgeComments([], [a], 3, 0)
     const after = reconcileBadgeComments(before, [], 3, 2400)
     expect(after).toHaveLength(1)
-    expect(after[0]).toMatchObject({ exitingAt: 2400, slot: 0.45 })
-    expect(reconcileBadgeComments(after, [], 3, 2600)).toEqual([])
+    expect(after[0]).toMatchObject({ exitingAt: 2400, slot: 0.85 })
+    expect(reconcileBadgeComments(after, [], 3, 2400 + SQUISH_EXIT_MS)).toEqual([])
   })
   it('bounds live and exiting rows during continuous play', () => {
     let rows = reconcileBadgeComments([], [c, b, a], 3, 0)
     for (let id = 4; id < 100; id++) {
       rows = reconcileBadgeComments(rows, [id, id - 1, id - 2].map(id => ({ id, text: 'x', createdAt: id * 140 })), 3, id * 140)
       expect(rows.filter(row => row.exitingAt === undefined)).toHaveLength(3)
-      expect(rows.length).toBeLessThanOrEqual(5)
+      expect(rows.length).toBeLessThanOrEqual(7)
     }
   })
 })

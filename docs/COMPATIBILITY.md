@@ -7,7 +7,7 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 梁相版本 | 1.2.0-rc.4 |
+| 梁相版本 | 1.2.0-rc.8 |
 | 状态 | 本地测试候选，尚未公开发布/生产部署 |
 | DSH CLI / Web App / UI renderer/layout/slots | 0.2.1-rc.2（同一版本） |
 | DSH tag / commit | dsh-v0.2.1-rc.2 / 687f282e86 |
@@ -83,3 +83,12 @@ npm 无标签解析的 0.1.1-rc.2。该正式包仍有累计 max-HWM 的中间�
 
 社区身份和 Token 仍为 A3 软信任：安装密钥证明持钥连续性，不能验证 Token
 真实来源；浏览器余额、Context Occupancy 和估算值永远不是投票权威。
+
+## 日终设置兼容
+
+rc.7 复用现有公开 `storageDomain` 设置表与 Host 路由，未新增 DSH API 或依赖。
+已按同一 DSH commit 的 `storage/storage-domain/src/spec.ts`（DomainTableSpec）和
+`index.ts`（DomainFacility.open 的 valueSchema.parse）复核，新增设置行保留旧
+authorityPreference 字段。Host/Client 的 dayEnd 偏好为 additive 可选字段，旧 Host
+不提供时关闭新入口；Backend API 不增加字段，按其 server_time/业务时区安排本机
+定时，最终扣香仍由原有签名投票接口决定。具体行为见 `DAY_END_INCENSE.md`。

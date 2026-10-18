@@ -42,6 +42,7 @@ import {
 } from '../../host/community-keys.ts'
 import type { DailyUsageRecord, SessionUsageWatermark } from '../../host/usage-ledger.ts'
 import type { HostAuthorityPreference } from '../../shared/wire.ts'
+import { parseDayEndState, type DayEndPersistence, type DayEndState } from '../../shared/day-end.ts'
 import type { DshKvTable, DshOpenDomain, DshStorageDomainFacility, DshValueSchema } from './host-services.ts'
 
 export const LIANGXIANG_DOMAIN_NAME = 'liangxiang'
@@ -291,7 +292,7 @@ const monthArchiveSchema: DshValueSchema = {
 }
 
 const settingsSchema: DshValueSchema = {
-  parse(raw: unknown): { authorityPreference: HostAuthorityPreference, weightPolicies?: IncenseWeightPolicy[] } {
+  parse(raw: unknown): { authorityPreference: HostAuthorityPreference, weightPolicies?: IncenseWeightPolicy[], dayEnd?: DayEndState } {
     const record = asStoredRecord(raw)
     if (Array.isArray(record.weightPolicies) && record.weightPolicies.length <= 32) {
       return {
@@ -303,7 +304,7 @@ const settingsSchema: DshValueSchema = {
     if (preference !== 'online' && preference !== 'local') {
       throw new RecordShapeError('authorityPreference must be online/local')
     }
-    return { authorityPreference: preference }
+    return { authorityPreference: preference, ...(record.dayEnd === undefined ? {} : { dayEnd: parseDayEndState(record.dayEnd) }) }
   },
 }
 
@@ -400,7 +401,7 @@ export interface LiangxiangCorePersistencePort {
   deleteDailyUsage(businessDate: string): void
 }
 
-export interface LiangxiangSettingsPort {
+export interface LiangxiangSettingsPort extends DayEndPersistence {
   getAuthorityPreference(): HostAuthorityPreference | null
   setAuthorityPreference(preference: HostAuthorityPreference): Promise<void>
 }
@@ -494,6 +495,14 @@ export async function openLiangxiangPersistence(
   }
 
   const settings: LiangxiangSettingsPort = {
+    getDayEndState(): DayEndState | null {
+      const stored = settingsTable.get('day_end')
+      if (stored === undefined) return null
+      return (settingsSchema.parse(stored) as { dayEnd?: DayEndState }).dayEnd ?? null
+    },
+    async setDayEndState(dayEnd: DayEndState): Promise<void> {
+      await settingsTable.put('day_end', { authorityPreference: 'online', dayEnd: parseDayEndState(dayEnd) })
+    },
     getAuthorityPreference(): HostAuthorityPreference | null {
       const stored = settingsTable.get(SETTINGS_KEY)
       if (stored === undefined) return null

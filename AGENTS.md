@@ -21,15 +21,21 @@
   deployments, tests, or documentation.
 - 产品 UI/copy 中，中央角色统一称为 **梁子**；不直接使用现实人物姓名。
 - DSH WebUI entry name, accessible name and default Hover / Focus text: **今日梁相**.
-  Use one custom tooltip, never a competing native title popup. Pointer and
-  keyboard activation open immediately. Once open, pointer taps play; × / Escape
-  dismiss immediately. Never delay the primary action to classify double clicks.
-  Squash feedback is immediate; drag/cancel never plays a toy sound.
-  Comments share one connected speech surface beside the badge, inside the
-  panel's horizontal footprint and outside its content. At most three rows fit
-  the available height; newer rows push older rows down. Displaced and expired
-  rows both retain presence for a 200ms fade/slide before removal. Active text
-  stays readable in both themes; reduced motion removes displacement.
+  Use one custom tooltip, never a competing native title popup. Pointer single
+  click toggles the panel after a short 200ms classification window. Only taps
+  within that interval form a double/continuous play gesture; they never change
+  either the open or closed panel state. No separate long play/idle window.
+  Keyboard toggles, × and Escape respond immediately; drag/cancel clears pending
+  toggles and never plays a toy sound. Squash feedback is immediate.
+  Comments are separate lightweight lines, with no shared speech card or tail.
+  Keep them inside the panel's horizontal footprint and outside its content.
+  The main panel NEVER moves or changes its gap for toy feedback. Align the
+  speech area's top with the badge portrait and flow down into the adjacent
+  empty space; reduce rows when the viewport or a below-stacked panel limits it.
+  Fix the emission point throughout a burst so older rows truly fall on screen.
+  Up to three live rows fit the available height; displaced and expired rows
+  retain presence for a 420ms downward fade, with a full unclipped exit runway.
+  Live text stays readable in both themes; reduced motion removes displacement.
   Center the ordinary hint when it fits and clamp only at actual viewport edges.
   Hide it during presses/comments, then restore. No toy text may imply a balance
   change or introduce a tier. Keyboard activation never emits decorative speech.
@@ -172,16 +178,37 @@ incense.
   `进入梁祠`; both remain inside Region 4 and neither is a fifth region
 - routine Token claims, snapshots, reconnects and archive refresh are automatic;
   never present a routine manual-sync action
-- 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、核对香火、在线模式/离线模式、
+- 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、日终上香、在线模式/离线模式、
   当前版本. The mode action always means switching to the other mode and requires
   explicit confirmation; network failure, reconnect, refresh and backend restart
   must never invoke it. 当前版本 opens a compact version-information dialog; the sound
-  control has no long-press version gesture. `核对香火` is repair-only: it must warn that unconfirmed local
+  control has no long-press version gesture. `核对香火` remains under the collapsed
+  `显示异常？` repair entry, outside the four main tiles; it is repair-only: it must warn that unconfirmed local
   observation is discarded before rereading the server ledger
 - destructive identity reset does not belong in this lightweight drawer; it
   requires a separate flow with explicit consequences and confirmation
 - 进入梁祠 opens the read-only in-plugin calendar
 - 进入梁祠 is not a vote, operator control, or external GitHub Pages link
+
+### Opt-in day-end incense (Issues #3/#5)
+
+- Default off. The Host must be running; the browser may be closed. Use the
+  backend business clock/timezone online, the explicit local clock offline.
+- At 23:59 make one ordinary dump (at most VOTE_COUNT_MAX), respecting remaining
+  incense and the existing authority budget. This is best-effort, not a promise
+  to empty arbitrarily large balances. No per-stick queue, adaptive direction,
+  new vote type, privilege or rate-limit exemption.
+- Right-click / keyboard context menu on 夯 or 拉 only saves the default direction
+  and shows `日终默认夯/拉`. It never votes or enables the day-end switch.
+- Clicking the entire day-end tile toggles it; show `已开启` / `已关闭` and
+  `保存中…` while persisting. Keep timing, direction and running requirements
+  in its hover/focus tooltip, never as a permanent explanatory paragraph.
+- Serialize manual and automatic intents in the Host. Give active manual work
+  priority and wait 2s after it finishes; reread authority before the auto dump.
+- Persist the exact daily intent before sending. Uncertain/restart retries keep
+  its request ID, case, direction and count. Stop new attempts 5s before close;
+  do not replay yesterday into today. Keep separate online/local daily receipts.
+- Never weaken the backend's transaction, idempotency or business-date checks.
 
 ### Explicit online/offline separation
 
@@ -855,6 +882,9 @@ Rules:
 - the published global snapshot refreshes on a cadence, and that cadence is
   **near real time by default (1s)**: a voter must see their own vote move 梁位
   within about a second, otherwise the loop stops feeling like voting
+- online Host polling adopts the bootstrap cadence dynamically; local env is
+  the offline/startup fallback. The browser keeps SSE and uses cadence only to
+  throttle hover refresh; explicit panel-open refresh still bypasses it
 - a deployment may raise the cadence for load reasons, but a cadence slow enough
   that a vote produces no visible feedback is a product bug, not a tuning choice
 - no requirement for per-vote WebSocket broadcast in V0.1 (poll + SSE is enough)
@@ -1096,6 +1126,9 @@ the attempt. Never force-push, bypass branch protection, copy a personal CLI
 token into CI, or put repository-write credentials in PR test jobs. Scheduled
 source merges do not authorize npm publication, Release/Tag, or deployment.
 Main workflow bootstrap/repair PRs remain explicit maintainer operations.
+
+The accepted PR #6 follow-up is submitted as new commits on a personal fork
+work branch; do not create or reopen a PR for that batch.
 
 After every completed change in this repository, **before considering the
 task done**:
