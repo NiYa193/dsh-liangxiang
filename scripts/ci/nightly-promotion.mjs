@@ -1,7 +1,4 @@
-import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { appendFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -23,7 +20,8 @@ const summary = text => {
 export function apiClient(token, fetcher = fetch) {
   if (!token) throw new Error('GitHub authentication is missing');
   return async (path, method = 'GET', body) => {
-    const response = await fetcher(`https://api.github.com/repos/${REPOSITORY}/${path}`, {
+    const response = await fetcher(path === 'graphql' ? 'https://api.github.com/graphql'
+      : `https://api.github.com/repos/${REPOSITORY}${path ? '/' + path : ''}`, {
       method,
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2026-03-10' },
@@ -36,22 +34,37 @@ export function apiClient(token, fetcher = fetch) {
       error.status = response.status;
       throw error;
     }
-    return response.json();
+    const result = await response.json();
+    if (path === 'graphql' && result.errors?.length) throw new Error('GitHub rejected the protected atomic ref update');
+    return result;
   };
+}
+
+function assertOrder(comparison) {
+  if (!Number.isInteger(comparison.ahead_by) || !Number.isInteger(comparison.behind_by)) {
+    throw new Error('Invalid comparison response');
+  }
+  if (comparison.behind_by !== 0) throw new Error('dev must contain all main history before promotion');
+}
+
+async function snapshotChanged(api, base, head) {
+  const comparison = await api(`compare/${base}...${head}`);
+  assertOrder(comparison);
+  if (comparison.ahead_by === 0) return false;
+  const [main, dev] = await Promise.all([api(`git/commits/${base}`), api(`git/commits/${head}`)]);
+  return sha(main.tree?.sha) !== sha(dev.tree?.sha);
 }
 
 export async function plan(api) {
   const [baseRef, headRef] = await Promise.all([api('git/ref/heads/main'), api('git/ref/heads/dev')]);
   const base = sha(baseRef.object.sha), head = sha(headRef.object.sha);
-  const comparison = await api(`compare/${base}...${head}`);
-  if (!Number.isInteger(comparison.ahead_by)) throw new Error('Invalid comparison response');
-  return { base, head, changed: comparison.ahead_by > 0 };
+  return { base, head, changed: await snapshotChanged(api, base, head) };
 }
 
 export function assertPull(pr, state) {
   if (pr.state !== 'open' || pr.draft || pr.base.ref !== 'main' ||
       pr.base.repo.full_name !== REPOSITORY || pr.head.repo?.full_name !== REPOSITORY ||
-      pr.head.ref !== state.branch || pr.head.sha !== state.candidate) {
+      pr.head.ref !== state.branch || pr.head.sha !== state.head) {
     throw new Error('Batch PR changed; refusing to merge or alter it');
   }
 }
@@ -68,7 +81,7 @@ export function checkResult(runs, expectedSha) {
   return selected.every(check => check?.status === 'completed' && check.conclusion === 'success');
 }
 
-export async function waitAndMerge(api, checksApi, state, {
+export async function waitAndPromote(api, checksApi, state, {
   sleep = delay, attempts = 140,
 } = {}) {
   for (let attempt = 0; attempt < attempts; attempt++) {
@@ -96,27 +109,33 @@ export async function waitAndMerge(api, checksApi, state, {
       const mergeSha = sha(mergeRef.object.sha);
       // Validate the test merge's parents before accepting checks attached to it.
       const commit = await api(`git/commits/${mergeSha}`);
-      if (commit.parents?.[0]?.sha !== state.base || commit.parents?.[1]?.sha !== state.candidate) {
+      if (commit.parents?.[0]?.sha !== state.base || commit.parents?.[1]?.sha !== state.head) {
         throw new Error('GitHub test merge does not match this frozen batch');
       }
-      // Actions attaches PR check runs to the PR head, even though checkout uses
-      // the test merge. Our head already merges frozen main + dev; prove that
-      // its complete integration tree is exactly the test merge's tree.
-      const candidateCommit = await api(`git/commits/${state.candidate}`);
-      if (candidateCommit.parents?.[0]?.sha !== state.base || candidateCommit.parents?.[1]?.sha !== state.head
-          || !commit.tree?.sha || commit.tree.sha !== candidateCommit.tree?.sha) {
-        throw new Error('Batch ancestry or integration tree changed');
+      // main is an ancestor of frozen dev. The PR test merge must therefore
+      // contain exactly the files of that existing dev commit, with no changes.
+      const frozenCommit = await api(`git/commits/${state.head}`);
+      if (!commit.tree?.sha || commit.tree.sha !== frozenCommit.tree?.sha) {
+        throw new Error('Frozen dev and PR integration tree differ');
       }
-      const checks = await checksApi(`commits/${state.candidate}/check-runs?filter=latest&per_page=100`);
-      if (checkResult(checks.check_runs, state.candidate) && pr.mergeable_state === 'clean') {
-        // Strict branch protection rechecks the base and required checks atomically.
-        // The sha parameter also rejects a changed head. No admin/bypass flag exists here.
-        const result = await api(`pulls/${state.pr}/merge`, 'PUT', {
-          sha: state.candidate, merge_method: 'merge',
-          commit_title: `Merge nightly dev batch (${state.head.slice(0, 7)})`,
+      const checks = await checksApi(`commits/${state.head}/check-runs?filter=latest&per_page=100`);
+      if (checkResult(checks.check_runs, state.head) && pr.mergeable_state === 'clean') {
+        const dev = sha((await api('git/ref/heads/dev')).object.sha);
+        assertOrder(await api(`compare/${state.head}...${dev}`));
+        const clientMutationId = `nightly-${state.pr}`;
+        const result = await api('graphql', 'POST', {
+          query: 'mutation($input:UpdateRefsInput!) { updateRefs(input:$input) { clientMutationId } }',
+          variables: { input: { repositoryId: state.repositoryId, clientMutationId, refUpdates: [{
+            name: 'refs/heads/main', beforeOid: state.base, afterOid: state.head, force: false,
+          }] } },
         });
-        if (!result.merged) throw new Error('GitHub refused the protected merge');
-        return result.sha;
+        if (result.errors?.length || result.data?.updateRefs?.clientMutationId !== clientMutationId) {
+          throw new Error('GitHub refused the protected fast-forward');
+        }
+        if ((await api('git/ref/heads/main')).object.sha !== state.head) {
+          throw new Error('main did not advance to the verified dev commit');
+        }
+        return state.head;
       }
     }
     await sleep(15_000);
@@ -124,28 +143,31 @@ export async function waitAndMerge(api, checksApi, state, {
   throw new Error('Timed out waiting for all required PR checks');
 }
 
-export async function cleanup(api, state) {
+export async function cleanup(api, state, { sleep = delay, attempts = 10 } = {}) {
   if (!/^automation\/promote-\d+-\d+$/.test(state.branch ?? '')) throw new Error('Unexpected cleanup ref');
-  sha(state.candidate);
+  sha(state.head);
   if (state.pr) {
-    const pr = await api(`pulls/${state.pr}`);
+    let pr = await api(`pulls/${state.pr}`);
     if (pr.state === 'open') {
       assertPull(pr, state);
-      await api(`pulls/${state.pr}`, 'PATCH', { state: 'closed' });
+      if ((await api('git/ref/heads/main')).object.sha === state.head) {
+        // GitHub records an indirect fast-forward merge asynchronously. Do not
+        // race it by closing a successfully promoted PR as an abandoned batch.
+        for (let attempt = 0; attempt < attempts && pr.state === 'open'; attempt++) {
+          await sleep(1000);
+          pr = await api(`pulls/${state.pr}`);
+        }
+        if (pr.state === 'open') throw new Error('Fast-forward complete; PR bookkeeping pending, preserving its temporary ref');
+      } else {
+        await api(`pulls/${state.pr}`, 'PATCH', { state: 'closed' });
+      }
     }
   }
-  const ref = await api(`git/ref/heads/${state.branch}`);
-  if (ref.object.sha !== state.candidate) throw new Error('Temporary branch changed; keeping it for inspection');
+  let ref;
+  try { ref = await api(`git/ref/heads/${state.branch}`); }
+  catch (error) { if (error.status === 404) return; throw error; }
+  if (ref.object.sha !== state.head) throw new Error('Temporary branch changed; keeping it for inspection');
   await api(`git/refs/heads/${state.branch}`, 'DELETE');
-}
-
-function git(args, cwd, extraEnv = {}) {
-  const env = { ...process.env, ...extraEnv, GIT_TERMINAL_PROMPT: '0' };
-  delete env.GH_TOKEN;
-  delete env.CHECKS_TOKEN;
-  return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
-    cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 120_000,
-  }).trim();
 }
 
 export async function promote(api, checksApi) {
@@ -153,47 +175,24 @@ export async function promote(api, checksApi) {
   const run = process.env.GITHUB_RUN_ID, attempt = process.env.GITHUB_RUN_ATTEMPT;
   if (!/^\d+$/.test(run ?? '') || !/^\d+$/.test(attempt ?? '')) throw new Error('Invalid run identity');
   if ((await api('git/ref/heads/main')).object.sha !== base) throw new Error('main changed after snapshot');
-  const directory = mkdtempSync(join(tmpdir(), 'liangxiang-nightly-'));
-  let added = false;
-  try {
-    // Candidate files never replace the trusted controller checkout. No candidate
-    // package/script is executed in a process with the installation token.
-    git(['fetch', '--no-tags', 'origin', base, head]);
-    git(['worktree', 'add', '--detach', directory, base]);
-    added = true;
-    const identity = ['-c', 'user.name=liangxiang-nightly', '-c', 'user.email=ci@users.noreply.github.com'];
-    git([...identity, 'merge', '--no-ff', '--no-commit', head], directory);
-    // Separate integration merges can have different histories but the same
-    // resulting files. Preserve the no-change rule before creating any commit,
-    // remote branch or PR, including when main contains extra changes.
-    if (git(['write-tree'], directory) === git(['rev-parse', `${base}^{tree}`], directory)) {
-      summary('Frozen dev produces no changes to main; no batch PR or merge was created.');
-      return;
-    }
-    git([...identity, 'commit', '-m', `Prepare nightly batch from dev ${head}\n\nFrozen main: ${base}`], directory);
-    const candidate = sha(git(['rev-parse', 'HEAD'], directory));
-    const state = { base, head, candidate, branch: `automation/promote-${run}-${attempt}` };
-    const auth = Buffer.from(`x-access-token:${process.env.GH_TOKEN}`).toString('base64');
-    // Persist metadata before network writes so cancellation cleanup is recoverable.
-    writeFileSync(STATE, JSON.stringify(state));
-    git(['push', 'origin', `HEAD:refs/heads/${state.branch}`], directory, {
-      GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-      GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${auth}`,
-    });
-    const runUrl = `https://github.com/${REPOSITORY}/actions/runs/${run}`;
-    const pr = await api('pulls', 'POST', {
-      title: `Nightly: dev → main (${head.slice(0, 7)})`, head: state.branch, base: 'main',
-      body: `Frozen dev: ${head}\nFrozen main: ${base}\nCandidate: ${candidate}\n\nFull three-platform verification, packed installation, browser and isolated online checks must all succeed on this PR's test merge. New dev commits wait for the next batch.\n\nController: ${runUrl}\n\nThis merges source only; it does not publish packages, tags, releases or deployments.`,
-    });
-    state.pr = pr.number;
-    writeFileSync(STATE, JSON.stringify(state));
-    summary(`### Nightly batch\n- main: ${base}\n- dev: ${head}\n- Candidate: ${candidate}\n- PR: ${pr.html_url}`);
-    const merged = await waitAndMerge(api, checksApi, state);
-    summary(`- Merged commit: ${merged}`);
-  } finally {
-    if (added) git(['worktree', 'remove', '--force', directory]);
-    rmSync(directory, { recursive: true, force: true });
-  }
+  if (!await snapshotChanged(api, base, head)) { summary('No file changes; no batch branch or PR was created.'); return; }
+  const repository = await api('');
+  if (repository.full_name !== REPOSITORY || !repository.node_id) throw new Error('Unexpected repository');
+  const state = { base, head, repositoryId: repository.node_id, branch: `automation/promote-${run}-${attempt}` };
+  // No candidate code is checked out or executed with the App token. A frozen
+  // ref points to the existing dev commit; promotion never creates a commit.
+  writeFileSync(STATE, JSON.stringify(state));
+  await api('git/refs', 'POST', { ref: `refs/heads/${state.branch}`, sha: head });
+  const runUrl = `https://github.com/${REPOSITORY}/actions/runs/${run}`;
+  const pr = await api('pulls', 'POST', {
+    title: `Nightly: dev → main (${head.slice(0, 7)})`, head: state.branch, base: 'main',
+    body: `Frozen dev: ${head}\nFrozen main: ${base}\n\nFull three-platform verification, packed installation, browser and isolated online checks must all succeed on this PR's test merge. Its file tree must equal frozen dev. Then main fast-forwards to this existing commit with an atomic old-SHA check and force=false. New dev commits wait for the next batch. No promotion or reverse-sync commits are created.\n\nController: ${runUrl}\n\nThis promotes source only; it does not publish packages, tags, releases or deployments.`,
+  });
+  state.pr = pr.number;
+  writeFileSync(STATE, JSON.stringify(state));
+  summary(`### Nightly batch\n- main: ${base}\n- Frozen dev: ${head}\n- PR: ${pr.html_url}`);
+  const promoted = await waitAndPromote(api, checksApi, state);
+  summary(`- Fast-forwarded main: ${promoted}\n- New commits created: 0`);
 }
 
 async function main() {
