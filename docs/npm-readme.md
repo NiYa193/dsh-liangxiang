@@ -8,7 +8,7 @@
 
 ## Desktop（推荐）
 
-打开 **插件 → 发现**，搜索 **梁相** 或 `dsh-liangxiang`，点击安装。首次启用市场、添加可信目录及更新方法见[Desktop 指南](https://liang.today/guide/#desktop)。无需另装旧市场插件，不要用普通 npm CLI 修改 Desktop 独占的 Profile。
+打开 **插件 → 添加插件**，输入完整包名 **`dsh-liangxiang`**，点击 **安装 → 立即启用**。输入或搜索时必须使用完整包名；[三步图解](https://liang.today/guide/#desktop)。无需额外市场插件或索引配置，不要用普通 npm CLI 修改 Desktop 独占的 Profile。
 
 ## Cmd
 

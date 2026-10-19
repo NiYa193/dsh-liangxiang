@@ -1104,6 +1104,8 @@ the public handle; GitHub App operations use the App's bot identity. PR-list
 usernames alone do not verify commit author/committer metadata. If an operation
 cannot preserve the required public commit identity, explain the specific
 manual action to the user before proceeding; do not rename their Profile.
+An account-wide setting may be changed only when the user explicitly requests
+that specific setting and value; project maintenance is not such authorization.
 Run `node scripts/install-privacy-hooks.mjs` once per clone; it installs shared
 pre-commit, commit-msg and pre-push checks for all worktrees. Never bypass them.
 Run `node scripts/ci/check-privacy.mjs --message <file>` on externally posted

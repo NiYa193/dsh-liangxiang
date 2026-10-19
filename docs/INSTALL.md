@@ -1,19 +1,30 @@
 # 安装、升级与运行
 
-推荐使用 [DSH 官方 Desktop](https://www.deepseek.com/zh/harness/) 的内置插件市场。
+推荐使用 [DSH 官方 Desktop](https://www.deepseek.com/zh/harness/) 的内置插件安装入口。
 安装后页面边缘出现“今日梁相”；单击打开今日梁案，可拖动入口调整位置。
 公开正式包是 **dsh-liangxiang@1.1.6**，1.2.0 候选源码尚未正式发布。
 
 ## Desktop：应用内安装
 
-1. 打开 **插件 → 发现**。
-2. 搜索 **梁相** 或 `liangxiang`，核对包名为 `dsh-liangxiang`。
-3. 点击安装、确认来源，完成后选择 **立即启用**；按应用提示刷新或重启。
+### 1. 打开「添加插件」
 
-首次没有“发现”时，在 **插件 → 实验性插件 → 更多** 开启 **自定义插件市场**。
-DSH 不预置市场目录；空白页需添加你信任且收录梁相的索引源。
-也可直接在 **插件 → 添加插件** 输入 `dsh-liangxiang` 安装，无需命令行。
-详见 [DSH 官方市场说明](https://deepseek-harness.github.io/deepseek-harness/guide/plugin-market)。
+左侧点 **插件**，再点右上角 **添加插件**。
+
+![在 DSH Desktop 的插件页面打开添加插件](assets/install/desktop-add-plugin.jpg)
+
+### 2. 输入完整包名并安装
+
+输入 **`dsh-liangxiang`**，点击 **安装**。输入或搜索时都必须使用完整包名。
+
+![输入完整包名 dsh-liangxiang 并点击安装](assets/install/desktop-package-name.jpg)
+
+### 3. 立即启用
+
+安装完成后点 **立即启用**；页面边缘出现“今日梁相”即完成。若提示需要刷新或重启，按提示操作。
+
+![安装完成后点击立即启用](assets/install/desktop-enable-plugin.jpg)
+
+以上流程无需命令行、额外市场插件或索引配置。已有“发现”或社区市场入口时，同样搜索完整包名 `dsh-liangxiang`。
 
 更新与卸载在 **插件 → 已安装 → 梁相** 完成。若所用市场没有更新按钮，先卸载插件，再按原流程重新安装。
 卸载不删除本机香火账本；不要额外清理 DSH 的数据目录。升级后在 **梁相案牍 → 当前版本** 核对版本与更新说明。

@@ -12,13 +12,15 @@
 ![插件主面板](assets/plugin-panel.jpg)
 ![梁祠](assets/liangci.jpg)
 
-## Desktop：插件市场安装（推荐）
+## Desktop：应用内安装（推荐）
 
-1. 打开 DSH Desktop 的 **插件 → 发现**。
-2. 搜索 **梁相** 或 `dsh-liangxiang`。
-3. 点击安装，按应用提示完成加载；页面边缘出现“今日梁相”即装好。
+1. 打开 DSH Desktop 的 **插件 → 添加插件**。
+2. 输入完整包名 **`dsh-liangxiang`**，点击 **安装**。
+3. 安装完成后点击 **立即启用**；页面边缘出现“今日梁相”即装好。
 
-首次没有“发现”或搜索不到时，按[指南](https://liang.today/guide/#desktop)启用原生市场并添加可信市场索引。市场界面由 DSH 提供，目录来源由用户选择；不需要另装旧 `dshmarket`。
+![输入完整包名 dsh-liangxiang 后点击安装](docs/assets/install/desktop-package-name.jpg)
+
+输入或搜索时必须使用完整包名。更多截图见[三步安装图解](docs/INSTALL.md#desktop应用内安装)；无需另装市场插件或配置索引。
 
 Desktop 的 Profile 由桌面应用独占管理，使用应用内市场操作。不要用普通 npm CLI 写入 Desktop 的目录。
 
