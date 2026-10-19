@@ -43,6 +43,18 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.base_sha || github.sha }}
           fetch-depth: 0
+      - name: Require dev to contain main and main candidates to come from dev
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_BRANCH: ${{ github.base_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$BASE_BRANCH" = dev ]; then
+            git merge-base --is-ancestor origin/main HEAD
+          else
+            git merge-base --is-ancestor origin/main "$PR_HEAD_SHA"
+            git merge-base --is-ancestor "$PR_HEAD_SHA" origin/dev
+          fi
       - name: Build the frozen integration tree for a dry run
         if: inputs.head_sha != ''
         env:

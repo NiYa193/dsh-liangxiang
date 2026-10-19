@@ -9,6 +9,8 @@ Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CON
 - 个人 fork 不跑云端 CI，个人推送只做本地 Codex 验证；本人的 fork 已关闭 Actions。
   功能在向社区 dev 提 PR 时跑 CI，合入 dev/main 后不再重复触发同一轮 push 检查。
 - PR 默认目标为 `dev`，普通 `pull_request` 在 GitHub 生成的测试合并提交上运行。
+- `main` 必须是 `dev` 的祖先：日常开发时 dev 领先，批次验收后两者相同。
+  三平台门禁验证这一顺序；main 的候选提交必须已经存在于 dev 历史中。
 - `dev` 要求 `privacy` 与三个 `verify-locked (ubuntu-latest/windows-latest/macos-latest)` 检查；
   Node 22.23.1 / pnpm 11.28.5，锁文件安装，完整类型、lint、单元/后端、构建、体积验证。
 - CI 控制器和隐私门禁另有 Node 原生测试，覆盖主线推进、批次被改、假/缺/跳过检查和清理边界。
@@ -25,30 +27,35 @@ Release、Tag、Pages 或生产部署。贡献流程见 [CONTRIBUTING.md](../CON
 每天英国当地 00:00，`timezone: Europe/London` 自动跟随 GMT/BST。GitHub 定时运行
 可能延迟，尤其是整点；这是一项每日任务，不是精确到秒的定时承诺。
 
-1. 冻结当前 main 和 dev 的完整 SHA；dev 没有独有提交时直接结束。
-2. 专用 App 从 trusted main 启动控制器，在独立临时 worktree 合并这两个固定 SHA。
-   不在持有写凭据的进程中执行候选代码、安装脚本或测试。
-3. 创建短期 `automation/promote-<run>-<attempt>` 分支和 main 批次 PR；PR 的测试合并
-   运行上述必需检查，App 创建的 PR 正常触发 CI，无需每晚人工批准工作流。
-4. GitHub 把 PR 检查关联到候选 head。先确认候选的父提交恰为冻结的 main/dev，
-   再验证 GitHub 测试合并的父提交及文件树与该完整候选一致；只接受 Actions App
-   `15368` 在这一候选 SHA 上的全部真实 success。检查 PR 来源/目标/head 和 main
-   未变；main 变化、树不一致、冲突、失败或超时均停止。
-5. 通过标准 PR merge API 合并，指定冻结的 head，严格分支保护继续生效，不使用绕过。
-   新进入 dev 的提交留给下一批。长期分支使用 merge 保留来源历史，不反复 squash。
-6. 成功后或失败关闭批次 PR 后删除本次临时分支；分支被别人改动则拒绝删除并报错。
+1. 冻结 main/dev 完整 SHA，验证 dev 已包含 main 的全部历史；不满足就停止。
+   没有文件变化时直接结束，不创建分支、PR 或提交。
+2. 从 trusted main 启动专用 App 控制器。短期 `automation/promote-<run>-<attempt>`
+   分支直接指向冻结的 dev 提交，创建 main 验收 PR；不准备额外的批次合并提交。
+3. PR 的测试合并运行三平台、隐私、完整安装、浏览器和在线检查。验证测试合并的
+   双亲恰为冻结 main/dev，文件树与 dev 完全一致；只接受 Actions App `15368`
+   在冻结 dev SHA 上的全部真实 success。main 变化、候选被改、失败或超时均停止。
+4. 验证最新 dev 仍包含冻结提交。使用 GraphQL `updateRefs`，以冻结 main 为
+   `beforeOid`、冻结 dev 为 `afterOid`、`force: false`，原子快进 main。
+   保护规则继续生效，无绕过；main 在最后一刻变化也会被服务器拒绝。
+   新进入 dev 的提交留给下一批，不改 dev，也不新增晋级或反向同步提交。
+5. GitHub 自动将已快进的 PR 记为合并；控制器有界等待其完成登记后清理临时分支。
+   失败则关闭验收 PR 后清理；分支被别人改动则拒绝删除并报错。
    PR、检查、工作流摘要保留批次和提交记录。取消时也尝试清理；异常中断留下的分支
    必须按 PR 及 SHA 核实后人工清理，不得批量按名字删除。
 
-main 的 workflow bootstrap/修复须维护者明确操作；main 紧急修复需同步回 dev。
+功能及 CI 修复一律先进 dev。main 不接受独立修复或普通 merge/squash/rebase 晋级，
+只快进到已经验收的 dev 提交。首次迁移将旧 main 合并记录纳入 dev，保留已有历史。
+workflow bootstrap 须维护者明确操作并通过相同完整门禁，之后仍保持 main 是 dev 的祖先。
 nightly 并发串行、不取消正在执行的批次，也不锁住 dev 的日常 PR。
+控制器只读写 GitHub 元数据，不在持有写凭据的进程中检出或执行候选代码。
 
 控制器使用 REST API `2026-03-10`，先读取 PR 触发测试合并计算，再读取精确的
 `refs/pull/<PR>/merge`，继续验证其双亲与完整文件树。该版本已移除 PR 对象中的
 `merge_commit_sha`，不得依赖旧字段。测试引用暂未生成（404）时有界等待；其他 API
-错误立即停止，不能改用 head、base 或单独的 mergeable 状态替代测试合并树。
+错误立即停止，不能用单独的 mergeable 状态替代测试合并树。
 参见 [GitHub API 破坏性变更](https://docs.github.com/en/rest/about-the-rest-api/breaking-changes)
-和 [Git 引用接口](https://docs.github.com/en/rest/git/refs#get-a-reference)。
+和 [Git 引用接口](https://docs.github.com/en/rest/git/refs#get-a-reference)；
+原子旧 SHA 校验见 [GraphQL updateRefs](https://docs.github.com/en/graphql/reference/git#updaterefs)。
 
 ## 一次性 GitHub App 配置
 

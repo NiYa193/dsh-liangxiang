@@ -1130,11 +1130,15 @@ Personal fork pushes use local Codex verification only. Cloud CI runs on PRs
 to upstream dev/main, never on personal pushes or duplicate post-merge pushes.
 
 Only the trusted nightly controller promotes a frozen dev batch to main after
-full PR checks. Its temporary `automation/promote-*` branch is deleted after
-the attempt. Never force-push, bypass branch protection, copy a personal CLI
+full PR checks. Main must remain an ancestor of dev. Promotion atomically
+fast-forwards main to the existing verified dev SHA (`beforeOid`, `force: false`);
+never create promotion merge/squash/rebase or reverse-sync commits. Features
+and CI repairs enter dev first. Its temporary `automation/promote-*` branch is
+deleted after the attempt. Never force-push, bypass branch protection, copy a personal CLI
 token into CI, or put repository-write credentials in PR test jobs. Scheduled
 source merges do not authorize npm publication, Release/Tag, or deployment.
-Main workflow bootstrap/repair PRs remain explicit maintainer operations.
+The initial workflow migration is an explicit maintainer operation with the
+same full checks; preserve all existing published history.
 
 The accepted PR #6 follow-up is submitted as new commits on a personal fork
 work branch; do not create or reopen a PR for that batch.

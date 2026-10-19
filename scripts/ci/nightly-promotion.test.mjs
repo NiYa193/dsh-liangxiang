@@ -1,28 +1,41 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { apiClient, assertPull, checkResult, cleanup, plan, promote, REQUIRED, REPOSITORY, waitAndMerge } from './nightly-promotion.mjs';
+import { apiClient, assertPull, checkResult, cleanup, plan, promote, REQUIRED, REPOSITORY, waitAndPromote } from './nightly-promotion.mjs';
 
-const base = 'a'.repeat(40), head = 'b'.repeat(40), candidate = 'c'.repeat(40), merge = 'd'.repeat(40);
-const state = { base, head, candidate, pr: 42, branch: 'automation/promote-123-1' };
+const base = 'a'.repeat(40), head = 'b'.repeat(40), merge = 'c'.repeat(40), tree = 'd'.repeat(40);
+const state = { base, head, repositoryId: 'R_example', pr: 42, branch: 'automation/promote-123-1' };
 const pull = () => ({ state: 'open', draft: false, mergeable: true, mergeable_state: 'clean',
   base: { ref: 'main', sha: base, repo: { full_name: REPOSITORY } },
-  head: { ref: state.branch, sha: candidate, repo: { full_name: REPOSITORY } },
+  head: { ref: state.branch, sha: head, repo: { full_name: REPOSITORY } },
 });
-const passing = () => REQUIRED.map(name => ({ name, head_sha: candidate, app: { id: 15368 }, status: 'completed', conclusion: 'success' }));
-function scenario({ pr = pull(), main = base, checks = passing(), parents = [base, candidate],
-  candidateParents = [base, head], candidateTree = 'e'.repeat(40), merged = true } = {}) {
+const passing = () => REQUIRED.map(name => ({ name, head_sha: head, app: { id: 15368 }, status: 'completed', conclusion: 'success' }));
+function scenario({ pr = pull(), main = base, checks = passing(), parents = [base, head],
+  headTree = tree, dev = head, devBehind = 0, accepted = true } = {}) {
   const writes = [];
+  let updated = false;
   const api = async (path, method = 'GET', body) => {
-    if (method !== 'GET') { writes.push({ path, method, body }); return { merged, sha: merge }; }
+    if (method !== 'GET') {
+      writes.push({ path, method, body });
+      if (path === 'graphql') {
+        updated = accepted;
+        return accepted ? { data: { updateRefs: { clientMutationId: 'nightly-42' } } } : { errors: [{}] };
+      }
+      if (path === 'pulls') return { number: 42, html_url: 'https://github.com/example/repo/pull/42' };
+      return null;
+    }
+    if (path === '') return { full_name: REPOSITORY, node_id: state.repositoryId };
     if (path === 'pulls/42') return pr;
     if (path === 'git/ref/pull/42/merge') return { ref: 'refs/pull/42/merge', object: { type: 'commit', sha: merge } };
-    if (path === 'git/ref/heads/main') return { object: { sha: main } };
-    if (path === `git/commits/${merge}`) return { parents: parents.map(value => ({ sha: value })), tree: { sha: 'e'.repeat(40) } };
-    if (path === `git/commits/${candidate}`) return { parents: candidateParents.map(value => ({ sha: value })), tree: { sha: candidateTree } };
+    if (path === 'git/ref/heads/main') return { object: { sha: updated ? head : main } };
+    if (path === 'git/ref/heads/dev') return { object: { sha: dev } };
+    if (path === `git/commits/${merge}`) return { parents: parents.map(sha => ({ sha })), tree: { sha: tree } };
+    if (path === `git/commits/${head}`) return { tree: { sha: headTree } };
+    if (path === `git/commits/${base}`) return { tree: { sha: 'e'.repeat(40) } };
+    if (path === `compare/${base}...${head}`) return { ahead_by: 2, behind_by: 0 };
+    if (path === `compare/${head}...${dev}`) return { ahead_by: dev === head ? 0 : 1, behind_by: devBehind };
     if (path.startsWith('commits/')) return { check_runs: checks };
     throw new Error('Unexpected request: ' + path);
   };
@@ -30,218 +43,202 @@ function scenario({ pr = pull(), main = base, checks = passing(), parents = [bas
 }
 const once = { attempts: 1, sleep: async () => {} };
 
-test('different branch tips with no dev-only commits do not create a batch', async () => {
+test('unchanged tips create no batch', async () => {
   const calls = [];
   const result = await plan(async path => {
     calls.push(path);
     if (path === 'git/ref/heads/main') return { object: { sha: base } };
     if (path === 'git/ref/heads/dev') return { object: { sha: head } };
     assert.equal(path, `compare/${base}...${head}`);
-    return { ahead_by: 0 };
+    return { ahead_by: 0, behind_by: 0 };
   });
   assert.deepEqual(result, { base, head, changed: false });
   assert.equal(calls.length, 3);
 });
 
-test('plan freezes exact heads and identifies new dev commits', async () => {
-  const result = await plan(async path => path.startsWith('compare/') ? { ahead_by: 2 } :
-    { object: { sha: path.endsWith('main') ? base : head } });
-  assert.deepEqual(result, { base, head, changed: true });
+test('plan freezes exact heads and requires dev to include main', async () => {
+  assert.deepEqual(await plan(scenario().api), { base, head, changed: true });
+  const { api } = scenario();
+  await assert.rejects(plan(path => path.startsWith('compare/') ? { ahead_by: 2, behind_by: 1 } : api(path)), /dev must contain all main history/);
 });
 
-test('untrusted commit input fails before comparison or mutation', async () => {
+test('history-only updates do not create a batch', async () => {
+  assert.equal((await plan(scenario({ headTree: 'e'.repeat(40) }).api)).changed, false);
+});
+
+test('untrusted or malformed snapshot metadata fails before mutation', async () => {
   await assert.rejects(plan(async () => ({ object: { sha: 'dev; echo bad' } })), /complete commit SHA/);
+  const { api } = scenario();
+  await assert.rejects(plan(path => path.startsWith('compare/') ? { ahead_by: 1 } : api(path)), /Invalid comparison/);
 });
 
-test('only the frozen batch with all real successful merge checks can merge', async () => {
+test('successful verification atomically fast-forwards only main to frozen dev', async () => {
   const { api, writes } = scenario();
-  assert.equal(await waitAndMerge(api, api, state, once), merge);
-  assert.deepEqual(writes, [{ path: 'pulls/42/merge', method: 'PUT', body: {
-    sha: candidate, merge_method: 'merge', commit_title: 'Merge nightly dev batch (bbbbbbb)',
-  } }]);
+  assert.equal(await waitAndPromote(api, api, state, once), head);
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].path, 'graphql');
+  assert.deepEqual(writes[0].body.variables.input, {
+    repositoryId: state.repositoryId, clientMutationId: 'nightly-42', refUpdates: [{
+      name: 'refs/heads/main', beforeOid: base, afterOid: head, force: false,
+    }],
+  });
 });
 
-test('advancing main aborts without issuing a merge request', async () => {
+test('advancing main aborts without updating any ref', async () => {
   const { api, writes } = scenario({ main: 'e'.repeat(40) });
-  await assert.rejects(waitAndMerge(api, api, state, once), /main advanced/);
+  await assert.rejects(waitAndPromote(api, api, state, once), /main advanced/);
   assert.deepEqual(writes, []);
 });
 
-test('a changed PR head, repository or target is never merged', async () => {
-  for (const mutate of [
-    pr => { pr.head.sha = head; }, pr => { pr.head.repo.full_name = 'other/fork'; },
-    pr => { pr.base.ref = 'dev'; }, pr => { pr.draft = true; },
-  ]) {
+test('changed PR heads, forks, targets and drafts never promote', async () => {
+  for (const mutate of [pr => { pr.head.sha = base; }, pr => { pr.head.repo.full_name = 'other/fork'; },
+    pr => { pr.base.ref = 'dev'; }, pr => { pr.draft = true; }]) {
     const pr = pull(); mutate(pr);
     assert.throws(() => assertPull(pr, state), /Batch PR changed/);
     const { api, writes } = scenario({ pr });
-    await assert.rejects(waitAndMerge(api, api, state, once), /Batch PR changed/);
+    await assert.rejects(waitAndPromote(api, api, state, once), /Batch PR changed/);
     assert.deepEqual(writes, []);
   }
 });
 
-test('passing checks from a different merge tree cannot promote the batch', async () => {
-  const { api, writes } = scenario({ parents: [head, candidate] });
-  await assert.rejects(waitAndMerge(api, api, state, once), /test merge does not match/);
-  assert.deepEqual(writes, []);
+test('checks from a different test merge or file tree cannot promote', async () => {
+  for (const options of [{ parents: [head, base] }, { headTree: 'f'.repeat(40) }]) {
+    const { api, writes } = scenario(options);
+    await assert.rejects(waitAndPromote(api, api, state, once), /test merge does not match|integration tree differ/);
+    assert.deepEqual(writes, []);
+  }
 });
 
-test('candidate must merge the exact frozen main and dev commits', async () => {
-  const { api, writes } = scenario({ candidateParents: [base, 'f'.repeat(40)] });
-  await assert.rejects(waitAndMerge(api, api, state, once), /Batch ancestry or integration tree changed/);
-  assert.deepEqual(writes, []);
-});
-
-test('head checks cannot pass when the test merge contains different files', async () => {
-  const { api, writes } = scenario({ candidateTree: 'f'.repeat(40) });
-  await assert.rejects(waitAndMerge(api, api, state, once), /Batch ancestry or integration tree changed/);
-  assert.deepEqual(writes, []);
-});
-
-test('failure, skipped and neutral checks are not accepted as success', () => {
+test('failure, skipped and neutral checks never count as success', () => {
   for (const conclusion of ['failure', 'cancelled', 'skipped', 'neutral', 'timed_out']) {
     const checks = passing(); checks[0].conclusion = conclusion;
     assert.throws(() => checkResult(checks), /Required check failed/);
   }
 });
 
-test('missing, pending or impersonated checks block merging', async () => {
+test('missing, pending, impersonated and wrong-SHA checks block promotion', async () => {
   for (const mutate of [checks => checks.pop(), checks => { checks[0].status = 'in_progress'; },
-    checks => { checks[0].app.id = 999; }, checks => { checks[0].head_sha = head; }]) {
+    checks => { checks[0].app.id = 999; }, checks => { checks[0].head_sha = base; }]) {
     const checks = passing(); mutate(checks);
     const { api, writes } = scenario({ checks });
-    await assert.rejects(waitAndMerge(api, api, state, once), /Timed out/);
+    await assert.rejects(waitAndPromote(api, api, state, once), /Timed out/);
     assert.deepEqual(writes, []);
   }
 });
 
-test('checks can finish later without changing the frozen dev snapshot', async () => {
-  const { api, writes } = scenario();
+test('new dev commits remain on dev while only the frozen head promotes', async () => {
+  const { api, writes } = scenario({ dev: 'f'.repeat(40) });
   let polls = 0;
-  const checksApi = async path => { assert.ok(path.includes(candidate)); return { check_runs: ++polls === 1 ? [] : passing() }; };
-  assert.equal(await waitAndMerge(api, checksApi, state, { ...once, attempts: 2 }), merge);
+  const checks = async () => ({ check_runs: ++polls === 1 ? [] : passing() });
+  assert.equal(await waitAndPromote(api, checks, state, { ...once, attempts: 2 }), head);
+  assert.equal(writes[0].body.variables.input.refUpdates[0].afterOid, head);
+});
+
+test('dev losing the frozen history blocks main without touching dev', async () => {
+  const { api, writes } = scenario({ dev: base, devBehind: 1 });
+  await assert.rejects(waitAndPromote(api, api, state, once), /dev must contain all main history/);
+  assert.deepEqual(writes, []);
+});
+
+test('protection and atomic old-SHA rejections remain authoritative', async () => {
+  const { api, writes } = scenario({ accepted: false });
+  await assert.rejects(waitAndPromote(api, api, state, once), /refused the protected fast-forward/);
   assert.equal(writes.length, 1);
-  assert.equal(polls, 2);
 });
 
-test('GitHub remains the final authority when protection rejects the merge', async () => {
-  const { api } = scenario({ merged: false });
-  await assert.rejects(waitAndMerge(api, api, state, once), /refused the protected merge/);
-});
-
-test('cleanup closes an unsuccessful batch and deletes only its unchanged branch', async () => {
+test('cleanup closes failed receipts and deletes only its unchanged temporary ref', async () => {
   const writes = [];
   await cleanup(async (path, method = 'GET') => {
     if (method !== 'GET') { writes.push([path, method]); return null; }
-    return path.startsWith('pulls/') ? pull() : { object: { sha: candidate } };
+    return path.startsWith('pulls/') ? pull() : { object: { sha: path === 'git/ref/heads/main' ? base : head } };
   }, state);
   assert.deepEqual(writes, [['pulls/42', 'PATCH'], [`git/refs/heads/${state.branch}`, 'DELETE']]);
 });
 
-test('cleanup never deletes main, dev or a branch someone else changed', async () => {
+test('cleanup never deletes long-lived branches or changed temporary refs', async () => {
   await assert.rejects(cleanup(async () => assert.fail('must not access API'), { ...state, branch: 'dev' }), /Unexpected cleanup ref/);
   const writes = [];
   await assert.rejects(cleanup(async (path, method = 'GET') => {
     if (method !== 'GET') writes.push(method);
-    return path.startsWith('pulls/') ? { state: 'closed' } : { object: { sha: head } };
+    return path.startsWith('pulls/') ? { state: 'closed' } : { object: { sha: base } };
   }, state), /Temporary branch changed/);
   assert.deepEqual(writes, []);
+  await cleanup(async () => { throw Object.assign(new Error('Missing'), { status: 404 }); }, { ...state, pr: undefined });
 });
 
-test('API errors omit credentials and response bodies', async () => {
-  const api = apiClient('private-test-token', async () => ({ ok: false, status: 403, json: () => ({ secret: 'do not log' }) }));
+test('successful fast-forwards wait for GitHub to mark the receipt merged', async () => {
+  const writes = [];
+  let reads = 0;
+  await cleanup(async (path, method = 'GET') => {
+    if (method !== 'GET') { writes.push([path, method]); return null; }
+    if (path.startsWith('pulls/')) return ++reads === 1 ? pull() : { state: 'closed', merged: true };
+    return { object: { sha: head } };
+  }, state, once);
+  assert.deepEqual(writes, [[`git/refs/heads/${state.branch}`, 'DELETE']]);
+});
+
+test('REST and GraphQL errors omit credentials and response bodies', async () => {
+  const api = apiClient('private-test-token', async () => ({ ok: false, status: 403 }));
   await assert.rejects(api('pulls'), error => error.message === 'GitHub GET pulls: HTTP 403');
+  const graphql = apiClient('private-test-token', async () => ({ ok: true, json: () => ({ errors: [{ message: 'private body' }] }) }));
+  await assert.rejects(graphql('graphql', 'POST', {}), error => error.message === 'GitHub rejected the protected atomic ref update');
 });
 
-test('the HTTP client accepts the current PR response without the removed merge field', async () => {
+test('clients use the current REST contract and the GraphQL endpoint', async () => {
+  const urls = [];
   const api = apiClient('private-test-token', async (url, options) => {
-    assert.equal(url, `https://api.github.com/repos/${REPOSITORY}/pulls/42`);
+    urls.push(url);
     assert.equal(options.headers['X-GitHub-Api-Version'], '2026-03-10');
-    return { ok: true, status: 200, json: async () => pull() };
+    return { ok: true, json: () => pull() };
   });
-  const pr = await api('pulls/42');
-  assert.equal(Object.hasOwn(pr, 'merge_commit_sha'), false);
-  const scenarioApi = scenario({ pr });
-  assert.equal(await waitAndMerge(scenarioApi.api, scenarioApi.api, state, once), merge);
+  assert.equal(Object.hasOwn(await api('pulls/42'), 'merge_commit_sha'), false);
+  await api(''); await api('graphql', 'POST', {});
+  assert.deepEqual(urls, [`https://api.github.com/repos/${REPOSITORY}/pulls/42`,
+    `https://api.github.com/repos/${REPOSITORY}`, 'https://api.github.com/graphql']);
 });
 
-test('a not-yet-created test merge waits and then verifies the exact ref', async () => {
-  const { api, writes } = scenario();
-  let refReads = 0;
-  const pendingApi = async (...args) => {
-    if (args[0] === 'git/ref/pull/42/merge' && ++refReads === 1) {
-      throw Object.assign(new Error('Test merge pending'), { status: 404 });
-    }
+test('a missing test merge waits, but unexpected refs or access failures stop', async () => {
+  const { api } = scenario();
+  let reads = 0;
+  const pending = (...args) => {
+    if (args[0] === 'git/ref/pull/42/merge' && ++reads === 1) throw Object.assign(new Error('Pending'), { status: 404 });
     return api(...args);
   };
-  assert.equal(await waitAndMerge(pendingApi, api, state, { ...once, attempts: 2 }), merge);
-  assert.equal(refReads, 2);
-  assert.equal(writes.length, 1);
-});
-
-test('a different reference is never used as the PR test merge', async () => {
-  const { api, writes } = scenario();
-  const wrongRefApi = async (...args) => args[0] === 'git/ref/pull/42/merge'
-    ? { ref: 'refs/heads/main', object: { type: 'commit', sha: merge } } : api(...args);
-  await assert.rejects(waitAndMerge(wrongRefApi, api, state, once), /unexpected test-merge reference/);
-  assert.deepEqual(writes, []);
-});
-
-test('test-merge access failures abort instead of being treated as a pending merge', async () => {
-  const { api, writes } = scenario();
-  const deniedApi = async (...args) => {
+  assert.equal(await waitAndPromote(pending, api, state, { ...once, attempts: 2 }), head);
+  const next = scenario();
+  const wrongRef = (...args) => args[0] === 'git/ref/pull/42/merge'
+    ? { ref: 'refs/heads/main', object: { type: 'commit', sha: merge } } : next.api(...args);
+  await assert.rejects(waitAndPromote(wrongRef, next.api, state, once), /unexpected test-merge reference/);
+  const denied = (...args) => {
     if (args[0] === 'git/ref/pull/42/merge') throw Object.assign(new Error('Denied'), { status: 403 });
-    return api(...args);
+    return next.api(...args);
   };
-  await assert.rejects(waitAndMerge(deniedApi, api, state, once), /Denied/);
-  assert.deepEqual(writes, []);
+  await assert.rejects(waitAndPromote(denied, next.api, state, once), /Denied/);
 });
 
-test('a dev-only history change with no resulting file changes creates no commit, branch or PR', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'promotion-empty-'));
-  const previousDirectory = process.cwd();
+test('promotion creates a frozen ref and receipt, never a candidate commit or dev write', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'promotion-'));
+  const cwd = process.cwd();
   const variables = ['BASE_SHA', 'HEAD_SHA', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'GITHUB_STEP_SUMMARY'];
-  const previousEnvironment = Object.fromEntries(variables.map(key => [key, process.env[key]]));
-  const git = (...args) => execFileSync('git', ['-c', 'core.hooksPath=/dev/null', ...args], {
-    cwd: directory, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  const previous = Object.fromEntries(variables.map(key => [key, process.env[key]]));
   try {
-    git('init', '-b', 'main');
-    git('config', 'user.name', 'Test');
-    git('config', 'user.email', 'test@users.noreply.github.com');
-    writeFileSync(join(directory, 'fixture.txt'), 'initial\n');
-    git('add', '.'); git('commit', '-m', 'Initial fixture');
-    const common = git('rev-parse', 'HEAD');
-    writeFileSync(join(directory, 'fixture.txt'), 'main-only change\n');
-    git('commit', '-am', 'Main change');
-    const frozenMain = git('rev-parse', 'HEAD');
-    git('checkout', '-b', 'dev', common);
-    git('commit', '--allow-empty', '-m', 'Dev history checkpoint');
-    const frozenDev = git('rev-parse', 'HEAD');
-    git('checkout', 'main');
-    git('remote', 'add', 'origin', directory);
-    const refsBefore = git('show-ref');
-    const objectsBefore = git('rev-list', '--all', '--count');
-    process.chdir(directory);
-    Object.assign(process.env, { BASE_SHA: frozenMain, HEAD_SHA: frozenDev,
-      GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_STEP_SUMMARY: join(directory, 'summary.md') });
-    const calls = [];
-    await promote(async path => {
-      calls.push(path);
-      assert.equal(path, 'git/ref/heads/main');
-      return { object: { sha: frozenMain } };
-    }, async () => assert.fail('No remote checks should be requested'));
-    assert.deepEqual(calls, ['git/ref/heads/main']);
-    assert.equal(git('show-ref'), refsBefore);
-    assert.equal(git('rev-list', '--all', '--count'), objectsBefore);
-    assert.equal(git('rev-parse', 'HEAD'), frozenMain);
-    assert.equal(git('worktree', 'list', '--porcelain').split('worktree ').length - 1, 1);
-    assert.equal(existsSync(join(directory, '.git/nightly-promotion.json')), false);
+    mkdirSync(join(directory, '.git')); process.chdir(directory);
+    Object.assign(process.env, { BASE_SHA: base, HEAD_SHA: head, GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1' });
+    delete process.env.GITHUB_STEP_SUMMARY;
+    const { api, writes } = scenario({ dev: 'f'.repeat(40) });
+    await promote(api, api);
+    assert.deepEqual(writes.map(write => write.path), ['git/refs', 'pulls', 'graphql']);
+    assert.deepEqual(writes[0].body, { ref: `refs/heads/${state.branch}`, sha: head });
+    assert.equal(JSON.parse(readFileSync('.git/nightly-promotion.json')).head, head);
+    rmSync('.git/nightly-promotion.json');
+    const empty = scenario({ headTree: 'e'.repeat(40) });
+    await promote(empty.api, empty.api);
+    assert.deepEqual(empty.writes, []);
+    assert.equal(existsSync('.git/nightly-promotion.json'), false);
   } finally {
-    process.chdir(previousDirectory);
+    process.chdir(cwd);
     for (const key of variables) {
-      if (previousEnvironment[key] === undefined) delete process.env[key];
-      else process.env[key] = previousEnvironment[key];
+      if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key];
     }
     rmSync(directory, { recursive: true, force: true });
   }

@@ -94,7 +94,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
           permission-workflows: write
-      - name: Create a frozen batch, wait for real PR checks, then merge
+      - name: Verify a frozen dev commit, then atomically fast-forward main
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           CHECKS_TOKEN: ${{ github.token }}

@@ -45,7 +45,7 @@ DSH 最终请求用量
 | 连接 | Host 跟随后端 cadence；只过滤业务内容相同的 SSE 整帧，真实变化即时发送，见 [`CONNECTION_EFFICIENCY.md`](CONNECTION_EFFICIENCY.md) |
 | 更新说明 | 升级按版本显示一次，可从案牍重看；保留 QQ 二维码及社区贡献者鸣谢 |
 
-Desktop 通过原生“插件 → 发现”安装；命令行 WebUI 独立管理 Profile。首次市场设置、可信目录、升级和卸载见 [`INSTALL.md`](INSTALL.md)。
+Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxiang` 安装；命令行 WebUI 独立管理 Profile。安装图解、升级和卸载见 [`INSTALL.md`](INSTALL.md)。
 在线一直连不上时先排查 DSH Host 到社区的网络；部分地区可尝试代理，见 [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)。
 
 ## 实现位置
@@ -66,7 +66,8 @@ Desktop 通过原生“插件 → 发现”安装；命令行 WebUI 独立管理
 `smoke:browser-clean-profile`，权威/API 变化运行 `smoke:online`，提交和推送必须通过隐私门禁。
 完整候选验证、集成 CI 与提交证据集中记录在 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md)。
 
-个人 fork 开发并提交到上游 `dev`；受保护的 `main` 只接收经完整检查的固定合并批次。
+个人 fork 开发并提交到上游 `dev`；受保护的 `main` 只快进到经完整检查的固定 dev 提交。
+main 始终是 dev 的祖先，不新增晋级或反向同步提交；没有文件变化就跳过。
 三平台锁定依赖检查、隐私、安装与浏览器门禁及英国当地午夜流程以 [`CI.md`](CI.md) 为准。
 自动合并不构成 npm、Release、Tag 或生产部署授权，不绕过分支保护。
 

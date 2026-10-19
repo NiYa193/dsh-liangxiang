@@ -37,7 +37,9 @@ git push -u origin feat/your-change
 修订贡献者的方案时保留来源提交与署名，说明维护者修正，不替换贡献归属。
 合入 dev/main 代表源码集成；正式发布时再通知大家更新测试。
 
-每天英国午夜的 dev → main 批次、完整检查和权限说明见 [docs/CI.md](docs/CI.md)。
+每天英国午夜冻结 dev 做完整验收，通过后 main 只快进到该提交，不额外生成合并记录。
+因此 dev 始终包含 main：开发时领先，验收后相同。功能和 CI 修复都先提 dev；
+不得通过 main 独立开发、squash 或反复反向同步。完整检查和权限见 [docs/CI.md](docs/CI.md)。
 代码合入不触发 npm、Release/Tag 或部署，正式版本发布需单独确认。
 
 ## 分层红线
