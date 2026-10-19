@@ -1097,6 +1097,13 @@ Privacy is a publication gate. Never publish private workflow/conversation
 labels, internal task identifiers, personal home paths, private contact data,
 or credentials in files, commit metadata/messages, PR descriptions or comments.
 Use the public GitHub handle and GitHub noreply email for maintained commits.
+Configure this identity in repository-local Git settings, not account-wide
+settings. Personal GitHub Profile names belong to the account owner; never
+change them to satisfy a project's commit or CI policy. Maintainer commits use
+the public handle; GitHub App operations use the App's bot identity. PR-list
+usernames alone do not verify commit author/committer metadata. If an operation
+cannot preserve the required public commit identity, explain the specific
+manual action to the user before proceeding; do not rename their Profile.
 Run `node scripts/install-privacy-hooks.mjs` once per clone; it installs shared
 pre-commit, commit-msg and pre-push checks for all worktrees. Never bypass them.
 Run `node scripts/ci/check-privacy.mjs --message <file>` on externally posted
