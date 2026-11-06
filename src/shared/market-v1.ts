@@ -211,7 +211,7 @@ function parseBatch(value: unknown): MarketBatch {
     status: choice(v.status, ['pending', 'open', 'locked', 'live', 'settled', 'void'], 'batch status'),
     reference: nullablePoint(v.reference), long_incense: integer(v.long_incense, 'long pool'),
     short_incense: integer(v.short_incense, 'short pool'), position: position(v.position),
-    result: v.result === null ? null : choice(v.result, ['long', 'short', 'draw', 'void'], 'batch result') }
+    result: v.result === null ? null : choice<MarketResult>(v.result, ['long', 'short', 'draw', 'void'], 'batch result') }
 }
 
 export function parseMarketState(value: unknown): MarketState {
