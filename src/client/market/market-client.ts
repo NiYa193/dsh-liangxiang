@@ -133,7 +133,7 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
         chartKey = key
         void loadCandles()
       }
-      if (old?.market?.status === 'open' && market.status !== 'open') void session.loadHistory()
+      if (old?.market && (old.market.id !== market.id || (old.market.status === 'open' && market.status !== 'open'))) void session.loadHistory()
     }
   }
   const send = async (intent: MarketPositionRequest): Promise<void> => {

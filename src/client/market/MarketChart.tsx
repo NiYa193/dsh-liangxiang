@@ -1,4 +1,4 @@
-import { memo, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react'
+import { memo, useMemo, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react'
 import type { MarketCandle, MarketState, MarketBatch } from '../../shared/market-v1.ts'
 import { chartRange, marketRatioLabel, marketTime, pointRatio, positionMood } from './chart-model.ts'
 
@@ -6,6 +6,20 @@ export const MARKET_WHALE_PATH = '/liangxiang/api/market/art.webp'
 const WIDTH = 960, HEIGHT = 330, LEFT = 20, RIGHT = 78, TOP = 56, BOTTOM = 35
 const INK = 'var(--liangxiang-market-blue, #456bef)'
 const LIGHT_INK = 'color-mix(in srgb, var(--dsw-alias-label-primary, #172139) 68%, #6682c3)'
+
+const CandleLayer = memo(function CandleLayer({ candles, from, until, min, max }: { candles: MarketCandle[], from: number, until: number, min: number, max: number }): ReactElement {
+  const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * (WIDTH - LEFT - RIGHT)
+  const y = (ratio: number): number => TOP + (max - ratio) / (max - min) * (HEIGHT - TOP - BOTTOM)
+  const width = Math.max(1.2, Math.min(10, 240_000 / Math.max(1, until - from) * (WIDTH - LEFT - RIGHT)))
+  return <g>{candles.map(candle => {
+    if (candle.open === null || candle.close === null || candle.high === null || candle.low === null) return null
+    const cx = x(candle.at + 150_000), rising = candle.close >= candle.open
+    return <g key={candle.at} data-liangxiang-market-candle="">
+      <line x1={cx} x2={cx} y1={y(candle.high)} y2={y(candle.low)} stroke={INK} strokeWidth="1" />
+      <rect x={cx - width / 2} y={Math.min(y(candle.open), y(candle.close))} width={width} height={Math.max(1.3, Math.abs(y(candle.close) - y(candle.open)))} fill={rising ? INK : 'var(--dsw-alias-bg-layer-2, #fff)'} stroke={INK} strokeWidth="1" rx=".6" />
+    </g>
+  })}</g>
+})
 
 export function MarketWhale({ batch, state, small = false }: { batch: MarketBatch, state: MarketState, small?: boolean }): ReactElement {
   const mood = positionMood(batch, state.market?.close_point ?? state.current_point)
@@ -20,14 +34,14 @@ export function MarketWhale({ batch, state, small = false }: { batch: MarketBatc
 export const MarketChart = memo(function MarketChart({ state, candles, animated, recent = false }: { state: MarketState, candles: MarketCandle[], animated: boolean, recent?: boolean }): ReactElement {
   const [hover, setHover] = useState<number | null>(null)
   const market = state.market
-  const points = market ? [...market.batches.map(batch => batch.reference), market.close_point, state.current_point] : [state.current_point]
-  const range = chartRange(candles, points)
+  const points = useMemo(() => market ? [...market.batches.map(batch => batch.reference), market.close_point, state.current_point] : [state.current_point], [market, state.current_point])
+  const range = useMemo(() => chartRange(candles, points), [candles, points])
   const start = market ? Math.min(market.opens_at, candles[0]?.at ?? market.opens_at) : candles[0]?.at ?? state.server_time - 86_400_000
   const end = market?.closes_at ?? state.server_time
   const recentEnd = Math.min(end, Math.max(state.server_time, start + 14_400_000))
   const from = recent ? Math.max(start, recentEnd - 14_400_000) : start
   const until = recent ? recentEnd : end
-  const visible = candles.filter(c => c.at + 300_000 > from && c.at < until)
+  const visible = useMemo(() => candles.filter(c => c.at + 300_000 > from && c.at < until), [candles, from, until])
   const plotWidth = WIDTH - LEFT - RIGHT, plotHeight = HEIGHT - TOP - BOTTOM
   const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * plotWidth
   const y = (ratio: number): number => TOP + (range.max - ratio) / (range.max - range.min) * plotHeight
@@ -69,15 +83,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
           const at = from + (until - from) * index / 4
           return <text key={index} x={x(at)} y={HEIGHT - 12} textAnchor={index === 0 ? 'start' : 'middle'} fill={LIGHT_INK} fontSize="11">{marketTime(at, timezone)}</text>
         })}
-        {visible.map((candle, i) => {
-          if (candle.open === null || candle.close === null || candle.high === null || candle.low === null) return null
-          const cx = x(candle.at + 150_000), width = Math.max(1.2, Math.min(10, 240_000 / Math.max(1, until - from) * plotWidth))
-          const rising = candle.close >= candle.open
-          return <g key={candle.at} data-liangxiang-market-candle="" opacity={hover === null || hover === i ? 1 : .57}>
-            <line x1={cx} x2={cx} y1={y(candle.high)} y2={y(candle.low)} stroke={INK} strokeWidth="1" />
-            <rect x={cx - width / 2} y={Math.min(y(candle.open), y(candle.close))} width={width} height={Math.max(1.3, Math.abs(y(candle.close) - y(candle.open)))} fill={rising ? INK : 'var(--dsw-alias-bg-layer-2, #fff)'} stroke={INK} strokeWidth="1" rx=".6" />
-          </g>
-        })}
+        <CandleLayer candles={visible} from={from} until={until} min={range.min} max={range.max} />
         {visible.length === 0 && <text x={WIDTH / 2} y={HEIGHT / 2} textAnchor="middle" fill={LIGHT_INK} fontSize="14">等待第一段官方行情 · 不补画缺失的走势</text>}
         {market?.batches.map(batch => {
           const reference = pointRatio(batch.reference), at = batch.reference_at
