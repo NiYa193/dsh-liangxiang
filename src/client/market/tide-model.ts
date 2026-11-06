@@ -39,14 +39,45 @@ export function marketTideGaps(candles: readonly MarketCandle[]): TideGap[] {
   return gaps
 }
 
-/** This zero-order hold intentionally has no curved/interpolated price geometry. */
+/**
+ * Shape-preserving cubic Hermite drawing through the official close samples.
+ * Tangents are limited per interval so the decorative curve cannot overshoot
+ * either endpoint. Tooltips and settlement still use the original samples.
+ */
 export function marketTidePath(samples: readonly TideSample[], project: (sample: TideSample) => { x: number, y: number }, bottom: number): { line: string, area: string } {
   if (samples.length === 0) return { line: '', area: '' }
-  const first = project(samples[0]!), last = project(samples[samples.length - 1]!)
+  const points = samples.map(project)
+  const first = points[0]!, last = points[points.length - 1]!
+  const widths = points.slice(1).map((point, i) => point.x - points[i]!.x)
+  const slopes = widths.map((width, i) => width > 0 ? (points[i + 1]!.y - points[i]!.y) / width : 0)
+  const tangents = points.map((_, i) => {
+    if (i === 0) return slopes[0] ?? 0
+    if (i === points.length - 1) return slopes[i - 1] ?? 0
+    const before = slopes[i - 1]!, after = slopes[i]!
+    if (before * after <= 0) return 0
+    const previousWidth = widths[i - 1]!, nextWidth = widths[i]!
+    const w1 = 2 * nextWidth + previousWidth, w2 = nextWidth + 2 * previousWidth
+    return (w1 + w2) / (w1 / before + w2 / after)
+  })
+  for (let i = 0; i < slopes.length; i++) {
+    const slope = slopes[i]!
+    if (slope === 0) { tangents[i] = 0; tangents[i + 1] = 0; continue }
+    const magnitude = Math.hypot(tangents[i]! / slope, tangents[i + 1]! / slope)
+    if (magnitude > 3) {
+      const factor = 3 / magnitude
+      tangents[i] = factor * tangents[i]!
+      tangents[i + 1] = factor * tangents[i + 1]!
+    }
+  }
   let line = `M${first.x.toFixed(2)},${first.y.toFixed(2)}`
-  for (const sample of samples.slice(1)) {
-    const p = project(sample)
-    line += `H${p.x.toFixed(2)}V${p.y.toFixed(2)}`
+  for (let i = 1; i < points.length; i++) {
+    const before = points[i - 1]!, point = points[i]!, width = widths[i - 1]!
+    // At an exact bucket boundary the completed and forming samples can share
+    // a timestamp. Preserve both anchors without dividing by zero.
+    if (width <= 0) { line += `L${point.x.toFixed(2)},${point.y.toFixed(2)}`; continue }
+    const third = width / 3
+    line += `C${(before.x + third).toFixed(2)},${(before.y + tangents[i - 1]! * third).toFixed(2)} ${
+      (point.x - third).toFixed(2)},${(point.y - tangents[i]! * third).toFixed(2)} ${point.x.toFixed(2)},${point.y.toFixed(2)}`
   }
   return { line, area: samples.length < 2 ? '' : `${line}L${last.x.toFixed(2)},${bottom.toFixed(2)}L${first.x.toFixed(2)},${bottom.toFixed(2)}Z` }
 }

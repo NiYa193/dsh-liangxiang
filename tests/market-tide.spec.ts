@@ -19,10 +19,38 @@ describe('authoritative close-series geometry', () => {
     expect(segments.map(segment => segment.length)).toEqual([2, 1, 1])
     expect(marketTideGaps(candles)).toEqual([{ from: 2 * STEP, until: 3 * STEP }])
     const paths = segments.map(segment => marketTidePath(segment, p => ({ x: p.at / STEP, y: 100 - p.ratio * 100 }), 100))
-    expect(paths[0]!.line).toBe('M1.00,60.00H2.00V50.00')
-    expect(paths[0]!.line).not.toMatch(/[CQSA]/i)
+    expect(paths[0]!.line).toBe('M1.00,60.00C1.33,56.67 1.67,53.33 2.00,50.00')
+    expect(paths[0]!.line).not.toMatch(/[HV]/)
     expect(paths[1]!.area).toBe('')
+    expect(paths[1]!.line).toBe('M4.00,40.00')
     expect(paths[2]!.line.startsWith('M6.00')).toBe(true)
+  })
+  it('passes every sample without overshooting flat, steep or reversing intervals', () => {
+    const ratios = [.1, .2, .21, .9, .9, .3, .31, .01, .99]
+    const samples = ratios.map((ratio, i) => ({ at: i * 100, ratio }))
+    const path = marketTidePath(samples, p => ({ x: p.at, y: p.ratio * 100 }), 100)
+    const curves = [...path.line.matchAll(/C([\d.,\s-]+)/g)].map(match => match[1]!.trim().split(/[\s,]+/).map(Number))
+    expect(curves).toHaveLength(samples.length - 1)
+    for (let i = 0; i < curves.length; i++) {
+      const [x1, y1, x2, y2, x, y] = curves[i]!
+      expect(x).toBe(samples[i + 1]!.at)
+      expect(y).toBeCloseTo(ratios[i + 1]! * 100)
+      const previousX = samples[i]!.at, previousY = ratios[i]! * 100
+      for (let step = 0; step <= 40; step++) {
+        const t = step / 40, u = 1 - t
+        const cy = u ** 3 * previousY + 3 * u ** 2 * t * y1! + 3 * u * t ** 2 * y2! + t ** 3 * y!
+        const cx = u ** 3 * previousX + 3 * u ** 2 * t * x1! + 3 * u * t ** 2 * x2! + t ** 3 * x!
+        expect(cy).toBeGreaterThanOrEqual(Math.min(previousY, y!) - .01)
+        expect(cy).toBeLessThanOrEqual(Math.max(previousY, y!) + .01)
+        expect(cx).toBeGreaterThanOrEqual(previousX)
+        expect(cx).toBeLessThanOrEqual(x!)
+      }
+    }
+  })
+  it('preserves both samples at a shared bucket boundary without invalid geometry', () => {
+    const samples = marketTideSegments([candle(0, .4), candle(STEP, .6)], STEP)[0]!
+    expect(samples.map(p => p.at)).toEqual([STEP, STEP])
+    expect(marketTidePath(samples, p => ({ x: p.at / STEP, y: p.ratio * 100 }), 100).line).toBe('M1.00,40.00L1.00,60.00')
   })
   it('keeps zero-vote data empty instead of inventing a half-full pond', () => {
     expect(marketTideSegments([candle(0, null, 0, 0)], STEP)).toEqual([])

@@ -1,7 +1,7 @@
 import { createRequire } from 'node:module'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
-import { MarketChart } from '../src/client/market/MarketChart.tsx'
+import { CandleLayer, MarketChart } from '../src/client/market/MarketChart.tsx'
 import { marketBubbleDirection, marketDepthBands } from '../src/client/market/pond-model.ts'
 import { LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION } from '../src/domain/liangzi.ts'
 import type { MarketState } from '../src/shared/market-v1.ts'
@@ -20,17 +20,48 @@ function state(): MarketState {
 }
 
 describe('one decorative whale, independent official points', () => {
-  it('keeps an unpositioned portrait inside the scene at both water-level extremes', () => {
-    for (const up of [0, 100]) {
+  it('keeps a forming candle at or before the observation boundary', () => {
+    const start = DAY + 10 * HOUR
+    const candles = [{ at: start, open: .4, high: .5, low: .4, close: .5, up_votes: 10, down_votes: 10, volume: 0 }]
+    for (const elapsed of [0, 30_000, 150_000, 180_000]) {
+      const observedAt = start + elapsed
+      const html = renderToStaticMarkup(<svg><CandleLayer candles={candles} from={DAY} until={DAY + 24 * HOUR} min={0} max={1} observedAt={observedAt} /></svg>)
+      const x = Number(html.match(/<line x1="([^"]+)"/)![1])
+      const displayedAt = DAY + (x - 14) / 650 * 24 * HOUR
+      expect(displayedAt).toBeLessThanOrEqual(observedAt)
+      expect(displayedAt).toBe(Math.min(start + 150_000, observedAt))
+    }
+  })
+
+  it('shows the complete business day and reserves future hours without extending the tide', () => {
+    const s = state()
+    const candles = [{ at: DAY + 10 * HOUR, open: .4, high: .5, low: .4, close: .5, up_votes: 10, down_votes: 10, volume: 0 }]
+    const html = renderToStaticMarkup(<MarketChart state={s} candles={candles} animated={false} />)
+    expect(html).toContain(`data-liangxiang-market-from="${DAY}"`)
+    expect(html).toContain(`data-liangxiang-market-until="${DAY + 24 * HOUR}"`)
+    for (const label of ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']) expect(html).toContain(`>${label}</text>`)
+    expect(html).toContain('data-liangxiang-market-future=""')
+    expect(html).toContain('尚未发生')
+    // One observed close remains a dot; the future region has no invented area.
+    expect(html).not.toContain('data-liangxiang-market-tide-area')
+    expect(html).toContain('data-liangxiang-market-tide-segment="0"')
+    s.server_time = DAY + 25 * HOUR
+    expect(renderToStaticMarkup(<MarketChart state={s} candles={candles} animated={false} />)).not.toContain('data-liangxiang-market-future')
+  })
+
+  it('keeps positioned and unpositioned portraits inside the scene at both water-level extremes', () => {
+    for (const up of [0, 100]) for (const selectedBatch of [undefined, 1, 2] as const) {
       const s = state()
       s.current_point = { ...s.current_point!, up_votes: up, down_votes: 100 - up }
-      s.market!.batches = s.market!.batches.map(batch => ({ ...batch, position: null, reference: null }))
-      const html = renderToStaticMarkup(<MarketChart state={s} candles={[]} animated={false} />)
+      if (selectedBatch === undefined) s.market!.batches = s.market!.batches.map(batch => ({ ...batch, position: null, reference: null }))
+      const html = renderToStaticMarkup(<MarketChart state={s} candles={[]} animated={false} {...(selectedBatch === undefined ? {} : { selectedBatch })} />)
       const art = html.match(/<image data-liangxiang-market-whale-art=""[^>]+>/)![0]
       const top = Number(art.match(/\by="([^"]+)"/)![1])
       const height = Number(art.match(/\bheight="([^"]+)"/)![1])
       expect(top).toBeGreaterThanOrEqual(-30) // Space reserved inside the toolbar/frame.
       expect(top + height).toBeLessThanOrEqual(360)
+      expect(html).toContain('clip-path="url(#liangxiang-market-whale-scene)" data-liangxiang-market-whale-scene=""')
+      expect(html).toContain('<rect x="0" y="-30" width="760" height="348"')
     }
   })
 

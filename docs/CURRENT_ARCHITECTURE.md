@@ -47,7 +47,7 @@ DSH 最终请求用量
 | 功能 | 最终规则与资料 |
 |---|---|
 | 累计钱包（候选） | 可用/冻结分离、余额与 Token 余量跨日；每日统计独立，旧客户端需配套升级。见 [`MARKET_WALLET.md`](MARKET_WALLET.md) |
-| 香火交易（候选） | 每日三批延迟定线、午夜共同收盘；整数分池、官方五分钟行情、水塘分层与单批操作、动态/静态反馈。现行视觉见 [`MARKET_UI_COMPARISON.md`](MARKET_UI_COMPARISON.md) |
+| 香火交易（候选） | 每日三批延迟定线、午夜共同收盘；整数分池、官方五分钟行情、00–24 点平滑水线、局部鱼尾/发梢与水波动作、单批操作及动态/静态选择。现行视觉见 [`MARKET_UI_COMPARISON.md`](MARKET_UI_COMPARISON.md) |
 | 小难梁 | 有票且梁位 <25%；25%–<50% 为梁工。旧梁案和档案保留原规则，见 [`ISSUE2_IMPLEMENTATION.md`](ISSUE2_IMPLEMENTATION.md) |
 | 凝香 | Pro ×1；Flash、其他及未知 ×0.5；按每个请求最终用量结算。V4.1 路由与重试/迁移边界见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)、[`PR7_REVIEW.md`](PR7_REVIEW.md) |
 | 拍梁子 | 单击 200ms 判定开合；双击/连拍保持面板状态。主面板固定，独立三行短句下落渐隐，见 [`PR6_FEEDBACK_REDESIGN.md`](PR6_FEEDBACK_REDESIGN.md) |

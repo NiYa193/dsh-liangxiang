@@ -159,11 +159,11 @@ function BatchCard({ batch, state, now, pending, onSet, onInteract }: { batch: M
       <small>{payout === null ? '定线后看胜负' : batch.position.payout !== null ? `已返还 ${payout} 炷` : `若此刻收盘，预计返还 ${payout} 炷`}</small></div>}
     {editable ? <form onSubmit={event => { event.preventDefault(); if (!invalid && !pending) { setEditing(false); onSet(side, value) } }}>
       <div className="liangxiang-market-order"><div className="liangxiang-market-direction" role="group" aria-label={`P${batch.batch} 仓位方向`}>
-        <button type="button" aria-pressed={side === 'long'} disabled={pending} onClick={() => { setSide('long'); setEditing(true) }}>↗ 做多</button>
-        <button type="button" aria-pressed={side === 'short'} disabled={pending} onClick={() => { setSide('short'); setEditing(true) }}>↘ 做空</button>
+        <button type="button" aria-pressed={side === 'long'} disabled={pending} onClick={() => { setSide('long'); setEditing(true) }}><span className="liangxiang-market-button-face">↗ 做多</span></button>
+        <button type="button" aria-pressed={side === 'short'} disabled={pending} onClick={() => { setSide('short'); setEditing(true) }}><span className="liangxiang-market-button-face">↘ 做空</span></button>
       </div>
       <label className="liangxiang-market-amount"><span>投入</span><input type="number" inputMode="numeric" min="1" max={Math.min(MARKET_AMOUNT_MAX, maxAmount)} step="1" value={amount} disabled={pending} aria-label={`P${batch.batch} 总投入香火`} onChange={event => { setAmount(event.target.value); setEditing(true) }} /><span>炷</span></label>
-      <button className="liangxiang-market-primary" type="submit" disabled={invalid || pending}>{pending ? '确认中…' : batch.position ? '确认调整' : '确认投入'}</button>
+      <button className="liangxiang-market-primary" type="submit" disabled={invalid || pending}><span className="liangxiang-market-button-face">{pending ? '确认中…' : batch.position ? '确认调整' : '确认投入'}</span></button>
       {batch.position && <button className="liangxiang-market-withdraw" type="button" disabled={pending} onClick={() => { setEditing(false); onSet(null, 0) }}>撤回</button>}</div>
       <p className="liangxiang-market-order-hint">{invalid ? '请输入可用范围内的整炷香火。' : `投入即冻结 · ${marketTime(batch.locks_at, timezone)} 前可调整或撤回 · ${marketTime(batch.reference_at, timezone)} 定线`}</p>
     </form> : !batch.position && <p className="liangxiang-market-idle">{batch.status === 'pending' ? `${marketTime(batch.opens_at, timezone)} 再来，大肥鱼等你。` : '本批未持仓，也可以上香参与走势。'}</p>}
