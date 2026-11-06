@@ -108,6 +108,7 @@ export class LiangxiangBackendService {
     this.dates = createBusinessDateProvider(deps.config.timezone)
     this.warn = deps.warn ?? ((message) => console.warn(message))
     this.marketLedger = new MarketLedger(this.store, this.dates.timezone)
+    this.marketLedger.assertSupportedOpenMarkets()
     this.marketLedger.assertTokenThreshold(this.config.tokenPerIncense, this.businessDate())
     this.marketLedger.initializeWallets(this.businessDate(), this.clock.now())
   }

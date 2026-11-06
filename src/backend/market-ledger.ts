@@ -15,7 +15,7 @@ import { BackendConfigError } from './config.ts'
 
 interface WalletRow { installation_id: string, available: number, frozen: number, token_remainder: number, token_per_incense: number, version: number }
 interface CursorRow { claimed_tokens: number, minted_incense: number }
-interface MarketRow { id: string, case_id: string, business_date: string, timezone: string, opens_at: number, closes_at: number, status: DailyMarket['status'], close_point: string | null, created_at: number, settled_at: number | null, version: number }
+interface MarketRow { id: string, case_id: string, business_date: string, timezone: string, opens_at: number, closes_at: number, status: DailyMarket['status'], close_point: string | null, created_at: number, settled_at: number | null, version: number, rule_version: string }
 interface BatchRow { market_id: string, batch: MarketBatchId, opens_at: number, locks_at: number, reference_at: number, status: MarketBatch['status'], reference_point: string | null, result: MarketResult | null }
 interface PositionRow { id: number, market_id: string, batch: MarketBatchId, installation_id: string, side: MarketSide, amount: number, payout: number | null, created_at: number, updated_at: number }
 
@@ -25,6 +25,12 @@ export class MarketLedger {
   private readonly batchCache = new Map<string, { version: number, batches: BatchRow[] }>()
   constructor(private readonly store: BackendStore, private readonly timezone: string) {
     this.db = store.database
+  }
+
+  assertSupportedOpenMarkets(): void {
+    const unknown = this.db.prepare("SELECT rule_version FROM liang_market WHERE status='open' AND rule_version<>? LIMIT 1")
+      .get(MARKET_RULE_VERSION) as { rule_version: string } | undefined
+    if (unknown !== undefined) throw new BackendConfigError(`unsupported open market rule ${unknown.rule_version}; use a backend supporting the recorded policy`)
   }
 
   assertTokenThreshold(threshold: number, businessDate: string): void {
@@ -126,8 +132,8 @@ export class MarketLedger {
     const dates = createBusinessDateProvider(this.timezone)
     const closes = businessDayEndsAt(dates, marketBusinessHour(date, this.timezone, 12))
     const id = `market-${caseRow.id}`
-    this.db.prepare(`INSERT INTO liang_market(id,case_id,business_date,timezone,opens_at,closes_at,status,created_at)
-      VALUES (?,?,?,?,?,?,'open',?)`).run(id, caseRow.id, date, this.timezone, opens, closes, now)
+    this.db.prepare(`INSERT INTO liang_market(id,case_id,business_date,timezone,opens_at,closes_at,status,created_at,rule_version)
+      VALUES (?,?,?,?,?,?,'open',?,?)`).run(id, caseRow.id, date, this.timezone, opens, closes, now, MARKET_RULE_VERSION)
     const hours = [[9, 11, 12], [12, 17, 18], [18, 20, 21]] as const
     for (let i = 0; i < hours.length; i += 1) {
       const [open, lock, reference] = hours[i]!
@@ -146,6 +152,7 @@ export class MarketLedger {
   advance(now: number): void {
     const markets = this.db.prepare("SELECT * FROM liang_market WHERE status='open' ORDER BY closes_at").all() as unknown as MarketRow[]
     for (const market of markets) {
+      this.assertRule(market.rule_version)
       const caseRow = this.store.caseById(market.case_id)
       if (caseRow === undefined || (caseRow.status === 'closed' && now < market.closes_at)) {
         this.cancel(market.case_id, now)
@@ -196,6 +203,7 @@ export class MarketLedger {
   cancel(caseId: string, now: number): void {
     const market = this.marketForCase(caseId)
     if (market === undefined || market.status !== 'open') return
+    this.assertRule(market.rule_version)
     for (const batch of this.batches(market.id)) {
       if (batch.status !== 'void' && batch.status !== 'settled') this.settleBatch(market, batch, 'void', this.parsePoint(batch.reference_point), now)
     }
@@ -220,6 +228,7 @@ export class MarketLedger {
       reason: old.payload === payload ? old.reason : 'idempotency_conflict', request_id: request.request_id,
       state: this.state(installation, caseRow, now) }
     const market = this.marketForCase(caseRow.id)
+    if (market !== undefined) this.assertRule(market.rule_version)
     const batch = market === undefined ? undefined : this.batches(market.id).find(b => b.batch === request.batch)
     let reason: string | null = null
     if (market === undefined || market.id !== request.market_id || market.status !== 'open') reason = 'market_not_open'
@@ -313,6 +322,7 @@ export class MarketLedger {
       const invested = own.reduce((n, p) => n + p.amount, 0)
       const returned = own.reduce((n, p) => n + (p.payout ?? 0), 0)
       const receipt: MarketReceipt = { id: `${market.id}:receipt:${own[0]!.id}`, market_id: market.id,
+        rule_version: market.rule_version,
         business_date: market.business_date, settled_at: now, invested_incense: invested,
         returned_incense: returned, pnl_incense: returned - invested,
         close_point: this.parsePoint(market.close_point), batches: own.map(p => {
@@ -345,6 +355,7 @@ export class MarketLedger {
   }
 
   private view(market: MarketRow, installation: string): DailyMarket {
+    this.assertRule(market.rule_version)
     let shared = this.batchCache.get(market.id)
     if (shared === undefined || shared.version !== market.version) {
       shared = { version: market.version, batches: this.batches(market.id) }
@@ -354,7 +365,7 @@ export class MarketLedger {
     const ownRows = this.db.prepare('SELECT * FROM liang_market_position WHERE installation_id=? AND market_id=?')
       .all(installation, market.id) as unknown as PositionRow[]
     return { id: market.id, case_id: market.case_id, business_date: market.business_date, timezone: market.timezone,
-      rule_version: MARKET_RULE_VERSION, opens_at: market.opens_at, closes_at: market.closes_at,
+      rule_version: market.rule_version, opens_at: market.opens_at, closes_at: market.closes_at,
       status: market.status, close_point: this.parsePoint(market.close_point), batches: shared.batches.map(batch => {
         const pools = this.pools(market.id, batch.batch, market.version)
         const own = ownRows.find(p => p.batch === batch.batch)
@@ -369,6 +380,9 @@ export class MarketLedger {
   private point(caseId: string, at: number): MarketPoint {
     const stats = this.store.statsFor(caseId)
     return { case_id: caseId, at, up_votes: stats?.up_votes ?? 0, down_votes: stats?.down_votes ?? 0, sequence: stats?.version ?? 0 }
+  }
+  private assertRule(rule: string): asserts rule is typeof MARKET_RULE_VERSION {
+    if (rule !== MARKET_RULE_VERSION) throw new WireError('market.rule_version', 'unsupported recorded market rule; funds remain unchanged')
   }
   private walletRow(id: string): WalletRow | undefined { return this.db.prepare('SELECT * FROM incense_wallet WHERE installation_id=?').get(id) as unknown as WalletRow | undefined }
   private cursor(id: string, date: string): CursorRow | undefined { return this.db.prepare('SELECT * FROM incense_wallet_cursor WHERE installation_id=? AND business_date=?').get(id, date) as CursorRow | undefined }

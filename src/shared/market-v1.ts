@@ -122,6 +122,8 @@ export interface MarketReceiptBatch {
 export interface MarketReceipt {
   id: string
   market_id: string
+  /** Absent in early candidate receipts; never fabricated while reading them. */
+  rule_version?: string
   business_date: string
   settled_at: number
   invested_incense: number
@@ -297,7 +299,8 @@ export function parseMarketHistoryResponse(value: unknown): MarketHistoryRespons
     const receipt: MarketReceipt = { id: text(r.id, 'receipt id'), market_id: text(r.market_id, 'receipt market'),
       business_date: text(r.business_date, 'receipt date'), settled_at: integer(r.settled_at, 'receipt time'),
       invested_incense: integer(r.invested_incense, 'receipt invested'), returned_incense: integer(r.returned_incense, 'receipt returned'),
-      pnl_incense: integer(r.pnl_incense, 'receipt pnl', -Number.MAX_SAFE_INTEGER), close_point: nullablePoint(r.close_point), batches }
+      pnl_incense: integer(r.pnl_incense, 'receipt pnl', -Number.MAX_SAFE_INTEGER), close_point: nullablePoint(r.close_point), batches,
+      ...(r.rule_version === undefined ? {} : { rule_version: text(r.rule_version, 'receipt rule version') }) }
     if (receipt.pnl_incense !== receipt.returned_incense - receipt.invested_incense
       || batches.reduce((n, b) => n + b.amount, 0) !== receipt.invested_incense
       || batches.reduce((n, b) => n + b.payout, 0) !== receipt.returned_incense) throw new Error('inconsistent market receipt')

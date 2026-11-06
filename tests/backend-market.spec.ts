@@ -6,9 +6,9 @@ import { join } from 'node:path'
 import { LiangxiangBackendService } from '../src/backend/service.ts'
 import { MarketLedger } from '../src/backend/market-ledger.ts'
 import { openBackendStore } from '../src/backend/store.ts'
-import { migrate } from '../src/backend/schema.ts'
+import { BACKEND_SCHEMA_USER_VERSION, migrate } from '../src/backend/schema.ts'
 import { BackendConfigError, resolveBackendConfig } from '../src/backend/config.ts'
-import { parseMarketHistoryResponse, parseMarketState, type MarketPositionRequest } from '../src/shared/market-v1.ts'
+import { MARKET_RULE_VERSION, parseMarketHistoryResponse, parseMarketState, type MarketPositionRequest } from '../src/shared/market-v1.ts'
 import { createBackendFixture, createMutableClock, type BackendFixture } from './helpers/backend.ts'
 
 const A = 'market-wallet-a'
@@ -190,6 +190,48 @@ describe('three daily sealed pools', () => {
 })
 
 describe('wallet v11 migration and durable restart', () => {
+  it('migrates a schema-12 candidate by recording its historical v1 rule without changing wallet funds', () => {
+    const db = new DatabaseSync(':memory:')
+    try {
+      migrate(db)
+      db.exec(`
+        INSERT INTO liang_market(id,case_id,business_date,timezone,opens_at,closes_at,status,created_at)
+          VALUES ('candidate-market','candidate-case','2026-08-16','Asia/Shanghai',1,2,'closed',1);
+        INSERT INTO incense_wallet(installation_id,available,frozen,token_remainder,token_per_incense,created_at,updated_at)
+          VALUES ('candidate-wallet',17,3,49000,50000,1,1);
+        ALTER TABLE liang_market DROP COLUMN rule_version;
+        PRAGMA user_version=12;
+      `)
+      const before = db.prepare('SELECT * FROM incense_wallet').get()
+      migrate(db)
+      migrate(db)
+      expect(db.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: BACKEND_SCHEMA_USER_VERSION })
+      expect(db.prepare('SELECT rule_version FROM liang_market').get()).toMatchObject({ rule_version: MARKET_RULE_VERSION })
+      expect(db.prepare('SELECT * FROM incense_wallet').get()).toEqual(before)
+    } finally { db.close() }
+  })
+
+  it('fails closed for an unknown recorded policy before accepting positions or settling funds', () => {
+    const f = boot(); fund(f)
+    position(f, A, 'long', 10, 'policy-long')
+    position(f, B, 'short', 10, 'policy-short')
+    const before = f.store.database.prepare('SELECT installation_id,available,frozen FROM incense_wallet ORDER BY installation_id').all()
+    const entries = f.store.database.prepare('SELECT COUNT(*) AS n FROM incense_wallet_entry').get()
+    const requests = f.store.database.prepare('SELECT COUNT(*) AS n FROM liang_market_request').get()
+    f.store.database.prepare('UPDATE liang_market SET rule_version=?').run('liangxiang-market-future')
+    expect(() => position(f, A, 'long', 20, 'unknown-policy-position')).toThrow('unsupported recorded market rule')
+    f.clock.set(at(0, 0, 17))
+    expect(() => f.service.tick()).toThrow('unsupported recorded market rule')
+    expect(() => new LiangxiangBackendService({ store: f.store, config: f.config, clock: f.clock }))
+      .toThrow('unsupported open market rule')
+    expect(f.store.database.prepare('SELECT installation_id,available,frozen FROM incense_wallet ORDER BY installation_id').all()).toEqual(before)
+    expect(f.store.database.prepare('SELECT COUNT(*) AS n FROM incense_wallet_entry').get()).toEqual(entries)
+    expect(f.store.database.prepare('SELECT COUNT(*) AS n FROM liang_market_request').get()).toEqual(requests)
+    expect(f.store.database.prepare('SELECT COUNT(*) AS n FROM liang_market_receipt').get()).toMatchObject({ n: 0 })
+    expect(f.store.database.prepare('SELECT status,rule_version FROM liang_market').get())
+      .toMatchObject({ status: 'open', rule_version: 'liangxiang-market-future' })
+  })
+
   it('fails at construction before revaluing or gifting a persisted wallet with another token threshold', () => {
     const f = boot()
     f.grantIncense(A, 2, 49_000)
@@ -273,10 +315,19 @@ describe('wallet v11 migration and durable restart', () => {
       store.close()
       store = openBackendStore(databasePath)
       service = new LiangxiangBackendService({ store, config, clock, warn: () => undefined })
+      expect(service.marketState(A).market!.rule_version).toBe(MARKET_RULE_VERSION)
+      expect(store.database.prepare('SELECT rule_version FROM liang_market').get()).toMatchObject({ rule_version: MARKET_RULE_VERSION })
       expect(service.setMarketPosition(A, intent).accepted).toBe(true)
       expect(service.marketState(A).wallet).toMatchObject({ available_incense: 1, frozen_incense: 2 })
       clock.set(at(11)); service.tick()
       expect(service.marketState(A).wallet).toMatchObject({ available_incense: 3, frozen_incense: 0 })
+      clock.set(at(0, 0, 17)); service.tick()
+      expect(service.marketHistory(A).receipts[0]!.rule_version).toBe(MARKET_RULE_VERSION)
+      const receiptRow = store.database.prepare('SELECT id,receipt_json FROM liang_market_receipt').get() as { id: number, receipt_json: string }
+      const legacy = JSON.parse(receiptRow.receipt_json) as Record<string, unknown>
+      delete legacy.rule_version
+      store.database.prepare('UPDATE liang_market_receipt SET receipt_json=? WHERE id=?').run(JSON.stringify(legacy), receiptRow.id)
+      expect(parseMarketHistoryResponse(service.marketHistory(A)).receipts[0]).not.toHaveProperty('rule_version')
       store.close()
     } finally { rmSync(dir, { recursive: true, force: true }) }
   })

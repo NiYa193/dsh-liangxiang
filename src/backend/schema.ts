@@ -1,5 +1,5 @@
 /**
- * SQLite schema (v12) for the Liangxiang backend.
+ * SQLite schema (v13) for the Liangxiang backend.
  *
  * Design notes that matter for the frozen invariants:
  *
@@ -30,7 +30,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { VOTE_COUNT_MAX } from '../domain/index.ts'
 
-export const BACKEND_SCHEMA_USER_VERSION = 12
+export const BACKEND_SCHEMA_USER_VERSION = 13
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS daily_liang_case (
@@ -426,6 +426,11 @@ export function migrate(db: DatabaseSync): void {
         db.exec('ALTER TABLE daily_incense_state ADD COLUMN starter_tokens INTEGER NOT NULL DEFAULT 0')
       }
       db.exec(DDL_V12_WALLET_MARKET)
+    }
+    if (current < 13 && !tableColumns(db, 'liang_market').includes('rule_version')) {
+      // Every schema-12 candidate ran v1. Freeze that historical fact here;
+      // never replace this migration default with a future current policy.
+      db.exec("ALTER TABLE liang_market ADD COLUMN rule_version TEXT NOT NULL DEFAULT 'liangxiang-market-v1'")
     }
     if (current !== BACKEND_SCHEMA_USER_VERSION) {
       db.exec(`PRAGMA user_version = ${BACKEND_SCHEMA_USER_VERSION}`)
