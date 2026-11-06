@@ -8,6 +8,28 @@
 > prompt archive and must not be loaded as a current execution plan.
 > Brand theme and release copy are centralized in `docs/140-liangxiang-brand.md`.
 
+## Cumulative wallet and market candidate
+
+The approved extension in `docs/MARKET_WALLET.md` supersedes the daily-only
+spendable-balance formulas below for online wallets. Assets and confirmed
+sub-stick usage carry across business dates; daily statistics, gifts and cases
+remain date-scoped. `remaining_incense` means wallet **available** incense,
+excluding frozen orders; today's used incense may exceed today's earned amount.
+Legacy/offline daily accounting stays isolated and never funds community trades.
+
+Three independently funded batches lock at 11:00/17:00/20:00, fix raw-count
+reference points at 12:00/18:00/21:00 and share the old case's midnight close.
+Server transactions own freezing, idempotency, integer pool allocation and
+rollover. No client cache or chart is a ledger. Usage remains soft trust.
+
+The existing four-region panel and original Liangzi effects remain intact.
+One compact `香火交易` entry may sit below the utility drawer's 2×2 tiles and
+open a separate blue trading view. Its original whale-girl artwork is a market
+decoration, never a replacement central Liangzi or a new business namespace.
+Market animation/static preference is local and respects reduced motion.
+Do not read another implementation until the independent implementation has
+been completed and recorded in a commit; comparisons must be documented.
+
 ---
 
 ## 1. Product Contract
