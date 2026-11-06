@@ -4,9 +4,8 @@
  * A device fingerprint is bound to ONE installation. Losing/re-generating a key
  * on the same hardware used to lock the device out forever (`device_conflict`).
  * The recovery paths are:
- *   - self-serve re-key: take over the fingerprint after `rekeyCooldownMs` of
- *     inactivity, forfeiting the old identity (its incense/votes stay on the
- *     dead id, never transferred);
+ *   - self-serve re-key: take over an EMPTY wallet's fingerprint after
+ *     `rekeyCooldownMs`; an identity with assets must recover its original key;
  *   - operator unbind: delete the binding immediately through the VPS-local
  *     CLI; no operator HTTP route is exposed.
  */
@@ -142,20 +141,19 @@ describe('operator unbind', () => {
   })
 })
 
-describe('forfeit is real (old balance never follows the new key)', () => {
-  it('leaves the old incense on the orphaned id after a re-key', () => {
+describe('asset-preserving recovery', () => {
+  it('rejects a re-key or unbind that would orphan the old cumulative wallet', () => {
     const f = boot()
     bind(f, OLD, PK_OLD, FINGERPRINT)
     f.grantIncense(OLD, 5) // 5 炷 on the old identity (today)
     f.clock.advance(3_600_000) // past the cooldown, still the same business day
 
-    f.service.rekeyIdentity(NEW, PK_NEW, FINGERPRINT, f.clock.now())
-
-    // The new identity starts at zero; the old id's ledger is untouched but
-    // unreachable (its identity row is gone).
-    const fresh = f.service.dailyState(NEW)
-    expect(fresh.authoritative_personal_state.earned_incense).toBe(0)
-    // The old id keeps both the welcome gift and the 5 granted sticks.
-    expect(f.service.dailyState(OLD).authoritative_personal_state.earned_incense).toBe(15)
+    expect(() => f.service.rekeyIdentity(NEW, PK_NEW, FINGERPRINT, f.clock.now()))
+      .toThrow(expect.objectContaining({ code: 'wallet_has_assets' }))
+    expect(() => f.service.unbindIdentity(OLD)).toThrow(expect.objectContaining({ code: 'wallet_has_assets' }))
+    expect(f.store.identityByInstallation(OLD)?.public_key).toBe(PK_OLD)
+    expect(f.store.identityByInstallation(NEW)).toBeUndefined()
+    expect(f.store.identityByFingerprint(FINGERPRINT)?.installation_id).toBe(OLD)
+    expect(f.service.dailyState(OLD).authoritative_personal_state.remaining_incense).toBe(15)
   })
 })

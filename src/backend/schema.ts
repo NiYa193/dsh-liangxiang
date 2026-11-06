@@ -417,7 +417,16 @@ export function migrate(db: DatabaseSync): void {
       db.exec(`ALTER TABLE liang_vote ADD COLUMN accepted_incense INTEGER
         CHECK (accepted_incense IS NULL OR accepted_incense BETWEEN 1 AND ${VOTE_COUNT_MAX})`)
     }
-    if (current < 12) db.exec(DDL_V12_WALLET_MARKET)
+    if (current < 12) {
+      // Some early development snapshots stamped v7/v8 with only the vote
+      // table present. DDL above can create their base daily table today; it
+      // still needs the optional v6 column before the v12 copy is compiled.
+      db.exec(DDL_V6_GRANT)
+      if (!tableColumns(db, 'daily_incense_state').includes('starter_tokens')) {
+        db.exec('ALTER TABLE daily_incense_state ADD COLUMN starter_tokens INTEGER NOT NULL DEFAULT 0')
+      }
+      db.exec(DDL_V12_WALLET_MARKET)
+    }
     if (current !== BACKEND_SCHEMA_USER_VERSION) {
       db.exec(`PRAGMA user_version = ${BACKEND_SCHEMA_USER_VERSION}`)
     }
