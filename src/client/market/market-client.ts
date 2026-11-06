@@ -120,7 +120,7 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
     const market = state.market
     let candles = old?.market?.case_id !== market?.case_id ? [] : view.candles
     if (state.current_candle) candles = withCandle(candles, state.current_candle)
-    update({ state, candles, status: 'live', error: null })
+    update({ state, candles, status: 'live', error: view.pending ? '存在一笔未确认仓位，请核对原请求后再调整。' : null })
     if (market) {
       if (state.current_candle) {
         cache.candles = [{ case_id: market.case_id, business_date: market.business_date, candles }, ...cache.candles.filter(day => day.case_id !== market.case_id)]
