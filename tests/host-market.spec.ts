@@ -51,7 +51,7 @@ async function hostHarness() {
   service.attachIdentity(ID)
   await service.refreshBootstrap()
   cleanups.push(() => { service.dispose(); fixture.close() })
-  return { service, fixture, requests, handlers, initial, stopped: () => stopped }
+  return { service, client, fixture, requests, handlers, initial, stopped: () => stopped }
 }
 
 describe('cumulative wallet Host authority', () => {
@@ -165,6 +165,29 @@ describe('cumulative wallet Host authority', () => {
     await pause()
     expect(requests.filter(request => request.path.endsWith('/snapshot'))).toHaveLength(1)
     expect(service.getWireState().authorityAvailable).toBe(true)
+  })
+
+  it('never shares an in-flight private market read with a replacement identity', async () => {
+    const { service, client, initial } = await hostHarness()
+    let finishOld!: (state: MarketState) => void
+    let calls = 0
+    client.market = async () => {
+      calls += 1
+      if (calls === 1) return new Promise<MarketState>(resolve => { finishOld = resolve })
+      return { ...initial, wallet: { ...WALLET, available_incense: 10, total_incense: 15, version: 6 } }
+    }
+    const oldScope = service.marketCacheScope()
+    const oldRead = service.market()
+    service.attachIdentity('inst-market-replacement-001')
+    expect(service.cachedMarketState()).toBeNull()
+    expect(service.marketCacheScope()).not.toBe(oldScope)
+    await service.refreshBootstrap()
+    const next = await service.market()
+    expect(next.wallet.available_incense).toBe(10)
+    finishOld({ ...initial, wallet: { ...WALLET, available_incense: 99, total_incense: 104, version: 99 } })
+    await oldRead
+    expect(calls).toBe(2)
+    expect(service.cachedMarketState()?.wallet.available_incense).toBe(10)
   })
 })
 

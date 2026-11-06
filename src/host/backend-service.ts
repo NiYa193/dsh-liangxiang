@@ -184,6 +184,7 @@ export class BackendLiangService implements LiangHostService {
    */
   attachIdentity(installationId: string): void {
     if (this.installationId === installationId) return
+    const replacingIdentity = this.installationId !== null
     this.stopCloudStream?.()
     this.stopCloudStream = null
     this.cloudStreamUnsupported = false
@@ -192,7 +193,23 @@ export class BackendLiangService implements LiangHostService {
     this.cloudEpoch = null
     this.cloudRevision = -1
     this.marketState = null
+    this.marketInFlight = null
     this.installationId = installationId
+    if (replacingIdentity) {
+      this.bootstrap = null
+      this.personal = null
+      this.activeCase = null
+      this.snapshot = null
+      this.businessDate = ''
+      this.snapshotSequenceApplied = 0
+      this.lastClaimSent = -1
+      this.displayBaseline = 0
+      this.bootstrapBackoffUntil = 0
+      this.bootstrapBackoffMs = 0
+      this.authorityAvailable = false
+      this.authorityReason = '正在连接新的社区身份'
+      this.bump()
+    }
     void this.refreshBootstrap({ startup: true })
   }
 
@@ -287,6 +304,7 @@ export class BackendLiangService implements LiangHostService {
     if (this.disposed || installationId === null || this.bootstrap === null) return
     try {
       const response = await this.client.dailyState(installationId)
+      if (this.disposed || this.installationId !== installationId) return
       if (response.business_date !== this.businessDate || response.active_case.id !== this.activeCase?.id) {
         await this.refreshBootstrap()
         return
@@ -295,6 +313,7 @@ export class BackendLiangService implements LiangHostService {
       this.setAuthorityAvailable(true)
       this.bump()
     } catch (error) {
+      if (this.disposed || this.installationId !== installationId) return
       this.setAuthorityUnavailable(error)
       this.reportFailure('daily-state', error)
     }
@@ -318,12 +337,17 @@ export class BackendLiangService implements LiangHostService {
         request_id: intent.requestId,
         ...(intent.count === undefined ? {} : { count: intent.count }),
       })
+      if (this.disposed || this.installationId !== installationId) {
+        throw new BackendClientError('identity changed while the vote was in flight; outcome belongs to the original identity', 502, 'authority_changed_uncertain')
+      }
       this.setAuthorityAvailable(true)
     } catch (error) {
       // A vote limiter response proves the authority is reachable; it is a
       // rejected action, not an outage that should lock the whole panel.
-      if (error instanceof BackendClientError && error.status === 429) this.setAuthorityAvailable(true)
-      else this.setAuthorityUnavailable(error)
+      if (!this.disposed && this.installationId === installationId) {
+        if (error instanceof BackendClientError && error.status === 429) this.setAuthorityAvailable(true)
+        else this.setAuthorityUnavailable(error)
+      }
       this.reportFailure('vote', error)
       throw error
     }
@@ -630,6 +654,7 @@ export class BackendLiangService implements LiangHostService {
           await this.enrollWithPublicTicket(installationId)
           bootstrap = await this.client.bootstrap(installationId, readOptions)
         }
+        if (this.disposed || this.installationId !== installationId) return
         this.adoptBootstrap(bootstrap)
         this.setAuthorityAvailable(true)
         this.bootstrapBackoffMs = 0
@@ -644,6 +669,7 @@ export class BackendLiangService implements LiangHostService {
         }
         this.ensureCloudStream()
       } catch (error) {
+        if (this.disposed || this.installationId !== installationId) return
         this.setAuthorityUnavailable(error)
         this.bootstrapBackoffMs = this.bootstrapBackoffMs === 0
           ? 1_000
@@ -652,6 +678,7 @@ export class BackendLiangService implements LiangHostService {
         this.reportFailure('bootstrap', error)
       } finally {
         this.bootstrapping = null
+        if (!this.disposed && this.installationId !== installationId) void this.refreshBootstrap()
       }
     })()
     this.bootstrapping = run
@@ -825,6 +852,7 @@ export class BackendLiangService implements LiangHostService {
   ): Promise<void> {
     try {
       const response = await this.client.submitClaim(installationId, target, businessDate)
+      if (this.disposed || this.installationId !== installationId) return
       this.setAuthorityAvailable(true)
       this.adoptPersonalState(response.authoritative_personal_state)
       this.activeCase = response.active_case
@@ -855,6 +883,7 @@ export class BackendLiangService implements LiangHostService {
       }
       this.bump()
     } catch (error) {
+      if (this.disposed || this.installationId !== installationId) return
       this.setAuthorityUnavailable(error)
       this.reportFailure('token-claim', error)
     }
