@@ -44,6 +44,7 @@ const CSS = `
 .liangxiang-market-whale[data-mood=behind] img,.liangxiang-market-whale[data-mood=lost] img{transform:translateY(20px);opacity:.65}
 .liangxiang-market-whale[data-mood=waiting] img{opacity:.65}
 .liangxiang-market-water{position:absolute;left:0;right:0;top:70%;height:32%;border-top:2px solid color-mix(in srgb,#66b6e8 65%,transparent);border-radius:42% 42% 0 0;background:linear-gradient(180deg,#6fbee830,#5c9de010);pointer-events:none}
+.liangxiang-market-whale[data-mood=behind] .liangxiang-market-water,.liangxiang-market-whale[data-mood=lost] .liangxiang-market-water{top:25%;height:75%;background:linear-gradient(180deg,#6fbee842,#5c9de026)}
 .liangxiang-market-bubble{display:none;position:absolute;width:5px;height:5px;left:76%;top:65%;border:1px solid #6daee4;border-radius:50%;opacity:.65}
 .liangxiang-market-bubble:last-child{left:20%;width:3px;height:3px;top:50%;animation-delay:1.3s!important}
 .liangxiang-market-whale[data-mood=behind] .liangxiang-market-bubble{display:block}
@@ -67,6 +68,7 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
   const [recent, setRecent] = useState(false)
   const [clock, setClock] = useState(() => Date.now())
   const dialog = useRef<HTMLDivElement>(null), clockSync = useRef({ server: 0, received: 0 })
+  const lifecycle = useRef({ started: false, disposeTimer: null as number | null })
   const closeRef = useRef(onClose); closeRef.current = onClose
   useEffect(() => {
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -83,7 +85,12 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
     document.addEventListener('keydown', key, true)
     return () => { document.removeEventListener('keydown', key, true); previous?.focus() }
   }, [])
-  useEffect(() => { if (online) void session.start(); return () => session.dispose() }, [session, online])
+  useEffect(() => {
+    // StrictMode's immediate effect replay must not destroy the live session.
+    if (lifecycle.current.disposeTimer !== null) window.clearTimeout(lifecycle.current.disposeTimer)
+    if (online && !lifecycle.current.started) { lifecycle.current.started = true; void session.start() }
+    return () => { lifecycle.current.disposeTimer = window.setTimeout(() => session.dispose(), 0) }
+  }, [session, online])
   useEffect(() => {
     const change = (): void => { setVisible(!document.hidden); if (!document.hidden) setClock(Date.now()) }
     document.addEventListener('visibilitychange', change)
