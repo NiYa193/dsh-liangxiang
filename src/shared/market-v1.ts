@@ -237,6 +237,8 @@ export function parseMarketState(value: unknown): MarketState {
 
 export function parseMarketPositionRequest(value: unknown): MarketPositionRequest {
   const v = object(value, 'position request')
+  const allowed = new Set(['market_id', 'batch', 'side', 'amount', 'request_id'])
+  if (Object.keys(v).some(key => !allowed.has(key))) throw new Error('unexpected position field')
   const amount = integer(v.amount, 'position amount')
   if (amount > MARKET_AMOUNT_MAX) throw new Error('market amount exceeds maximum')
   const side = v.side === null ? null : choice(v.side, ['long', 'short'], 'position direction')
