@@ -162,7 +162,7 @@ test('dismissed version guidance can be reopened from the drawer and closed with
   const notes = page.getByRole('dialog', { name: RELEASE_NOTES_TITLE })
   await expect(notes).toBeVisible()
   await expect.poll(() => notes.evaluate(element => element.scrollTop)).toBe(0)
-  await expect(notes).toContainText('23:59')
+  for (const item of RELEASE_NOTES_ITEMS) await expect(notes).toContainText(item)
   await page.keyboard.press('Escape')
   await expect(notes).toHaveCount(0)
   await expect(panel).toBeVisible()

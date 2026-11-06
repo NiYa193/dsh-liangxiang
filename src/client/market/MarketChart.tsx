@@ -1,8 +1,9 @@
 import { memo, useMemo, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react'
 import type { MarketCandle, MarketState, MarketBatch } from '../../shared/market-v1.ts'
+import { PLUGIN_VERSION } from '../../shared/index.ts'
 import { chartRange, marketRatioLabel, marketTime, pointRatio, positionMood } from './chart-model.ts'
 
-export const MARKET_WHALE_PATH = '/liangxiang/api/market/art.webp'
+export const MARKET_WHALE_PATH = `/liangxiang/api/market/art.webp?v=${encodeURIComponent(PLUGIN_VERSION)}`
 const WIDTH = 960, HEIGHT = 330, LEFT = 20, RIGHT = 78, TOP = 56, BOTTOM = 35
 const INK = 'var(--liangxiang-market-blue, #456bef)'
 const LIGHT_INK = 'color-mix(in srgb, var(--dsw-alias-label-primary, #172139) 68%, #6682c3)'
