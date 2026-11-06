@@ -165,6 +165,8 @@ export interface PanelProps {
   onModeConfirm: () => void
   onModeCancel: () => void
   onShowVersion: () => void
+  /** Separate market window; this does not add a fifth main-panel region. */
+  onOpenMarket?: () => void
   /** Open the read-only 梁祠 calendar; remains inside Region 4. */
   onOpenLiangci: () => void
   /** LOCAL_FAKE_DEV only: cycle the prepared 今日梁案 list. */
@@ -887,7 +889,7 @@ export function Panel(props: PanelProps): ReactElement {
     onInsufficientVote, onClose, onReconcileAsk, onReconcileConfirm, onReconcileCancel,
     reconcilePending, utilityOpen, onUtilityToggle, onUtilityClose, onOpenHomepage,
     modeConfirmOpen, modeChanging, onModeAsk, onModeConfirm, onModeCancel,
-    onShowVersion,     onOpenLiangci, onCycleLocalCase,
+    onShowVersion, onOpenMarket, onOpenLiangci, onCycleLocalCase,
   } = props
   const placement = props.placement ?? { stack: 'above', align: 'start' }
   const positionPulse = props.positionPulse ?? false
@@ -1748,6 +1750,10 @@ export function Panel(props: PanelProps): ReactElement {
                     </span>
                   </button>
                 </div>
+                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" onClick={onOpenMarket}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: '8px', padding: '7px 9px', borderRadius: '7px', border: `1px solid color-mix(in srgb, ${color.brand} 24%, ${color.border})`, background: `color-mix(in srgb, ${color.brand} 5%, ${color.bgLayer})`, color: color.brand, font: `11px ${font.family}`, cursor: 'pointer' }}>
+                  <span>≈ 香火交易</span><span style={{ fontSize: '9px' }}>三次定线 · 一起揭晓 ↗</span>
+                </button>}
                 <details style={{ marginTop: '7px', fontSize: '9px', color: color.textSecondary }}>
                   <summary style={{ cursor: 'pointer' }}>显示异常？</summary>
                   <button type="button" data-liangxiang-utility-action="reconcile" disabled={offline} onClick={onReconcileAsk}

@@ -44,6 +44,7 @@ import { LIANGZI_ART } from './liangzi-art.ts'
 import { preloadLiangziArt } from './liangzi-art-cache.ts'
 import { LiangAvatar } from './LiangAvatar.tsx'
 import { LiangciModal } from './LiangciModal.tsx'
+import { MarketDialog } from './market/MarketDialog.tsx'
 import { createLiveLiangxiangStore, LiveTransportError } from './live-store.ts'
 import { Panel } from './Panel.tsx'
 import { color } from './theme.ts'
@@ -297,6 +298,11 @@ export function LiangxiangBadge(): ReactElement {
   }, [])
   const [liangciOpen, setLiangciOpen] = useState(false)
   const closeLiangci = useCallback(() => setLiangciOpen(false), [])
+  const [marketOpen, setMarketOpen] = useState(false)
+  const closeMarket = useCallback(() => {
+    setMarketOpen(false)
+    requestAnimationFrame(() => anchorRef.current?.querySelector<HTMLButtonElement>('[data-liangxiang-utility-trigger]')?.focus())
+  }, [])
   const selectWelcomeMode = useCallback((preference: HostAuthorityPreference) => {
     void store.selectAuthorityMode(preference).then(
       () => {
@@ -997,6 +1003,12 @@ export function LiangxiangBadge(): ReactElement {
           onModeConfirm={onModeConfirm}
           onModeCancel={onModeCancel}
           onShowVersion={onShowVersion}
+          onOpenMarket={() => {
+            setUtilityOpen(false)
+            setReconcilePending(false)
+            setModeConfirmOpen(false)
+            setMarketOpen(true)
+          }}
           onReconcileAsk={onReconcileAsk}
           onReconcileConfirm={onReconcileConfirm}
           onReconcileCancel={onReconcileCancel}
@@ -1021,6 +1033,7 @@ export function LiangxiangBadge(): ReactElement {
           onRetry={() => { void store.loadHistory() }}
         />
       )}
+      {marketOpen && <MarketDialog reducedMotion={reducedMotion} online={state.authorityMode !== 'LOCAL_FAKE_DEV'} onClose={closeMarket} />}
     </div>
   )
 }
