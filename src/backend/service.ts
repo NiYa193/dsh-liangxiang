@@ -721,8 +721,11 @@ export class LiangxiangBackendService {
   }
 
   marketStreamVersion(installationId: string): string {
-    return `${this.marketLedger.marketRevision}:${this.marketLedger.walletVersion(installationId)}`
+    return `${this.marketLedger.streamRevision()}:${this.marketLedger.walletVersion(installationId)}`
   }
+
+  marketGlobalStreamVersion(): string { return this.marketLedger.streamRevision() }
+  marketWalletVersion(installationId: string): number { return this.marketLedger.walletVersion(installationId) }
 
   marketCurrentCandle(): MarketCandlesResponse['candles'][number] | undefined {
     const active = this.ensureActiveCase()

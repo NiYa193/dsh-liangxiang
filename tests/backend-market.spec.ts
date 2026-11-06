@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { LiangxiangBackendService } from '../src/backend/service.ts'
+import { MarketLedger } from '../src/backend/market-ledger.ts'
 import { openBackendStore } from '../src/backend/store.ts'
 import { migrate } from '../src/backend/schema.ts'
 import { resolveBackendConfig } from '../src/backend/config.ts'
@@ -157,6 +158,9 @@ describe('three daily sealed pools', () => {
     f.clock.set(at(12)); f.service.tick()
     f.service.publishCase('新的梁案')
     expect(f.service.marketState(A).wallet).toMatchObject({ available_incense: 100, frozen_incense: 0 })
+    expect(f.service.marketState(A).market).toBeNull()
+    expect(f.store.database.prepare('SELECT COUNT(*) AS n FROM liang_market WHERE business_date=?').get('2026-08-16'))
+      .toMatchObject({ n: 1 })
     expect(f.service.marketHistory(A).receipts[0]!).toMatchObject({ invested_incense: 20, returned_incense: 20, pnl_incense: 0 })
   })
 
@@ -172,6 +176,37 @@ describe('three daily sealed pools', () => {
 })
 
 describe('wallet v11 migration and durable restart', () => {
+  it('observes another process pool changes through the persisted market version', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'liangxiang-market-version-'))
+    const path = join(dir, 'wallet.sqlite')
+    const config = resolveBackendConfig({ LIANGXIANG_BACKEND_DB: path, LIANGXIANG_ADMISSION_INVENTORY_TARGET: '0' })
+    const clock = createMutableClock(at(9))
+    const first = openBackendStore(path)
+    const second = openBackendStore(path)
+    try {
+      const one = new LiangxiangBackendService({ store: first, config, clock })
+      const two = new LiangxiangBackendService({ store: second, config, clock })
+      one.applyTokenClaim(A, { claim_business_date: '2026-08-16', claimed_effective_tokens: 1_000_000 })
+      one.dailyState(B)
+      const before = one.marketStreamVersion(B)
+      const id = two.marketState(A).market!.id
+      expect(two.setMarketPosition(A, { market_id: id, batch: 1, side: 'short', amount: 10, request_id: 'other-process-position' }).accepted).toBe(true)
+      expect(one.marketStreamVersion(B)).not.toBe(before)
+      expect(one.marketState(B).market!.batches[0]!.short_incense).toBe(10)
+      // A rollback must not poison the shared aggregate cache.
+      const ledger = new MarketLedger(first, config.timezone)
+      const currentCase = one.ensureActiveCase()
+      expect(ledger.state(B, currentCase, clock.now()).market!.batches[0]!.short_incense).toBe(10)
+      expect(() => first.transaction(() => {
+        first.database.prepare('UPDATE liang_market_position SET amount=11 WHERE installation_id=?').run(A)
+        first.database.prepare('UPDATE liang_market SET version=version+1').run()
+        expect(ledger.state(B, currentCase, clock.now()).market!.batches[0]!.short_incense).toBe(11)
+        throw new Error('intentional rollback')
+      })).toThrow('intentional rollback')
+      expect(ledger.state(B, currentCase, clock.now()).market!.batches[0]!.short_incense).toBe(10)
+    } finally { first.close(); second.close(); rmSync(dir, { recursive: true, force: true }) }
+  })
+
   it('imports only the cutover day once, fences historical claims, and restores pending funds after restart', () => {
     const dir = mkdtempSync(join(tmpdir(), 'liangxiang-wallet-migration-'))
     const databasePath = join(dir, 'ledger.sqlite')

@@ -218,13 +218,14 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       const snapshot = service.snapshotResponse()
       const candle = service.marketCurrentCandle()
       const global = JSON.stringify({ snapshot: { ...snapshot, server_time: 0 }, candle })
+      const marketVersion = service.marketGlobalStreamVersion()
       for (const stream of streams) {
         try {
           if (!allowUnsigned && store.identityByInstallation(stream.installation) === undefined) {
             closeStream(stream)
             continue
           }
-          const personal = service.marketStreamVersion(stream.installation)
+          const personal = `${marketVersion}:${service.marketWalletVersion(stream.installation)}`
           const event: MarketStreamEvent = { schema_version: 1, epoch, revision: stream.revision + 1, server_time: snapshot.server_time }
           if (stream.global !== global) {
             event.snapshot = snapshot
@@ -239,7 +240,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
             }
             stream.revision = event.revision
             stream.global = global
-            stream.personal = service.marketStreamVersion(stream.installation)
+            stream.personal = `${marketVersion}:${service.marketWalletVersion(stream.installation)}`
           } else if (Date.now() - stream.heartbeat >= 25_000) {
             if (!stream.res.write(': heartbeat\n\n')) closeStream(stream)
             stream.heartbeat = Date.now()

@@ -20,7 +20,6 @@ interface PositionRow { id: number, market_id: string, batch: MarketBatchId, ins
 
 export class MarketLedger {
   private readonly db: BackendStore['database']
-  private revision = 0
   private readonly poolCache = new Map<string, { version: number, pools: Map<number, { long: number, short: number }> }>()
   constructor(private readonly store: BackendStore, private readonly timezone: string) {
     this.db = store.database
@@ -84,7 +83,11 @@ export class MarketLedger {
   }
 
   walletVersion(installation: string): number { return this.walletRow(installation)?.version ?? -1 }
-  get marketRevision(): number { return this.revision }
+  streamRevision(): string {
+    const row = this.db.prepare('SELECT id,version FROM liang_market ORDER BY business_date DESC LIMIT 1')
+      .get() as { id: string, version: number } | undefined
+    return row === undefined ? 'none' : `${row.id}:${row.version}`
+  }
   hasVoteReceipt(installation: string, requestId: string): boolean {
     return this.db.prepare('SELECT 1 FROM incense_wallet_entry WHERE installation_id=? AND reference=?')
       .get(installation, `vote:${requestId}`) !== undefined
@@ -121,7 +124,7 @@ export class MarketLedger {
         VALUES (?,?,?,?,?,?,?)`).run(id, i + 1, marketBusinessHour(date, this.timezone, open),
           marketBusinessHour(date, this.timezone, lock), referenceAt, missed ? 'void' : 'pending', missed ? 'void' : null)
     }
-    this.revision += 1
+    this.touch(id)
   }
 
   /** MUST run before a new vote or daily-case rollover mutates raw counts. */
@@ -144,18 +147,18 @@ export class MarketLedger {
           } else {
             this.db.prepare("UPDATE liang_market_batch SET reference_point=?,status='live' WHERE market_id=? AND batch=?")
               .run(JSON.stringify(point), market.id, batch.batch)
-            this.revision += 1
+            this.touch(market.id)
           }
         } else if (now >= batch.locks_at && batch.status !== 'locked' && batch.status !== 'live') {
           const pools = this.pools(market.id, batch.batch)
           if (pools.long === 0 || pools.short === 0) this.settleBatch(market, batch, 'void', null, now)
           else {
             this.db.prepare("UPDATE liang_market_batch SET status='locked' WHERE market_id=? AND batch=?").run(market.id, batch.batch)
-            this.revision += 1
+            this.touch(market.id)
           }
         } else if (now >= batch.opens_at && batch.status === 'pending') {
           this.db.prepare("UPDATE liang_market_batch SET status='open' WHERE market_id=? AND batch=?").run(market.id, batch.batch)
-          this.revision += 1
+          this.touch(market.id)
         }
       }
       if (now >= market.closes_at) {
@@ -170,7 +173,7 @@ export class MarketLedger {
         this.db.prepare("UPDATE liang_market SET status='closed',close_point=?,settled_at=? WHERE id=? AND status='open'")
           .run(JSON.stringify(close), now, market.id)
         this.writeReceipts({ ...market, status: 'closed', close_point: JSON.stringify(close), settled_at: now }, now)
-        this.revision += 1
+        this.touch(market.id)
       }
     }
   }
@@ -183,7 +186,7 @@ export class MarketLedger {
     }
     this.db.prepare("UPDATE liang_market SET status='cancelled',settled_at=? WHERE id=?").run(now, market.id)
     this.writeReceipts({ ...market, status: 'cancelled', settled_at: now }, now)
-    this.revision += 1
+    this.touch(market.id)
   }
 
   state(installation: string, caseRow: CaseRow, now: number): MarketState {
@@ -217,8 +220,7 @@ export class MarketLedger {
           VALUES (?,?,?,?,?,?,?) ON CONFLICT(market_id,batch,installation_id) DO UPDATE SET
           side=excluded.side,amount=excluded.amount,updated_at=excluded.updated_at`)
           .run(market.id, request.batch, installation, request.side ?? prior?.side ?? 'long', request.amount, now, now)
-        this.db.prepare('UPDATE liang_market SET version=version+1 WHERE id=?').run(market.id)
-        this.revision += 1
+        this.touch(market.id)
       }
     }
     this.db.prepare(`INSERT INTO liang_market_request(installation_id,request_id,payload,accepted,reason,created_at)
@@ -284,7 +286,7 @@ export class MarketLedger {
     }
     this.db.prepare(`UPDATE liang_market_batch SET status=?,result=?,reference_point=? WHERE market_id=? AND batch=?`)
       .run(result === 'void' ? 'void' : 'settled', result, reference === null ? batch.reference_point : JSON.stringify(reference), market.id, batch.batch)
-    this.revision += 1
+    this.touch(market.id)
   }
 
   private writeReceipts(market: MarketRow, now: number): void {
@@ -315,6 +317,10 @@ export class MarketLedger {
     if (Number(changed.changes) !== 1) return false
     this.entry(installation, reference, kind, available, frozen, date, now)
     return true
+  }
+
+  private touch(marketId: string): void {
+    this.db.prepare('UPDATE liang_market SET version=version+1 WHERE id=?').run(marketId)
   }
 
   private entry(installation: string, reference: string, kind: string, available: number, frozen: number, date: string, now: number): void {
