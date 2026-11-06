@@ -71,6 +71,7 @@ export interface MarketState {
   wallet: MarketWallet
   market: DailyMarket | null
   current_point: MarketPoint | null
+  current_candle?: MarketCandle
 }
 
 /** Set the whole position, not a delta. Zero amount cancels before the cutoff. */
@@ -144,6 +145,7 @@ export interface MarketStreamEvent {
   server_time: number
   snapshot?: unknown
   market_state?: MarketState
+  candle?: MarketCandle
 }
 
 function object(value: unknown, name: string): Record<string, unknown> {
@@ -188,9 +190,11 @@ export function parseMarketWallet(value: unknown): MarketWallet {
 
 export function parseMarketPoint(value: unknown): MarketPoint {
   const v = object(value, 'market point')
-  return { case_id: text(v.case_id, 'point case'), at: integer(v.at, 'point time'),
+  const point = { case_id: text(v.case_id, 'point case'), at: integer(v.at, 'point time'),
     up_votes: integer(v.up_votes, 'point up'), down_votes: integer(v.down_votes, 'point down'),
     sequence: integer(v.sequence, 'point sequence') }
+  if (!Number.isSafeInteger(point.up_votes + point.down_votes)) throw new Error('unsafe point total')
+  return point
 }
 
 function nullablePoint(value: unknown): MarketPoint | null {
@@ -232,7 +236,8 @@ export function parseMarketState(value: unknown): MarketState {
       || (market.close_point !== null && market.close_point.case_id !== market.case_id)) throw new Error('inconsistent market timeline')
   }
   return { schema_version: MARKET_SCHEMA_VERSION, server_time: integer(v.server_time, 'server time'), soft_trust: true,
-    wallet: parseMarketWallet(v.wallet), market, current_point: nullablePoint(v.current_point) }
+    wallet: parseMarketWallet(v.wallet), market, current_point: nullablePoint(v.current_point),
+    ...(v.current_candle === undefined ? {} : { current_candle: parseMarketCandle(v.current_candle) }) }
 }
 
 export function parseMarketPositionRequest(value: unknown): MarketPositionRequest {
@@ -253,23 +258,26 @@ export function parseMarketPositionResponse(value: unknown): MarketPositionRespo
     request_id: text(v.request_id, 'request id'), state: parseMarketState(v.state) }
 }
 
-export function parseMarketCandlesResponse(value: unknown): MarketCandlesResponse {
-  const v = object(value, 'candles')
-  if (v.schema_version !== 1 || v.interval_ms !== MARKET_CANDLE_INTERVAL_MS || !Array.isArray(v.candles)
-    || v.candles.length > MARKET_CANDLES_PAGE_MAX) throw new Error('invalid candles page')
+export function parseMarketCandle(value: unknown): MarketCandle {
   const ratio = (n: unknown): number | null => {
     if (n === null) return null
     if (typeof n !== 'number' || !Number.isFinite(n) || n < 0 || n > 1) throw new Error('invalid candle ratio')
     return n
   }
-  const candles = v.candles.map(raw => {
-    const c = object(raw, 'candle')
-    const candle: MarketCandle = { at: integer(c.at, 'candle time'), open: ratio(c.open), high: ratio(c.high), low: ratio(c.low), close: ratio(c.close),
-      up_votes: integer(c.up_votes, 'candle up'), down_votes: integer(c.down_votes, 'candle down'), volume: integer(c.volume, 'candle volume') }
-    if ((candle.low !== null && candle.high !== null && candle.low > candle.high)
-      || [candle.open, candle.close].some(n => n !== null && (candle.low === null || candle.high === null || n < candle.low || n > candle.high))) throw new Error('inconsistent candle')
-    return candle
-  })
+  const c = object(value, 'candle')
+  const candle: MarketCandle = { at: integer(c.at, 'candle time'), open: ratio(c.open), high: ratio(c.high), low: ratio(c.low), close: ratio(c.close),
+    up_votes: integer(c.up_votes, 'candle up'), down_votes: integer(c.down_votes, 'candle down'), volume: integer(c.volume, 'candle volume') }
+  if ((candle.low !== null && candle.high !== null && candle.low > candle.high)
+    || [candle.open, candle.close].some(n => n !== null && (candle.low === null || candle.high === null || n < candle.low || n > candle.high))
+    || !Number.isSafeInteger(candle.up_votes + candle.down_votes)) throw new Error('inconsistent candle')
+  return candle
+}
+
+export function parseMarketCandlesResponse(value: unknown): MarketCandlesResponse {
+  const v = object(value, 'candles')
+  if (v.schema_version !== 1 || v.interval_ms !== MARKET_CANDLE_INTERVAL_MS || !Array.isArray(v.candles)
+    || v.candles.length > MARKET_CANDLES_PAGE_MAX) throw new Error('invalid candles page')
+  const candles = v.candles.map(parseMarketCandle)
   if (candles.some((c, i) => i > 0 && c.at <= candles[i - 1]!.at)) throw new Error('unordered candles')
   return { schema_version: 1, case_id: text(v.case_id, 'candle case'), business_date: text(v.business_date, 'candle date'),
     interval_ms: MARKET_CANDLE_INTERVAL_MS, candles, next_cursor: v.next_cursor === null ? null : text(v.next_cursor, 'candle cursor') }
@@ -303,5 +311,6 @@ export function parseMarketStreamEvent(value: unknown): MarketStreamEvent {
   if (v.schema_version !== 1) throw new Error('unsupported market event')
   return { schema_version: 1, epoch: text(v.epoch, 'stream epoch'), revision: integer(v.revision, 'stream revision'),
     server_time: integer(v.server_time, 'stream time'), ...(v.snapshot === undefined ? {} : { snapshot: v.snapshot }),
-    ...(v.market_state === undefined ? {} : { market_state: parseMarketState(v.market_state) }) }
+    ...(v.market_state === undefined ? {} : { market_state: parseMarketState(v.market_state) }),
+    ...(v.candle === undefined ? {} : { candle: parseMarketCandle(v.candle) }) }
 }
