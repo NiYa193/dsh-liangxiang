@@ -1,0 +1,39 @@
+# 本地体验香火交易
+
+只使用隔离的本地演示 Backend 和新 DSH Profile，不连接社区节点，不产生真实社区香客或票数。模拟香火、仓位和时钟仅用于观察效果。
+
+要求：支持的 Node（本次使用 22.19.0）、pnpm 11.28.5，以及已安装的仓库依赖。
+
+第一个终端，在本功能工作树启动临时数据库与演示后台：
+
+```bash
+LIANGXIANG_LOCAL_PREVIEW=1 pnpm exec unrun scripts/preview-market-backend.ts
+```
+
+第二个终端，同一工作树内创建独立 Profile，并连接这个本地后台：
+
+```bash
+export LIANGXIANG_SKIP_DOTENV=1
+export DSH_HOME="$(mktemp -d)"
+export LIANGXIANG_PROFILE=liangxiang-market-preview
+export LIANGXIANG_BACKEND_URL=http://127.0.0.1:4199
+export LIANGXIANG_SKIP_NPM_FLOAT=1
+pnpm run dev:install
+LIANGXIANG_DEV_PORT=3997 pnpm run dev:web --no-open
+```
+
+`LIANGXIANG_SKIP_DOTENV=1` 防止现有 `.env` 覆盖演示后台、隔离目录或 Profile；不要省略。
+
+使用终端提供的本机登录链接。首次完成欢迎后，在「梁相案牍 → 香火交易」打开市场。
+
+演示自动为该隔离身份准备 100 炷模拟香火与 P1 空仓 20 炷，推进到业务时钟 13 点；加上每日赠香，可用 90、冻结 20。P1 已定线且空仓占优，P2 可投入，P3 尚未开放。
+
+建议逐项查看：
+
+1. 切换潮汐/烛线、全天/近四小时；悬停或左右键读取官方烛线；P1 与鱼的位置不改变真实参考点。
+2. 在 P2 投入 5 炷，检查可用减少 5、冻结增加 5；调整或撤回只改变差额，不动 P1。
+3. 切换动态/静态并关闭重开；静态没有浮动或气泡循环，行情数值仍正常更新。
+4. 观察 P1 空仓：当前梁位低于参考线才占优，预计返还尚不是可花余额。
+5. 关闭浏览器再打开，钱包和冻结来自服务器；本地缓存可以清理，不会清资产。
+
+跨日、午夜派彩、重启、丢回执、并发超支和异常迁移由自动回归验证，不需要手动等待一天。停止演示时在两个终端分别按 Ctrl+C；不要用删除真实 DSH 资料的方式测试身份恢复。

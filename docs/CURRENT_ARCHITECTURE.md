@@ -78,7 +78,9 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 
 完成变更至少运行 `pnpm run verify`；DSH/打包触点运行 `smoke:clean-profile`，UI 运行
 `smoke:browser-clean-profile`，权威/API 变化运行 `smoke:online`，提交和推送必须通过隐私门禁。
-完整候选验证、集成 CI 与提交证据集中记录在 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md)。
+当前交易候选的验证证据集中记录在 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)，
+隔离演示步骤见 [`MARKET_LOCAL_TEST.md`](MARKET_LOCAL_TEST.md)。
+[`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md) 仅保留 1.2 发布验收记录，不能代替当前候选检查。
 
 个人 fork 开发并提交到上游 `dev`；受保护的 `main` 只快进到经完整检查的固定 dev 提交。
 main 始终是 dev 的祖先，不新增晋级或反向同步提交；没有文件变化就跳过。

@@ -7,7 +7,7 @@ import { createRequire } from 'node:module'
 
 const client = await readFile(new URL('../lib/client.js', import.meta.url))
 const rawLimit = 700_000
-// The original portraits remain pixel-identical. The market adds about 14 KB
+// The original portraits remain pixel-identical. The market adds about 16 KB
 // compressed code; its 23 KB sprite stays outside this always-loaded bundle.
 const gzipLimit = 430_000
 const gzipBytes = gzipSync(client, { level: 9 }).byteLength
