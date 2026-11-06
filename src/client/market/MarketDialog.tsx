@@ -20,6 +20,9 @@ const CSS = `
 [data-liangxiang-market-dialog] .liangxiang-market-primary:hover:not(:disabled){background:#3453c5;color:#fff;border-color:transparent}
 .liangxiang-market-chart{border:1px solid color-mix(in srgb,#729efb 25%,${color.border});border-radius:16px;background:linear-gradient(180deg,color-mix(in srgb,#7faefb 7%,${color.bgLayer}),${color.bgLayer});overflow:hidden}
 .liangxiang-market-chart-readout{padding:12px 16px 0;min-height:32px;font-size:11px;color:${color.textSecondary};font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.liangxiang-market-chart-toolbar{display:flex;align-items:center;gap:8px;padding-right:12px}
+.liangxiang-market-chart-toolbar .liangxiang-market-chart-readout{flex:1;min-width:0}
+[data-liangxiang-market-dialog] .liangxiang-market-chart-toolbar button{padding:2px 8px;min-height:25px;font-size:10px}
 .liangxiang-market-chart-scroll{overflow-x:auto;scrollbar-width:thin}
 .liangxiang-market-chart svg{display:block;width:100%;min-width:570px;max-height:330px;touch-action:pan-y}
 .liangxiang-market-chart figcaption{padding:0 16px 12px;font-size:10px;color:${color.textSecondary};line-height:1.6}
@@ -51,9 +54,11 @@ const CSS = `
 .liangxiang-market-whale[data-mood=behind] .liangxiang-market-bubble{display:block}
 [data-liangxiang-market-dialog][data-animated=true] .liangxiang-market-whale[data-mood=ahead] img,[data-liangxiang-market-dialog][data-animated=true] .liangxiang-market-whale[data-mood=won] img{animation:liangxiang-market-float 3.5s ease-in-out infinite}
 [data-liangxiang-market-dialog][data-animated=true] .liangxiang-market-bubble{animation:liangxiang-market-bubble 3.3s ease-in infinite}
+[data-liangxiang-market-dialog][data-animated=true] .liangxiang-market-volume-bubble[data-active=true]{animation:liangxiang-market-volume-float 4.5s ease-in-out infinite}
 [data-liangxiang-market-dialog][data-animated=false] .liangxiang-market-whale img{transition:none;animation:none}
 @keyframes liangxiang-market-float{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-5px) rotate(2deg)}}
 @keyframes liangxiang-market-bubble{0%{transform:translateY(7px);opacity:0}25%{opacity:.65}100%{transform:translateY(-20px);opacity:0}}
+@keyframes liangxiang-market-volume-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 .liangxiang-market-history{border-top:1px solid ${color.border};padding-top:14px}
 .liangxiang-market-receipt{display:grid;grid-template-columns:1fr auto;gap:5px 16px;border-bottom:1px solid ${color.border};padding:12px 0;font-size:12px}
 .liangxiang-market-receipt small{font-size:10px;color:${color.textSecondary}}
