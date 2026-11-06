@@ -1033,7 +1033,10 @@ export function LiangxiangBadge(): ReactElement {
           onRetry={() => { void store.loadHistory() }}
         />
       )}
-      {marketOpen && <MarketDialog key={state.authorityMode === 'LOCAL_FAKE_DEV' ? 'local' : 'online'} reducedMotion={reducedMotion} online={state.authorityMode !== 'LOCAL_FAKE_DEV'} onClose={closeMarket} />}
+      {marketOpen && <MarketDialog key={state.authorityMode === 'LOCAL_FAKE_DEV' ? 'local' : 'online'} reducedMotion={reducedMotion} online={state.authorityMode !== 'LOCAL_FAKE_DEV'} onClose={closeMarket}
+        {...(state.snapshot.liangziPolicyVersion === undefined || state.activeCase.id !== state.snapshot.caseId ? {} : {
+          presentation: { caseId: state.snapshot.caseId, policyId: state.snapshot.liangziPolicyVersion, title: state.activeCase.title },
+        })} />}
     </div>
   )
 }

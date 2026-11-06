@@ -9,6 +9,7 @@ import { MarketDialog } from '../src/client/market/MarketDialog.tsx'
 import { wireToViewState } from '../src/client/store.ts'
 import { FakeAuthoritativeLiangService } from '../src/host/fake-service.ts'
 import { parseWireState } from '../src/shared/wire.ts'
+import { LIANGZI_POLICY_VERSION } from '../src/domain/liangzi.ts'
 
 const DAY = Date.UTC(2026, 10, 6), HOUR = 3_600_000
 const { renderToStaticMarkup } = createRequire(import.meta.url)('react-dom/server') as { renderToStaticMarkup(element: ReactElement): string }
@@ -191,6 +192,14 @@ describe('market dialog rendering', () => {
     expect(html).toContain('P1 总投入香火')
     expect(html).toContain('冻结')
     expect(html).toContain('三次定线')
-    expect(html).toContain('/liangxiang/api/market/art.webp')
+    expect(html).toContain('data-liangxiang-market-main-whale')
+    const shown = renderToStaticMarkup(<MarketDialog reducedMotion online onClose={() => {}} session={session}
+      presentation={{ caseId: s.market!.case_id, policyId: LIANGZI_POLICY_VERSION, title: '同案标题' }} />)
+    expect(shown).toContain('同案标题')
+    expect(shown).toContain('data-liangxiang-market-zone="xiao_nan_liang"')
+    const stale = renderToStaticMarkup(<MarketDialog reducedMotion online onClose={() => {}} session={session}
+      presentation={{ caseId: 'another-case', policyId: LIANGZI_POLICY_VERSION, title: '旧案标题' }} />)
+    expect(stale).not.toContain('旧案标题')
+    expect(stale).not.toContain('data-liangxiang-market-zone=')
   })
 })

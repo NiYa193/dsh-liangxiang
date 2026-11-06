@@ -81,10 +81,12 @@ async function openMarket(page: Parameters<typeof openPanel>[0]) {
   return dialog
 }
 
-test('market keeps the four-region panel, traps focus, loads art on demand and disposes its stream', async ({ page }, testInfo) => {
+test('market keeps the four-region panel, on-demand artwork, trapped focus and clean stream disposal', async ({ page }, testInfo) => {
+  const artwork = page.waitForResponse(response => new URL(response.url()).pathname === '/liangxiang/api/market/art.webp')
   const dialog = await openMarket(page)
   await expect(dialog).toBeFocused()
-  await expect.poll(() => dialog.locator('img').first().evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true)
+  await expect(dialog.locator('[data-liangxiang-market-main-whale]')).toHaveCount(1)
+  expect((await artwork).status()).toBe(200)
   expect(await page.locator('[data-liangxiang-region]').count()).toBe(4)
   for (let i = 0; i < 30; i++) {
     await page.keyboard.press('Tab')
@@ -131,7 +133,7 @@ test('motion choice is local and static mode removes transitions as well as loop
   await expect(dialog).toHaveAttribute('data-animated', 'true')
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'false')
-  const fish = dialog.locator('.liangxiang-market-whale img').first()
+  const fish = dialog.locator('.liangxiang-market-current-whale').first()
   expect(await fish.evaluate(element => getComputedStyle(element).transitionDuration)).toBe('0s')
   await page.keyboard.press('Escape')
   const reopened = await openMarket(page)
@@ -143,6 +145,24 @@ test('motion choice is local and static mode removes transitions as well as loop
   })
   expect(bytes.bytes).toBeLessThan(MARKET_CACHE_MAX_BYTES)
   expect(bytes.hasWallet).toBe(false)
+})
+
+test('stage tabs keep one batch visible and preserve an unsubmitted draft without spending', async ({ page }) => {
+  const dialog = await openMarket(page)
+  const amount = dialog.getByRole('spinbutton', { name: 'P1 总投入香火' })
+  await amount.fill('17')
+  await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
+  await dialog.getByRole('tab', { name: /P2/ }).click()
+  await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
+  await expect(dialog.getByRole('spinbutton')).toHaveCount(0)
+  await dialog.getByRole('tab', { name: /P1/ }).click()
+  await expect(amount).toHaveValue('17')
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+  await page.keyboard.press('End')
+  await expect(dialog.getByRole('tab', { name: /P3/ })).toHaveAttribute('aria-selected', 'true')
+  await page.keyboard.press('Home')
+  await expect(dialog.getByRole('tab', { name: /P1/ })).toHaveAttribute('aria-selected', 'true')
+  expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })
 
 test('tide defaults to truthful steps, leaves gaps open and retains the candle view', async ({ page }, testInfo) => {

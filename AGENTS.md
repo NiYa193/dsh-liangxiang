@@ -24,7 +24,7 @@ rollover. No client cache or chart is a ledger. Usage remains soft trust.
 
 The existing four-region panel and original Liangzi effects remain intact.
 One compact `香火交易` entry may sit below the utility drawer's 2×2 tiles and
-open a separate blue trading view. Its original whale-girl artwork is a market
+open a separate blue trading view. Its blue whale-girl artwork is a market
 decoration, never a replacement central Liangzi or a new business namespace.
 Market animation/static preference is local and respects reduced motion.
 Do not read another implementation until the independent implementation has
