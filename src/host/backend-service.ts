@@ -18,6 +18,7 @@
  * balance until the next snapshot arrives.
  */
 import type { UsageObservationOrigin } from '../compat/dsh/usage-observer.ts'
+import { createHash } from 'node:crypto'
 import { DEFAULT_TOKEN_PER_INCENSE, type DailyLiangCase, type LiangHistoryArchive, type VoteResult } from '../domain/index.ts'
 import type {
   V1Bootstrap,
@@ -41,6 +42,9 @@ import { generateCommunityKeypair, type CommunityKeypair } from './community-key
 import type { LiangHostService, VoteOutcome } from './service.ts'
 import { UsageProjection, type UsageProjectionSink } from './usage-projection.ts'
 import type { DailyUsageRecord, SessionUsageWatermark } from './usage-ledger.ts'
+import { parseV1SnapshotResponse } from '../shared/backend-v1.ts'
+import type { MarketCandlesResponse, MarketHistoryResponse, MarketPositionRequest, MarketPositionResponse, MarketState, MarketStreamEvent, MarketWallet } from '../shared/market-v1.ts'
+import type { MarketCandlesQuery, MarketHistoryQuery } from './market-query.ts'
 
 const CLAIM_DEBOUNCE_MS = 1_000
 
@@ -53,6 +57,7 @@ const CLAIM_DEBOUNCE_MS = 1_000
  * the user voted again — the opposite of "multiple tabs converge".
  */
 const PERSONAL_REFRESH_EVERY_TICKS = 5
+const STREAM_CALIBRATION_TICKS = 30
 
 export interface BackendLiangServiceDeps {
   client: BackendClient
@@ -118,6 +123,15 @@ export class BackendLiangService implements LiangHostService {
   private bootstrapBackoffMs = 0
   private ticks = 0
   private disposed = false
+  private marketState: MarketState | null = null
+  private marketInFlight: Promise<MarketState> | null = null
+  private stopCloudStream: (() => void) | null = null
+  private cloudStreamUnsupported = false
+  private cloudConnected = false
+  private cloudHasFrame = false
+  private cloudLastActivity = 0
+  private cloudEpoch: string | null = null
+  private cloudRevision = -1
 
   constructor(deps: BackendLiangServiceDeps) {
     this.clock = deps.clock
@@ -170,6 +184,14 @@ export class BackendLiangService implements LiangHostService {
    */
   attachIdentity(installationId: string): void {
     if (this.installationId === installationId) return
+    this.stopCloudStream?.()
+    this.stopCloudStream = null
+    this.cloudStreamUnsupported = false
+    this.cloudConnected = false
+    this.cloudHasFrame = false
+    this.cloudEpoch = null
+    this.cloudRevision = -1
+    this.marketState = null
     this.installationId = installationId
     void this.refreshBootstrap({ startup: true })
   }
@@ -233,6 +255,12 @@ export class BackendLiangService implements LiangHostService {
       void this.refreshBootstrap()
       return
     }
+    if (this.cloudConnected && this.cloudHasFrame && Date.now() - this.cloudLastActivity < 70_000) {
+      // Push carries the common snapshot and our wallet. A slow authenticated
+      // calibration still catches revocation, daily statistics and missed state.
+      if (this.ticks % STREAM_CALIBRATION_TICKS === 0) void this.refreshBootstrap()
+      return
+    }
     void this.refreshSnapshot()
     if (this.ticks % PERSONAL_REFRESH_EVERY_TICKS === 0) void this.refreshPersonal()
   }
@@ -263,7 +291,7 @@ export class BackendLiangService implements LiangHostService {
         await this.refreshBootstrap()
         return
       }
-      this.personal = response.authoritative_personal_state
+      this.adoptPersonalState(response.authoritative_personal_state)
       this.setAuthorityAvailable(true)
       this.bump()
     } catch (error) {
@@ -299,7 +327,7 @@ export class BackendLiangService implements LiangHostService {
       this.reportFailure('vote', error)
       throw error
     }
-    this.personal = response.authoritative_personal_state
+    this.adoptPersonalState(response.authoritative_personal_state)
     // The response carries the snapshot the accepted vote published, so 梁位
     // moves on the click. It is still the BACKEND's published row — the host
     // never computes a ratio of its own — and adopting it needs no round trip.
@@ -362,6 +390,7 @@ export class BackendLiangService implements LiangHostService {
         usedIncenseToday: personal.used_incense,
         remainingIncense: personal.remaining_incense,
         tokenPerIncense: personal.token_per_incense,
+        ...(personal.wallet === undefined ? {} : { wallet: personal.wallet, earnedIncenseToday: personal.earned_incense }),
       },
       accounting: {
         available: this.accountingAvailable,
@@ -451,6 +480,136 @@ export class BackendLiangService implements LiangHostService {
     return historyArchiveToV1(filtered, afterVersion === undefined)
   }
 
+  cachedMarketState(): MarketState | null {
+    // Cached money/counts stay authoritative. Only advance the display clock
+    // against the last server anchor so sparse private events cannot rewind a
+    // browser countdown. The Backend alone still enforces every cutoff.
+    return this.marketState === null ? null : { ...this.marketState, server_time: this.clock.now() + this.serverOffset }
+  }
+
+  marketCacheScope(): string | null {
+    return this.installationId === null ? null
+      : createHash('sha256').update(`${this.client.baseUrl}\n${this.installationId}`).digest('hex')
+  }
+
+  async market(): Promise<MarketState> {
+    if (this.marketInFlight !== null) return this.marketInFlight
+    const id = this.requireIdentity()
+    const read = this.client.market
+    if (read === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
+    const run = read(id).then(state => {
+      if (!this.disposed && this.installationId === id) this.adoptMarketState(state)
+      return state
+    }).finally(() => { if (this.marketInFlight === run) this.marketInFlight = null })
+    this.marketInFlight = run
+    return run
+  }
+
+  async marketPosition(intent: MarketPositionRequest): Promise<MarketPositionResponse> {
+    const id = this.requireIdentity()
+    const submit = this.client.marketPosition
+    if (submit === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
+    if (!this.authorityAvailable) throw new BackendClientError('community authority is temporarily unavailable', 503, 'authority_unavailable')
+    await this.flushClaim()
+    const result = await submit(id, intent)
+    if (!this.disposed && this.installationId === id) this.adoptMarketState(result.state)
+    return result
+  }
+
+  async marketCandles(query?: MarketCandlesQuery): Promise<MarketCandlesResponse> {
+    const read = this.client.marketCandles
+    if (read === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
+    return read(this.requireIdentity(), query)
+  }
+
+  async marketHistory(query?: MarketHistoryQuery): Promise<MarketHistoryResponse> {
+    const read = this.client.marketHistory
+    if (read === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
+    return read(this.requireIdentity(), query)
+  }
+
+  private adoptWallet(wallet: MarketWallet): void {
+    const personal = this.personal
+    if (personal === null || (personal.wallet !== undefined && personal.wallet.version > wallet.version)) return
+    this.personal = { ...personal, wallet, remaining_incense: wallet.available_incense,
+      token_remainder: wallet.token_remainder, tokens_to_next_incense: wallet.token_per_incense - wallet.token_remainder,
+      token_per_incense: wallet.token_per_incense }
+  }
+
+  private adoptPersonalState(personal: V1PersonalState): void {
+    const current = this.personal?.wallet
+    this.personal = personal
+    if (current !== undefined && (personal.wallet === undefined || current.version > personal.wallet.version)) this.adoptWallet(current)
+    const wallet = this.personal.wallet
+    if (wallet !== undefined && this.marketState !== null) this.marketState = { ...this.marketState, wallet }
+  }
+
+  private adoptMarketState(state: MarketState): void {
+    const wallet = this.personal?.wallet
+    const currentPoint = this.marketState?.current_point
+    const newerPoint = currentPoint !== null && currentPoint !== undefined && currentPoint.case_id === state.current_point?.case_id
+      && currentPoint.sequence > state.current_point.sequence ? currentPoint : state.current_point
+    const previousCandle = this.marketState?.market?.case_id === state.market?.case_id ? this.marketState?.current_candle : undefined
+    const incomingCandle = state.current_candle
+    const candle = previousCandle !== undefined && (incomingCandle === undefined || previousCandle.at > incomingCandle.at
+      || (previousCandle.at === incomingCandle.at && previousCandle.volume > incomingCandle.volume)) ? previousCandle : incomingCandle
+    this.marketState = { ...state, current_point: newerPoint,
+      ...(candle === undefined ? {} : { current_candle: candle }),
+      wallet: wallet !== undefined && wallet.version > state.wallet.version ? wallet : state.wallet }
+    this.adoptWallet(this.marketState.wallet)
+    this.bump()
+  }
+
+  private ensureCloudStream(): void {
+    const id = this.installationId
+    const subscribe = this.client.subscribeEvents
+    if (this.disposed || id === null || subscribe === undefined || this.stopCloudStream !== null || this.cloudStreamUnsupported) return
+    this.stopCloudStream = subscribe(id, {
+      onStatus: status => {
+        if (this.disposed || this.installationId !== id) return
+        if (status === 'connecting') { this.cloudEpoch = null; this.cloudRevision = -1; this.cloudHasFrame = false }
+        this.cloudConnected = status === 'connected'
+        if (status === 'unsupported') this.cloudStreamUnsupported = true
+      },
+      onActivity: () => { this.cloudLastActivity = Date.now() },
+      onEvent: event => {
+        if (!this.disposed && this.installationId === id) this.adoptCloudEvent(event)
+      },
+    })
+  }
+
+  private adoptCloudEvent(event: MarketStreamEvent): void {
+    const response = event.snapshot === undefined ? null : parseV1SnapshotResponse(event.snapshot)
+    if (event.epoch === this.cloudEpoch && event.revision <= this.cloudRevision) return
+    this.cloudEpoch = event.epoch
+    this.cloudRevision = event.revision
+    this.cloudLastActivity = Date.now()
+    this.cloudHasFrame = true
+    this.serverOffset = event.server_time - this.clock.now()
+    if (response !== null) {
+      if (response.business_date !== this.businessDate || response.active_case.id !== this.activeCase?.id) {
+        void this.refreshBootstrap()
+      } else if (this.applySnapshotIfNewer(response.global_snapshot)) {
+        this.activeCase = response.active_case
+        this.broadcast = response.broadcast
+        const archiveMoved = response.archive_version > this.archiveVersion
+        this.archiveVersion = response.archive_version
+        const snapshot = response.global_snapshot
+        if (this.marketState !== null && this.marketState.market?.case_id === snapshot.case_id) this.marketState = { ...this.marketState, server_time: event.server_time,
+          current_point: { case_id: snapshot.case_id, at: snapshot.captured_at, up_votes: snapshot.up_votes,
+            down_votes: snapshot.down_votes, sequence: snapshot.sequence } }
+        if (archiveMoved) void this.refreshHistory()
+        this.bump()
+      }
+    }
+    if (event.market_state !== undefined) this.adoptMarketState(event.market_state)
+    if (event.candle !== undefined && this.marketState !== null
+      && this.marketState.market?.case_id === (response?.active_case.id ?? this.activeCase?.id)) {
+      this.marketState = { ...this.marketState, current_candle: event.candle }
+      this.bump()
+    }
+  }
+
   /** Fetch policy + case + personal state + snapshot in one round trip. */
   async refreshBootstrap(options?: { startup?: boolean }): Promise<void> {
     const installationId = this.installationId
@@ -478,6 +637,12 @@ export class BackendLiangService implements LiangHostService {
         // A fresh business date means the local claim must be re-submitted.
         this.lastClaimSent = -1
         this.scheduleClaim()
+        if (bootstrap.authoritative_personal_state.wallet !== undefined && this.cloudStreamUnsupported) {
+          this.stopCloudStream?.()
+          this.stopCloudStream = null
+          this.cloudStreamUnsupported = false
+        }
+        this.ensureCloudStream()
       } catch (error) {
         this.setAuthorityUnavailable(error)
         this.bootstrapBackoffMs = this.bootstrapBackoffMs === 0
@@ -538,6 +703,8 @@ export class BackendLiangService implements LiangHostService {
 
   dispose(): void {
     this.disposed = true
+    this.stopCloudStream?.()
+    this.stopCloudStream = null
     if (this.claimTimer !== null) {
       clearTimeout(this.claimTimer)
       this.claimTimer = null
@@ -551,7 +718,7 @@ export class BackendLiangService implements LiangHostService {
     this.dayEndsAt = businessDayEndsAt(createBusinessDateProvider(bootstrap.business_timezone), bootstrap.server_time)
     this.bootstrap = bootstrap
     this.activeCase = bootstrap.active_case
-    this.personal = bootstrap.authoritative_personal_state
+    this.adoptPersonalState(bootstrap.authoritative_personal_state)
     this.snapshot = bootstrap.global_snapshot
     this.broadcast = bootstrap.broadcast
     this.snapshotSequenceApplied = bootstrap.global_snapshot.sequence
@@ -659,7 +826,7 @@ export class BackendLiangService implements LiangHostService {
     try {
       const response = await this.client.submitClaim(installationId, target, businessDate)
       this.setAuthorityAvailable(true)
-      this.personal = response.authoritative_personal_state
+      this.adoptPersonalState(response.authoritative_personal_state)
       this.activeCase = response.active_case
       this.businessDate = response.business_date
       this.claimNotice = response.claim_notice ?? null
@@ -676,14 +843,14 @@ export class BackendLiangService implements LiangHostService {
         this.scheduleClaim()
       } else if (response.claim_applied === false) {
         // Stale/small target relative to the ledger; do not retry it.
-        this.lastClaimSent = Math.max(this.lastClaimSent, Math.min(target, this.personal.claimed_effective_tokens))
+        this.lastClaimSent = Math.max(this.lastClaimSent, Math.min(target, response.authoritative_personal_state.claimed_effective_tokens))
       } else {
         // Remember the number we submitted (even if the absurd guard clamped
         // the stored value) so a huge self-report is not retried forever.
         this.lastClaimSent = target
         this.displayBaseline = Math.min(
           this.usage.effectiveTokensFor(businessDate),
-          this.personal.claimed_effective_tokens,
+          response.authoritative_personal_state.claimed_effective_tokens,
         )
       }
       this.bump()
@@ -774,6 +941,10 @@ export class BackendLiangService implements LiangHostService {
 
   private reportFailure(label: string, error: unknown): void {
     if (error instanceof BackendClientError) {
+      if (error.code === 'wallet_has_assets') {
+        this.warn(`[${PLUGIN_PACKAGE_NAME}] community wallet has assets; restore the original identity key to regain access`)
+        return
+      }
       if (error.code === 'device_conflict') {
         this.warn(
           `[${PLUGIN_PACKAGE_NAME}] DEVICE CONFLICT: this device fingerprint is already bound to `
@@ -833,6 +1004,7 @@ function authorityFailureReason(error: unknown): string {
       case 'admission_rate_limited': return '领券人数过多，请稍后重试'
       case 'device_conflict': return '本设备已绑定另一份梁相身份'
       case 'rekey_cooldown': return '身份刚刚使用过，请在重置冷却结束后重试'
+      case 'wallet_has_assets': return '原身份仍有香火，请恢复原身份凭据后连接；资产已保留'
       case 'invalid_signature': return '身份签名未通过'
       default:
         if (error.status === null) return '网络不可达或请求超时，正在自动重连'
@@ -859,7 +1031,7 @@ function claimableEffectiveTokens(
   if (personal === null) return locallyObserved
   // Cover already-spent incense so a brief local/date mismatch cannot emit
   // a wire frame with used > earned.
-  const spentFloor = personal.used_incense * personal.token_per_incense
+  const spentFloor = personal.wallet === undefined ? personal.used_incense * personal.token_per_incense : 0
   const unclaimedLocal = Math.max(0, locallyObserved - displayBaseline)
   return Math.max(personal.claimed_effective_tokens + unclaimedLocal, spentFloor)
 }
