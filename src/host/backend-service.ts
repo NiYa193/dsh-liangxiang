@@ -59,6 +59,15 @@ const CLAIM_DEBOUNCE_MS = 1_000
 const PERSONAL_REFRESH_EVERY_TICKS = 5
 const STREAM_CALIBRATION_TICKS = 30
 
+interface PendingClaim {
+  installationId: string
+  businessDate: string
+  target: number
+  localThrough: number
+  baselineBefore: number
+  ledgerBefore: number
+}
+
 export interface BackendLiangServiceDeps {
   client: BackendClient
   /** Host-local timezone used only to bucket observed tokens. */
@@ -108,6 +117,9 @@ export class BackendLiangService implements LiangHostService {
 
   private claimTimer: ReturnType<typeof setTimeout> | null = null
   private claimInFlight: Promise<void> | null = null
+  private pendingClaim: PendingClaim | null = null
+  private deferredWalletVersion = 0
+  private personalInFlight: Promise<void> | null = null
   private lastClaimSent = -1
   /** Latest backend guard notice (absurd claim clamped); null normally. */
   private claimNotice: string | null = null
@@ -194,6 +206,9 @@ export class BackendLiangService implements LiangHostService {
     this.cloudRevision = -1
     this.marketState = null
     this.marketInFlight = null
+    this.pendingClaim = null
+    this.deferredWalletVersion = 0
+    this.personalInFlight = null
     this.installationId = installationId
     if (replacingIdentity) {
       this.bootstrap = null
@@ -292,6 +307,8 @@ export class BackendLiangService implements LiangHostService {
    * re-read the backend incense ledger so the panel cannot stay inflated.
    */
   async reconcileNow(): Promise<void> {
+    if (this.claimInFlight !== null) await this.claimInFlight
+    this.pendingClaim = null
     this.usage.discardDailyTotals()
     this.lastClaimSent = -1
     this.displayBaseline = 0
@@ -300,6 +317,13 @@ export class BackendLiangService implements LiangHostService {
 
   /** Re-read the authoritative personal balance (out-of-band changes). */
   async refreshPersonal(): Promise<void> {
+    if (this.personalInFlight !== null) return this.personalInFlight
+    const run = this.refreshPersonalOnce().finally(() => { if (this.personalInFlight === run) this.personalInFlight = null })
+    this.personalInFlight = run
+    return run
+  }
+
+  private async refreshPersonalOnce(): Promise<void> {
     const installationId = this.installationId
     if (this.disposed || installationId === null || this.bootstrap === null) return
     try {
@@ -414,7 +438,8 @@ export class BackendLiangService implements LiangHostService {
         usedIncenseToday: personal.used_incense,
         remainingIncense: personal.remaining_incense,
         tokenPerIncense: personal.token_per_incense,
-        ...(personal.wallet === undefined ? {} : { wallet: personal.wallet, earnedIncenseToday: personal.earned_incense }),
+        ...(personal.wallet === undefined ? {} : { wallet: personal.wallet, earnedIncenseToday: personal.earned_incense,
+          confirmedEffectiveTokensToday: personal.claimed_effective_tokens }),
       },
       accounting: {
         available: this.accountingAvailable,
@@ -566,10 +591,26 @@ export class BackendLiangService implements LiangHostService {
     if (current !== undefined && (personal.wallet === undefined || current.version > personal.wallet.version)) this.adoptWallet(current)
     const wallet = this.personal.wallet
     if (wallet !== undefined && this.marketState !== null) this.marketState = { ...this.marketState, wallet }
+    if (wallet !== undefined && wallet.version >= this.deferredWalletVersion) this.deferredWalletVersion = 0
+    const pending = this.pendingClaim
+    if (pending !== null && pending.installationId === this.installationId && pending.businessDate === personal.business_date) {
+      // This explicit claim watermark acknowledges exactly the local prefix
+      // submitted. Tokens arriving while the request was in flight stay pending.
+      const covered = Math.max(0, personal.claimed_effective_tokens - pending.ledgerBefore)
+      this.displayBaseline = Math.max(this.displayBaseline, pending.baselineBefore
+        + Math.min(covered, pending.localThrough - pending.baselineBefore))
+      if (personal.claimed_effective_tokens >= pending.target) {
+        this.lastClaimSent = Math.max(this.lastClaimSent, pending.target)
+        this.pendingClaim = null
+      }
+    }
   }
 
   private adoptMarketState(state: MarketState): void {
     const wallet = this.personal?.wallet
+    const holdWallet = wallet !== undefined && this.pendingClaim !== null
+    if (holdWallet) this.deferredWalletVersion = Math.max(this.deferredWalletVersion, state.wallet.version)
+    const remoteWalletMoved = wallet !== undefined && state.wallet.version > wallet.version
     const currentPoint = this.marketState?.current_point
     const newerPoint = currentPoint !== null && currentPoint !== undefined && currentPoint.case_id === state.current_point?.case_id
       && currentPoint.sequence > state.current_point.sequence ? currentPoint : state.current_point
@@ -579,9 +620,13 @@ export class BackendLiangService implements LiangHostService {
       || (previousCandle.at === incomingCandle.at && previousCandle.volume > incomingCandle.volume)) ? previousCandle : incomingCandle
     this.marketState = { ...state, current_point: newerPoint,
       ...(candle === undefined ? {} : { current_candle: candle }),
-      wallet: wallet !== undefined && wallet.version > state.wallet.version ? wallet : state.wallet }
-    this.adoptWallet(this.marketState.wallet)
+      wallet: wallet !== undefined && (holdWallet || wallet.version > state.wallet.version) ? wallet : state.wallet }
+    if (!holdWallet) this.adoptWallet(this.marketState.wallet)
     this.bump()
+    // A wallet alone omits the daily claim watermark and daily mint/spend
+    // counters. Read those only for an out-of-band private change, never for
+    // each public price tick. In-flight claims reconcile through their own ack.
+    if (!holdWallet && remoteWalletMoved) void this.refreshPersonal()
   }
 
   private ensureCloudStream(): void {
@@ -741,6 +786,7 @@ export class BackendLiangService implements LiangHostService {
   }
 
   private adoptBootstrap(bootstrap: V1Bootstrap): void {
+    const previousDate = this.businessDate
     this.serverOffset = bootstrap.server_time - this.clock.now()
     this.dayEndsAt = businessDayEndsAt(createBusinessDateProvider(bootstrap.business_timezone), bootstrap.server_time)
     this.bootstrap = bootstrap
@@ -754,7 +800,10 @@ export class BackendLiangService implements LiangHostService {
     this.archiveVersion = bootstrap.archive_version
     this.usage.alignDailyBucket(this.businessDate)
     this.usage.setBusinessDates(createBusinessDateProvider(bootstrap.business_timezone), bootstrap.server_time)
-    this.syncDisplayBaselineFromLedger()
+    // On a same-day refresh, a large server balance is not evidence that new
+    // post-repair local observations were included. Only an explicit pending
+    // claim watermark above may advance that local prefix.
+    if (previousDate !== this.businessDate) this.syncDisplayBaselineFromLedger()
     this.bump()
     if (archiveMoved && this.historyArchive !== null) void this.refreshHistory()
   }
@@ -830,26 +879,32 @@ export class BackendLiangService implements LiangHostService {
     const locallyObserved = this.usage.effectiveTokensFor(businessDate)
     const ledger = this.personal?.claimed_effective_tokens ?? 0
     const target = claimableEffectiveTokens(this.personal, locallyObserved, this.displayBaseline)
+    const pending = this.pendingClaim
     // Nothing above the ledger: do not POST a number the ratchet will drop.
-    if (this.personal !== null && target <= ledger) {
+    if (pending === null && this.personal !== null && target <= ledger) {
       this.lastClaimSent = Math.max(this.lastClaimSent, target)
       return
     }
-    if (target <= this.lastClaimSent) return
-    const run = this.claimOnce(installationId, target, businessDate)
+    if (pending === null && target <= this.lastClaimSent) return
+    const attempt: PendingClaim = pending ?? { installationId, target, businessDate, localThrough: locallyObserved,
+      baselineBefore: this.displayBaseline, ledgerBefore: ledger }
+    this.pendingClaim = attempt
+    const run = this.claimOnce(attempt)
     this.claimInFlight = run
     try {
       await run
     } finally {
       this.claimInFlight = null
+      if (!this.disposed && this.pendingClaim === null && this.deferredWalletVersion > (this.personal?.wallet?.version ?? 0)) {
+        void this.refreshPersonal()
+      }
+      if (!this.disposed && this.pendingClaim === null
+        && this.usage.effectiveTokensFor(this.businessDate) > this.displayBaseline) this.scheduleClaim()
     }
   }
 
-  private async claimOnce(
-    installationId: string,
-    target: number,
-    businessDate: string,
-  ): Promise<void> {
+  private async claimOnce(attempt: PendingClaim): Promise<void> {
+    const { installationId, target, businessDate } = attempt
     try {
       const response = await this.client.submitClaim(installationId, target, businessDate)
       if (this.disposed || this.installationId !== installationId) return
@@ -867,6 +922,7 @@ export class BackendLiangService implements LiangHostService {
           `[${PLUGIN_PACKAGE_NAME}] business date changed ${businessDate} -> ${response.business_date}; resetting claim watermark`,
         )
         this.lastClaimSent = -1
+        this.pendingClaim = null
         this.syncDisplayBaselineFromLedger()
         this.scheduleClaim()
       } else if (response.claim_applied === false) {
@@ -876,16 +932,23 @@ export class BackendLiangService implements LiangHostService {
         // Remember the number we submitted (even if the absurd guard clamped
         // the stored value) so a huge self-report is not retried forever.
         this.lastClaimSent = target
-        this.displayBaseline = Math.min(
-          this.usage.effectiveTokensFor(businessDate),
-          response.authoritative_personal_state.claimed_effective_tokens,
-        )
+        if (this.pendingClaim === attempt) {
+          // The absurd-claim guard may acknowledge only part of this request.
+          const acceptedDelta = Math.max(0, response.authoritative_personal_state.claimed_effective_tokens - attempt.ledgerBefore)
+          this.displayBaseline = Math.max(this.displayBaseline, attempt.baselineBefore
+            + Math.min(acceptedDelta, attempt.localThrough - attempt.baselineBefore))
+          this.pendingClaim = null
+        }
       }
       this.bump()
     } catch (error) {
       if (this.disposed || this.installationId !== installationId) return
       this.setAuthorityUnavailable(error)
       this.reportFailure('token-claim', error)
+      // A failed HTTP response is not proof that the server did not commit.
+      // Reconcile through an authenticated watermark before adopting SSE money
+      // or deciding which exact cumulative claim is safe to retry.
+      await this.refreshPersonal()
     }
   }
 
