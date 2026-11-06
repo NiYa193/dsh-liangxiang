@@ -47,6 +47,18 @@ describe('market visual accounting', () => {
     expect(view.personal.tokenRemainder).toBe(49_999)
     expect(view.personal.tokensToNextIncense).toBe(1)
   })
+  it('shows finalized usage awaiting acknowledgment as progress, never spendable incense', () => {
+    const service = new FakeAuthoritativeLiangService({ timezone: 'UTC', tokenPerIncense: 50_000, snapshotRefreshSeconds: 1, seed: 'empty', caseTitle: '测试梁案' }, { now: () => DAY + 10 * HOUR }, () => undefined)
+    service.markReadyMemoryOnly('test')
+    const frame = service.getWireState()
+    const parsed = parseWireState({ ...frame, authorityMode: 'DEV_STAGING_ONLY', personal: { ...frame.personal, effectiveTokensToday: 550_002, confirmedEffectiveTokensToday: 500_000, usedIncenseToday: 15, remainingIncense: 100, earnedIncenseToday: 10, wallet: state().wallet } })
+    const view = wireToViewState(parsed, 'live')
+    expect(view.personal.remainingIncense).toBe(100)
+    expect(view.personal.earnedIncenseToday).toBe(10)
+    expect(view.observedEarnedIncenseToday).toBe(12)
+    expect(view.personal.tokenRemainder).toBe(1)
+    expect(view.personal.tokensToNextIncense).toBe(49_999)
+  })
   it('uses the right direction for short positions and seals the final state', () => {
     const s = state(), b = batch('short')
     expect(positionMood(b, s.current_point)).toBe('behind')

@@ -109,6 +109,12 @@ export function wireToViewState(wire: LiangxiangWireState, connection: Connectio
       if (wire.personal.wallet) {
         const wallet = wire.personal.wallet
         const earned = wire.personal.earnedIncenseToday ?? Math.floor(wire.personal.effectiveTokensToday / wire.personal.tokenPerIncense)
+        // Only finalized local usage may lead the claim acknowledgment. It can
+        // animate next-incense progress but cannot create spendable wallet funds.
+        const confirmed = wire.personal.confirmedEffectiveTokensToday ?? wire.personal.effectiveTokensToday
+        const pending = Math.max(0, wire.personal.effectiveTokensToday - confirmed)
+        const observed = wallet.token_remainder + pending
+        const remainder = observed % wallet.token_per_incense
         return {
           personal: {
             effectiveTokensToday: wire.personal.effectiveTokensToday,
@@ -116,11 +122,11 @@ export function wireToViewState(wire: LiangxiangWireState, connection: Connectio
             earnedIncenseToday: earned,
             usedIncenseToday: wire.personal.usedIncenseToday,
             remainingIncense: wallet.available_incense,
-            tokenRemainder: wallet.token_remainder,
-            tokensToNextIncense: wallet.token_per_incense - wallet.token_remainder,
-            liangQiFill: wallet.token_remainder / wallet.token_per_incense,
+            tokenRemainder: remainder,
+            tokensToNextIncense: wallet.token_per_incense - remainder,
+            liangQiFill: remainder / wallet.token_per_incense,
           },
-          observedEarnedIncenseToday: earned,
+          observedEarnedIncenseToday: earned + Math.floor(observed / wallet.token_per_incense),
         }
       }
       // Ring fill / 下一炷 keep the optimistic local effective tokens; the
