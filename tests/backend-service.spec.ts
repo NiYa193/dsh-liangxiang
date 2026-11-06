@@ -544,7 +544,7 @@ describe('global snapshot', () => {
 })
 
 describe('business date rollover', () => {
-  it('opens a new case, resets used incense, and leaks nothing from yesterday', () => {
+  it('opens a new case, resets daily statistics, and carries the unspent wallet', () => {
     const f = boot()
     f.grantIncense(INSTALLATION, 2)
     vote(f, INSTALLATION, 'up', 'req-day1-00001')
@@ -562,7 +562,7 @@ describe('business date rollover', () => {
     expect(state.business_date).toBe('2026-08-17')
     expect(state.claimed_effective_tokens).toBe(0)
     expect(state.used_incense).toBe(0)
-    expect(state.remaining_incense).toBe(0)
+    expect(state.remaining_incense).toBe(1)
 
     const snapshot = parseV1Snapshot(f.service.snapshotResponse().global_snapshot)
     expect(snapshot.case_id).toBe(today.id)
@@ -663,7 +663,7 @@ describe('business date rollover', () => {
 })
 
 describe('same-day publish', () => {
-  it('archives the active case, opens a zero-vote successor, and restores remaining incense', () => {
+  it('archives the active case without resurrecting incense already spent', () => {
     const f = boot()
     f.grantIncense(INSTALLATION, 5, 47_000)
     const firstId = f.service.ensureActiveCase().id
@@ -697,8 +697,8 @@ describe('same-day publish', () => {
 
     const after = f.service.dailyState(INSTALLATION).authoritative_personal_state
     expect(after.claimed_effective_tokens).toBe(before.claimed_effective_tokens)
-    expect(after.used_incense).toBe(0)
-    expect(after.remaining_incense).toBe(5)
+    expect(after.used_incense).toBe(2)
+    expect(after.remaining_incense).toBe(3)
     expect(after.token_remainder).toBe(47_000)
 
     const stale = f.service.vote(INSTALLATION, {
@@ -712,7 +712,7 @@ describe('same-day publish', () => {
     expect(fresh.result.status).toBe('accepted')
     expect(fresh.global_snapshot.case_id).toBe(published.active_case.id)
     expect(fresh.global_snapshot.total_incense).toBe(1)
-    expect(fresh.authoritative_personal_state.remaining_incense).toBe(4)
+    expect(fresh.authoritative_personal_state.remaining_incense).toBe(2)
   })
 
   it('allows a second same-day publish and never leaves two actives', () => {

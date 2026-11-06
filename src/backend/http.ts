@@ -22,6 +22,8 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
+import { randomUUID } from 'node:crypto'
+import { parseMarketPositionRequest, type MarketStreamEvent } from '../shared/market-v1.ts'
 import { legacyLiangziView, legacyLiangziHistory } from './liangzi-compat.ts'
 import { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 import { formatLiangPosition } from '../domain/index.ts'
@@ -194,9 +196,63 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
   const log = options.log ?? ((message: string) => console.log(message))
   const voteRateLimitMaxKeys = options.voteRateLimitMaxKeys ?? DEFAULT_VOTE_RATE_LIMIT_MAX_KEYS
   const voteLimiter = new VoteRateLimiter(voteRateLimitPerMinute, voteRateLimitMaxKeys)
+  const marketLimiter = new VoteRateLimiter(60, voteRateLimitMaxKeys)
   const identityLimiter = new IdentityRateLimiter()
   const admissionLimiter = new AdmissionRateLimiter(options.admissionClaimRateLimitPerMinute ?? 120)
   const expectedEvents = new ExpectedEventSampler(log)
+  const epoch = randomUUID()
+  interface Stream { installation: string, res: ServerResponse, revision: number, global: string, personal: string, heartbeat: number }
+  const streams = new Set<Stream>()
+  let streamTimer: ReturnType<typeof setInterval> | undefined
+  const closeStream = (stream: Stream): void => {
+    streams.delete(stream)
+    stream.res.end()
+    if (streams.size === 0 && streamTimer !== undefined) {
+      clearInterval(streamTimer)
+      streamTimer = undefined
+    }
+  }
+  const pumpStreams = (): void => {
+    if (streams.size === 0) return
+    try {
+      const snapshot = service.snapshotResponse()
+      const candle = service.marketCurrentCandle()
+      const global = JSON.stringify({ snapshot: { ...snapshot, server_time: 0 }, candle })
+      for (const stream of streams) {
+        try {
+          if (!allowUnsigned && store.identityByInstallation(stream.installation) === undefined) {
+            closeStream(stream)
+            continue
+          }
+          const personal = service.marketStreamVersion(stream.installation)
+          const event: MarketStreamEvent = { schema_version: 1, epoch, revision: stream.revision + 1, server_time: snapshot.server_time }
+          if (stream.global !== global) {
+            event.snapshot = snapshot
+            if (candle !== undefined) event.candle = candle
+          }
+          if (stream.personal !== personal) event.market_state = service.marketState(stream.installation)
+          if (event.snapshot !== undefined || event.market_state !== undefined) {
+            const frame = `id: ${epoch}:${event.revision}\nevent: state\ndata: ${JSON.stringify(event)}\n\n`
+            if (stream.res.writableLength > 65_536 || !stream.res.write(frame)) {
+              closeStream(stream)
+              continue
+            }
+            stream.revision = event.revision
+            stream.global = global
+            stream.personal = service.marketStreamVersion(stream.installation)
+          } else if (Date.now() - stream.heartbeat >= 25_000) {
+            if (!stream.res.write(': heartbeat\n\n')) closeStream(stream)
+            stream.heartbeat = Date.now()
+          }
+        } catch {
+          closeStream(stream)
+        }
+      }
+    } catch {
+      // A database failure terminates streams; clients must re-bootstrap authority.
+      for (const stream of streams) closeStream(stream)
+    }
+  }
 
   const authenticate = (req: IncomingMessage, method: string, path: string, rawBody: string): string => {
     const publicKey = headerValue(req, PUBLIC_KEY_HEADER)
@@ -343,6 +399,11 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       [`${BACKEND_API_PREFIX}/votes`]: 'POST',
       [`${BACKEND_API_PREFIX}/identity/rekey`]: 'POST',
       [`${BACKEND_API_PREFIX}/identity/revoke`]: 'POST',
+      [`${BACKEND_API_PREFIX}/market`]: 'GET',
+      [`${BACKEND_API_PREFIX}/market/position`]: 'POST',
+      [`${BACKEND_API_PREFIX}/market/candles`]: 'GET',
+      [`${BACKEND_API_PREFIX}/market/history`]: 'GET',
+      [`${BACKEND_API_PREFIX}/events`]: 'GET',
     }
     const expected = routes[path]
     if (expected === undefined) {
@@ -544,7 +605,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
 
     let installationId: string
     try {
-      installationId = authenticate(req, method, path, rawBody)
+      installationId = authenticate(req, method, `${path}${url.search}`, rawBody)
     } catch (error) {
       if (error instanceof CommunityAuthError) {
         writeError(res, error.httpStatus, error.code, error.message)
@@ -576,12 +637,87 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       writeJson(res, 200, service.dailyState(installationId))
       return
     }
+    if (path === `${BACKEND_API_PREFIX}/events`) {
+      if (url.search !== '') {
+        writeError(res, 400, 'invalid_request', 'event stream does not accept query parameters')
+        return
+      }
+      if (streams.size >= 2_000 || [...streams].filter(s => s.installation === installationId).length >= 3) {
+        writeError(res, 429, 'identity_rate_limited', 'event stream connection capacity reached')
+        return
+      }
+      // Bootstrap before sending headers so identity/storage failures stay ordinary HTTP errors.
+      service.marketState(installationId)
+      res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8',
+        'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' })
+      res.flushHeaders()
+      const stream: Stream = { installation: installationId, res, revision: 0, global: '', personal: '', heartbeat: Date.now() }
+      streams.add(stream)
+      res.once('close', () => closeStream(stream))
+      pumpStreams()
+      if (streamTimer === undefined && streams.size > 0) {
+        streamTimer = setInterval(pumpStreams, 1_000)
+        streamTimer.unref?.()
+      }
+      return
+    }
+    if (path === `${BACKEND_API_PREFIX}/market`) {
+      if (url.search !== '') {
+        writeError(res, 400, 'invalid_request', 'market state does not accept query parameters')
+        return
+      }
+      writeJson(res, 200, service.marketState(installationId))
+      return
+    }
+    if (path === `${BACKEND_API_PREFIX}/market/history` || path === `${BACKEND_API_PREFIX}/market/candles`) {
+      try {
+        const allowed = path.endsWith('/history') ? ['cursor', 'limit'] : ['cursor', 'limit', 'business_date', 'case_id']
+        for (const key of url.searchParams.keys()) {
+          if (!allowed.includes(key) || url.searchParams.getAll(key).length !== 1) throw new WireError('query', 'unknown or repeated market query parameter')
+        }
+        const limitRaw = url.searchParams.get('limit')
+        if (limitRaw !== null && !/^\d{1,3}$/.test(limitRaw)) throw new WireError('limit', 'expected an integer page limit')
+        const cursor = url.searchParams.get('cursor') ?? undefined
+        const limit = limitRaw === null ? undefined : Number(limitRaw)
+        if (path.endsWith('/history')) writeJson(res, 200, service.marketHistory(installationId, cursor, limit))
+        else writeJson(res, 200, service.marketCandles({
+          ...(cursor === undefined ? {} : { cursor }), ...(limit === undefined ? {} : { limit }),
+          ...(url.searchParams.has('case_id') ? { caseId: url.searchParams.get('case_id')! } : {}),
+          ...(url.searchParams.has('business_date') ? { businessDate: url.searchParams.get('business_date')! } : {}),
+        }))
+      } catch (error) { writeValidationError(res, error) }
+      return
+    }
 
     let body: unknown
     try {
       body = rawBody === '' ? {} : (JSON.parse(rawBody) as unknown)
     } catch {
       writeError(res, 400, 'invalid_request', 'invalid request')
+      return
+    }
+
+    if (path === `${BACKEND_API_PREFIX}/market/position`) {
+      let intent: ReturnType<typeof parseMarketPositionRequest>
+      try { intent = parseMarketPositionRequest(body) }
+      catch (error) {
+        writeError(res, 400, 'invalid_request', error instanceof Error ? error.message : 'invalid position intent')
+        return
+      }
+      try {
+        const stored = store.database.prepare('SELECT 1 FROM liang_market_request WHERE installation_id=? AND request_id=?')
+          .get(installationId, intent.request_id)
+        if (stored === undefined) {
+          const decision = marketLimiter.inspect(installationId, Date.now(), null)
+          if (!decision.allowed || decision.available < 1) {
+            writeError(res, 429, 'identity_rate_limited', 'too many position updates; retry later')
+            return
+          }
+          marketLimiter.consume(installationId, 1, Date.now(), null)
+        }
+        writeJson(res, 200, service.setMarketPosition(installationId, intent))
+      }
+      catch (error) { writeValidationError(res, error) }
       return
     }
 
@@ -693,12 +829,19 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       else res.end()
     })
   })
+  const closeServer = server.close.bind(server)
+  server.close = (callback) => {
+    for (const stream of streams) closeStream(stream)
+    return closeServer(callback)
+  }
 
   return {
     handler,
     server,
     reset: () => {
+      for (const stream of streams) closeStream(stream)
       voteLimiter.reset()
+      marketLimiter.reset()
       identityLimiter.reset()
       admissionLimiter.reset()
       expectedEvents.reset()

@@ -360,6 +360,7 @@ export const V1_ERROR_CODES = [
   'vote_rate_limited',
   'device_conflict',
   'rekey_cooldown',
+  'wallet_has_assets',
   'identity_rate_limited',
   'unknown_route',
   'method_not_allowed',

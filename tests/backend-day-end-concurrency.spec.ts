@@ -326,7 +326,7 @@ describe('signed day-end bursts on a file-backed authority', () => {
     for (const identity of identities) {
       expect(h.store.incenseFor(identity.installationId, '2026-10-19')?.used_incense).toBe(0)
       expect(h.service.dailyState(identity.installationId).authoritative_personal_state)
-        .toMatchObject({ earned_incense: 0, used_incense: 0, remaining_incense: 0 })
+        .toMatchObject({ earned_incense: 0, used_incense: 0, remaining_incense: 20 })
     }
     const replay = await Promise.all(stale.map(h.send))
     expect(replay.every(reply => reply.status === 409)).toBe(true)

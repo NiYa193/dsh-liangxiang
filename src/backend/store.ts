@@ -198,6 +198,8 @@ export interface InsertCaseInput {
 }
 
 export interface BackendStore {
+  /** Internal database shared by wallet/market transactions, never exposed over HTTP. */
+  readonly database: DatabaseSync
   /** Run `body` inside one `BEGIN IMMEDIATE` transaction. */
   transaction: <T>(body: () => T) => T
   activeCaseFor: (businessDate: string) => CaseRow | undefined
@@ -694,6 +696,7 @@ export function openBackendStore(databasePath: string): BackendStore {
   const deleteBroadcast = db.prepare('DELETE FROM client_broadcast WHERE singleton = 1')
 
   return {
+    database: db,
     transaction<T>(body: () => T): T {
       db.exec('BEGIN IMMEDIATE')
       try {
