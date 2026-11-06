@@ -695,6 +695,18 @@ export class LiangxiangBackendService {
     return this.marketLedger.state(installationId, caseRow, now)
   }
 
+  /** The cloud fanout has already advanced public authority once this tick. */
+  marketStateForStream(installationId: string, now = this.clock.now()): MarketState {
+    const caseRow = this.store.activeCaseFor(this.businessDate(now))
+    if (caseRow === undefined) return this.marketState(installationId, now)
+    // A continuously connected account still receives its one next-day gift.
+    // All steady-state stream reads below stay outside a write transaction.
+    if (this.store.incenseFor(installationId, caseRow.business_date) === undefined) {
+      this.store.transaction(() => this.ensureRow(installationId, caseRow, now))
+    }
+    return this.marketLedger.state(installationId, caseRow, now)
+  }
+
   setMarketPosition(installationId: string, request: MarketPositionRequest, now = this.clock.now()): MarketPositionResponse {
     const caseRow = this.ensureActiveCase(now)
     return this.store.transaction(() => {

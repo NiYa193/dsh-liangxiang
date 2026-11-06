@@ -21,6 +21,7 @@ interface PositionRow { id: number, market_id: string, batch: MarketBatchId, ins
 export class MarketLedger {
   private readonly db: BackendStore['database']
   private readonly poolCache = new Map<string, { version: number, pools: Map<number, { long: number, short: number }> }>()
+  private readonly batchCache = new Map<string, { version: number, batches: BatchRow[] }>()
   constructor(private readonly store: BackendStore, private readonly timezone: string) {
     this.db = store.database
   }
@@ -330,11 +331,19 @@ export class MarketLedger {
   }
 
   private view(market: MarketRow, installation: string): DailyMarket {
+    let shared = this.batchCache.get(market.id)
+    if (shared === undefined || shared.version !== market.version) {
+      shared = { version: market.version, batches: this.batches(market.id) }
+      if (this.batchCache.size >= 8) this.batchCache.delete(this.batchCache.keys().next().value!)
+      this.batchCache.set(market.id, shared)
+    }
+    const ownRows = this.db.prepare('SELECT * FROM liang_market_position WHERE installation_id=? AND market_id=?')
+      .all(installation, market.id) as unknown as PositionRow[]
     return { id: market.id, case_id: market.case_id, business_date: market.business_date, timezone: market.timezone,
       rule_version: MARKET_RULE_VERSION, opens_at: market.opens_at, closes_at: market.closes_at,
-      status: market.status, close_point: this.parsePoint(market.close_point), batches: this.batches(market.id).map(batch => {
-        const pools = this.pools(market.id, batch.batch)
-        const own = this.position(market.id, batch.batch, installation)
+      status: market.status, close_point: this.parsePoint(market.close_point), batches: shared.batches.map(batch => {
+        const pools = this.pools(market.id, batch.batch, market.version)
+        const own = ownRows.find(p => p.batch === batch.batch)
         return { batch: batch.batch, opens_at: batch.opens_at, locks_at: batch.locks_at,
           reference_at: batch.reference_at, status: batch.status, reference: this.parsePoint(batch.reference_point),
           result: batch.result, long_incense: pools.long, short_incense: pools.short,
@@ -353,8 +362,8 @@ export class MarketLedger {
   private batches(id: string): BatchRow[] { return this.db.prepare('SELECT * FROM liang_market_batch WHERE market_id=? ORDER BY batch').all(id) as unknown as BatchRow[] }
   private positions(id: string, batch: number): PositionRow[] { return this.db.prepare('SELECT * FROM liang_market_position WHERE market_id=? AND batch=? ORDER BY id').all(id, batch) as unknown as PositionRow[] }
   private position(id: string, batch: number, installation: string): PositionRow | undefined { return this.db.prepare('SELECT * FROM liang_market_position WHERE market_id=? AND batch=? AND installation_id=?').get(id, batch, installation) as unknown as PositionRow | undefined }
-  private pools(id: string, batch: number): { long: number, short: number } {
-    const version = (this.db.prepare('SELECT version FROM liang_market WHERE id=?').get(id) as { version: number }).version
+  private pools(id: string, batch: number, knownVersion?: number): { long: number, short: number } {
+    const version = knownVersion ?? (this.db.prepare('SELECT version FROM liang_market WHERE id=?').get(id) as { version: number }).version
     let cached = this.poolCache.get(id)
     if (cached === undefined || cached.version !== version) {
       const rows = this.db.prepare('SELECT batch,side,SUM(amount) AS amount FROM liang_market_position WHERE market_id=? GROUP BY batch,side')

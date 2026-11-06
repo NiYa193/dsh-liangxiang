@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -172,6 +172,20 @@ describe('three daily sealed pools', () => {
     expect(() => f.service.marketHistory(A, 'not-a-cursor')).toThrow('cursor')
     expect(() => f.service.marketCandles({ limit: 289 })).toThrow('limit')
     expect(f.service.marketCandles().candles.length).toBeLessThanOrEqual(288)
+  })
+
+  it('serves steady cloud subscribers without opening a write transaction per connection', () => {
+    const f = boot(); fund(f)
+    const transactions = vi.spyOn(f.store, 'transaction')
+    for (let i = 0; i < 50; i += 1) f.service.marketStateForStream(A)
+    expect(transactions).not.toHaveBeenCalled()
+    transactions.mockRestore()
+    f.clock.set(at(9, 0, 17))
+    f.service.snapshotResponse() // The shared public pump owns rollover once.
+    const nextDay = vi.spyOn(f.store, 'transaction')
+    for (let i = 0; i < 50; i += 1) f.service.marketStateForStream(A)
+    expect(nextDay).toHaveBeenCalledTimes(1) // One new daily claim/gift row, not 50.
+    nextDay.mockRestore()
   })
 })
 

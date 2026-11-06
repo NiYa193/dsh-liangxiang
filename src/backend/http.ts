@@ -231,7 +231,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
             event.snapshot = snapshot
             if (candle !== undefined) event.candle = candle
           }
-          if (stream.personal !== personal) event.market_state = service.marketState(stream.installation)
+          if (stream.personal !== personal) event.market_state = service.marketStateForStream(stream.installation, snapshot.server_time)
           if (event.snapshot !== undefined || event.market_state !== undefined) {
             const frame = `id: ${epoch}:${event.revision}\nevent: state\ndata: ${JSON.stringify(event)}\n\n`
             if (stream.res.writableLength > 65_536 || !stream.res.write(frame)) {
