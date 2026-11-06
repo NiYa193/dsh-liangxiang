@@ -84,7 +84,7 @@ async function openMarket(page: Parameters<typeof openPanel>[0]) {
 test('market keeps the four-region panel, traps focus, loads art on demand and disposes its stream', async ({ page }, testInfo) => {
   const dialog = await openMarket(page)
   await expect(dialog).toBeFocused()
-  expect(await dialog.locator('img').first().evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true)
+  await expect.poll(() => dialog.locator('img').first().evaluate(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)).toBe(true)
   expect(await page.locator('[data-liangxiang-region]').count()).toBe(4)
   for (let i = 0; i < 30; i++) {
     await page.keyboard.press('Tab')
@@ -108,7 +108,9 @@ test('whole-position changes freeze only the difference and short whale state fo
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
   const live = fixture()
   live.server_time = DAY + 13 * HOUR
+  live.current_point = { ...live.current_point!, at: live.server_time }
   live.market!.batches[0] = { ...live.market!.batches[0]!, status: 'live', reference: { ...live.current_point!, at: DAY + 12 * HOUR, up_votes: 50, down_votes: 50 }, position: { side: 'short', amount: 20, submitted_at: DAY + 10 * HOUR, payout: null }, long_incense: 20, short_incense: 40 }
+  live.market!.batches[1] = { ...live.market!.batches[1]!, status: 'open' }
   live.wallet = { ...live.wallet, available_incense: 80, frozen_incense: 20 }
   await page.evaluate(state => window.__liangxiangMarketFrame?.(state), live)
   await expect(first).toContainText('暂时落后')
