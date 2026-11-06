@@ -2,7 +2,7 @@ import {
   parseMarketState, parseMarketCandlesResponse, parseMarketHistoryResponse, parseMarketPositionResponse,
   type MarketState, type MarketCandle, type MarketReceipt, type MarketPositionRequest,
 } from '../../shared/market-v1.ts'
-import { browserMarketStorage, emptyMarketCache, readMarketCache, writeMarketCache, writeMarketPending, type MarketCache, type MarketStorage } from './market-cache.ts'
+import { boundedMarketCache, browserMarketStorage, emptyMarketCache, readMarketCache, writeMarketCache, writeMarketPending, type MarketCache, type MarketStorage } from './market-cache.ts'
 
 const BASE = '/liangxiang/api/market'
 const TIMEOUT_MS = 6_000
@@ -84,6 +84,7 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
   }
   const save = (immediate = true): void => {
     if (!immediate && Date.now() - lastCacheSave < 15_000) return
+    cache = boundedMarketCache(cache)
     writeMarketCache(storage, cache); lastCacheSave = Date.now()
   }
   const withCandle = (candles: MarketCandle[], candle: MarketCandle): MarketCandle[] => [...candles.filter(c => c.at !== candle.at), candle].sort((a, b) => a.at - b.at).slice(-288)
