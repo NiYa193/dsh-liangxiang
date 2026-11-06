@@ -1,13 +1,13 @@
 # 梁相：当前架构与事实索引
 
-核对：2026-11-04。先读 [`AGENTS.md`](../AGENTS.md)，再按本文进入专题；历史文档不能覆盖现行契约。
+核对：2026-11-06。先读 [`AGENTS.md`](../AGENTS.md)，再按本文进入专题；历史文档不能覆盖现行契约。
 
 ## 版本与边界
 
 当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.1`，`SERVER_BUILD=1.3.0-alpha.1-u1`。
 当前源码为 **1.3.0-alpha.1 独立开发候选**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
-累计钱包、三批分池、延迟定线与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
+累计钱包、三批分池、延迟定线与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **13**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
 2026-11-03 后台维护：公开客户端/npm/官网仍为 1.2.0；服务为 **1.2.0-u2 / 2f2d6e3**，
 源自正式 1.2.0，只调整社区额度并修复部署权限，不带入候选 schema 11。
@@ -29,9 +29,9 @@
 DSH 最终请求用量
   → compat/dsh 观察与持久化游标
   → Host 按请求路由折算 Pro 当量
-      ├─ 在线：签名声明 → Backend / SQLite 事务记账
+      ├─ 在线：签名声明 → Backend / SQLite 累计钱包与事务记账
       └─ 离线：独立本地账本
-  → 同源 HTTP + SSE → 今日梁案 / 香火环 / 梁祠
+  → 云端 SSE → Host → 同源 HTTP + SSE → 今日梁案 / 香火环 / 梁祠 / 香火交易
 ```
 
 - 在线 Backend 决定扣香、幂等票据、唯一香客、聚合与快照；浏览器只发送意图。
@@ -46,11 +46,13 @@ DSH 最终请求用量
 
 | 功能 | 最终规则与资料 |
 |---|---|
+| 累计钱包（候选） | 可用/冻结分离、余额与 Token 余量跨日；每日统计独立，旧客户端需配套升级。见 [`MARKET_WALLET.md`](MARKET_WALLET.md) |
+| 香火交易（候选） | 每日三批延迟定线、午夜共同收盘；整数分池、官方五分钟 K 线、动态/静态鲸鱼反馈、本地缓存有界 |
 | 小难梁 | 有票且梁位 <25%；25%–<50% 为梁工。旧梁案和档案保留原规则，见 [`ISSUE2_IMPLEMENTATION.md`](ISSUE2_IMPLEMENTATION.md) |
 | 凝香 | Pro ×1；Flash、其他及未知 ×0.5；按每个请求最终用量结算。V4.1 路由与重试/迁移边界见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)、[`PR7_REVIEW.md`](PR7_REVIEW.md) |
 | 拍梁子 | 单击 200ms 判定开合；双击/连拍保持面板状态。主面板固定，独立三行短句下落渐隐，见 [`PR6_FEEDBACK_REDESIGN.md`](PR6_FEEDBACK_REDESIGN.md) |
 | 定时上香 | 默认关闭，满 500 炷后每 10 分钟按限额上香，23:59 再收尾一次；复用原开关/方向，旧开关需重新开启，手动优先、意图持久化且不跨日补投，见 [`DAY_END_INCENSE.md`](DAY_END_INCENSE.md) |
-| 连接 | Host 跟随后端 cadence；只过滤业务内容相同的 SSE 整帧，真实变化即时发送，见 [`CONNECTION_EFFICIENCY.md`](CONNECTION_EFFICIENCY.md) |
+| 连接 | 候选优先每 Host 一条云 SSE；健康时低频校准、旧后台或故障回退 cadence；浏览器复用本机 SSE。已发布版的原轮询基线见 [`CONNECTION_EFFICIENCY.md`](CONNECTION_EFFICIENCY.md) |
 | 更新说明 | 仅展示当前版相对上次正式版的一份说明，不补播历史；最高已读版本防止旧版自动弹出，可从案牍主动重看。保留首次指导、QQ 二维码及鸣谢 |
 
 投票额度默认每分钟恢复 500 炷，桶容量与单次请求仍各最多 500 炷；定时上香保持 10 分钟。
