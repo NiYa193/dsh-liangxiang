@@ -49,7 +49,7 @@ test.beforeEach(async ({ page }) => {
       for (const source of sources) source.onmessage?.(new MessageEvent('message', { data: JSON.stringify({ ...state, cache_scope: 'browser-market-scope' }) }))
     }
   })
-  await page.route('**/liangxiang/api/state', async route => {
+  await page.route(/\/liangxiang\/api\/(?:state|refresh)(?:\?|$)/, async route => {
     const response = await route.fetch(), wire = await response.json() as Record<string, unknown>
     await route.fulfill({ response, json: { ...wire, authorityMode: 'DEV_STAGING_ONLY', authorityAvailable: true } })
   })
