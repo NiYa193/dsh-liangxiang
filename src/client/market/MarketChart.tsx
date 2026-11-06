@@ -25,7 +25,7 @@ const CandleLayer = memo(function CandleLayer({ candles, from, until, min, max }
 export function MarketWhale({ batch, state, small = false }: { batch: MarketBatch, state: MarketState, small?: boolean }): ReactElement {
   const mood = positionMood(batch, state.market?.close_point ?? state.current_point)
   const label = { waiting: '待定线', ahead: '当前占优', behind: '暂时落后', even: '当前持平', won: '已获胜', lost: '本批未中', returned: '已退回' }[mood]
-  return <span className="liangxiang-market-whale" data-mood={mood} data-small={small} aria-label={label}>
+  return <span className="liangxiang-market-whale" data-mood={mood} data-small={small} role="img" aria-label={label}>
     <img src={MARKET_WHALE_PATH} alt="" draggable={false} decoding="async" />
     <span className="liangxiang-market-water" aria-hidden="true" />
     <i className="liangxiang-market-bubble" aria-hidden="true" /><i className="liangxiang-market-bubble" aria-hidden="true" />
@@ -103,7 +103,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
           </g>
         })}
         {current !== null && <g><line x1={LEFT} x2={WIDTH - RIGHT} y1={y(current)} y2={y(current)} stroke="#4a8fc4" strokeWidth="1.3" opacity=".65" />
-          <rect x={WIDTH - RIGHT + 2} y={y(current) - 11} width="74" height="22" fill={INK} rx="5" />
+          <rect x={WIDTH - RIGHT + 2} y={y(current) - 11} width="74" height="22" fill="#405ed5" rx="5" />
           <text x={WIDTH - RIGHT + 39} y={y(current) + 4} textAnchor="middle" fill="#fff" fontSize="11">{(current * 100).toFixed(3)}%</text></g>}
         {selected && <line x1={x(selected.at + 150_000)} x2={x(selected.at + 150_000)} y1={TOP} y2={HEIGHT - BOTTOM} stroke={INK} strokeDasharray="2 3" opacity=".5" />}
       </svg>

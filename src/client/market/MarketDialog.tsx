@@ -16,7 +16,8 @@ const CSS = `
 [data-liangxiang-market-dialog] button:hover:not(:disabled){border-color:var(--liangxiang-market-blue);background:color-mix(in srgb,#6c9efb 10%,${color.bgLayer})}
 [data-liangxiang-market-dialog] button:disabled{opacity:.48;cursor:default}
 [data-liangxiang-market-dialog] button:focus-visible,[data-liangxiang-market-dialog] input:focus-visible,[data-liangxiang-market-dialog] summary:focus-visible,[data-liangxiang-market-dialog] svg:focus-visible{outline:2px solid var(--liangxiang-market-blue);outline-offset:3px}
-[data-liangxiang-market-dialog] .liangxiang-market-primary{background:var(--liangxiang-market-blue);color:#fff;border-color:transparent}
+[data-liangxiang-market-dialog] .liangxiang-market-primary{background:#405ed5;color:#fff;border-color:transparent}
+[data-liangxiang-market-dialog] .liangxiang-market-primary:hover:not(:disabled){background:#3453c5;color:#fff;border-color:transparent}
 .liangxiang-market-chart{border:1px solid color-mix(in srgb,#729efb 25%,${color.border});border-radius:16px;background:linear-gradient(180deg,color-mix(in srgb,#7faefb 7%,${color.bgLayer}),${color.bgLayer});overflow:hidden}
 .liangxiang-market-chart-readout{padding:12px 16px 0;min-height:32px;font-size:11px;color:${color.textSecondary};font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .liangxiang-market-chart-scroll{overflow-x:auto;scrollbar-width:thin}
@@ -30,7 +31,7 @@ const CSS = `
 .liangxiang-market-batch p{margin:5px 0;color:${color.textSecondary};font-size:11px;line-height:1.6}
 .liangxiang-market-pool{height:5px;display:flex;border-radius:6px;overflow:hidden;background:${color.bgSubtle};margin:9px 0}
 .liangxiang-market-direction{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 8px}
-[data-liangxiang-market-dialog] button[data-selected=true]{border-color:var(--liangxiang-market-blue);background:color-mix(in srgb,#6c9efb 13%,${color.bgLayer});color:var(--liangxiang-market-blue);font-weight:650}
+[data-liangxiang-market-dialog] button[data-selected=true]{border-color:var(--liangxiang-market-blue);background:color-mix(in srgb,#6c9efb 13%,${color.bgLayer});color:${color.textPrimary};font-weight:650}
 .liangxiang-market-amount{display:flex;align-items:center;gap:7px;margin:8px 0}
 .liangxiang-market-amount input{width:100%;min-width:0;border:1px solid ${color.border};border-radius:8px;padding:7px 9px;background:${color.bgLayer};color:${color.textPrimary};font-variant-numeric:tabular-nums}
 .liangxiang-market-quick{display:flex;gap:5px;margin:0 0 10px}
