@@ -108,6 +108,7 @@ export class LiangxiangBackendService {
     this.dates = createBusinessDateProvider(deps.config.timezone)
     this.warn = deps.warn ?? ((message) => console.warn(message))
     this.marketLedger = new MarketLedger(this.store, this.dates.timezone)
+    this.marketLedger.assertTokenThreshold(this.config.tokenPerIncense, this.businessDate())
     this.marketLedger.initializeWallets(this.businessDate(), this.clock.now())
   }
 
@@ -937,24 +938,25 @@ export class LiangxiangBackendService {
    * Operator path is CLI-only (no HTTP).
    */
   unbindIdentity(installationId: string, now = this.clock.now()): V1UnbindResponse {
-    if (this.marketLedger.walletVersion(installationId) >= 0
-      && this.marketLedger.wallet(installationId).total_incense > 0) {
-      throw new CommunityAuthError(409, 'wallet_has_assets', 'wallet has assets; keep or restore the original identity key')
-    }
-    return {
-      schema_version: BACKEND_SCHEMA_VERSION,
-      installation_id: installationId,
-      unbound: this.store.deleteIdentity(installationId),
-      server_time: now,
-    }
+    return this.store.transaction(() => {
+      if (this.marketLedger.walletVersion(installationId) >= 0
+        && this.marketLedger.wallet(installationId).total_incense > 0) {
+        throw new CommunityAuthError(409, 'wallet_has_assets', 'wallet has assets; keep or restore the original identity key')
+      }
+      return {
+        schema_version: BACKEND_SCHEMA_VERSION,
+        installation_id: installationId,
+        unbound: this.store.deleteIdentity(installationId),
+        server_time: now,
+      }
+    })
   }
 
   /**
    * Self-serve re-key — the "cost" of recovery. A device whose MAC fingerprint
    * is already bound to a previous installation may take over that binding, but
-   * only after `rekeyCooldownMs` has elapsed since the previous identity was
-   * last seen, and only by forfeiting it: its incense/votes are never
-   * transferred to the new key (the new id starts at zero).
+   * only after `rekeyCooldownMs` has elapsed and the old wallet is empty.
+   * Ownership lookup, affordability check and rebinding share one transaction.
    */
   rekeyIdentity(
     installationId: string,
@@ -965,48 +967,48 @@ export class LiangxiangBackendService {
     if (deviceFingerprint === '') {
       throw new CommunityAuthError(400, 'invalid_request', 'a device fingerprint is required to re-key')
     }
-    const previous = this.store.identityByFingerprint(deviceFingerprint)
-    if (previous === undefined) {
-      this.store.upsertIdentity({
-        installation_id: installationId,
-        public_key: publicKey,
-        device_fingerprint: deviceFingerprint,
-        created_at: now,
-        last_seen_at: now,
-      })
-      return {
-        schema_version: BACKEND_SCHEMA_VERSION,
-        rekeyed: false,
-        installation_id: installationId,
-        previous_installation_id: null,
-        server_time: now,
+    const response: V1RekeyResponse = this.store.transaction(() => {
+      const previous = this.store.identityByFingerprint(deviceFingerprint)
+      if (previous === undefined) {
+        this.store.upsertIdentity({
+          installation_id: installationId,
+          public_key: publicKey,
+          device_fingerprint: deviceFingerprint,
+          created_at: now,
+          last_seen_at: now,
+        })
+        return {
+          schema_version: BACKEND_SCHEMA_VERSION,
+          rekeyed: false,
+          installation_id: installationId,
+          previous_installation_id: null,
+          server_time: now,
+        }
       }
-    }
-    if (previous.installation_id === installationId) {
-      return {
-        schema_version: BACKEND_SCHEMA_VERSION,
-        rekeyed: false,
-        installation_id: installationId,
-        previous_installation_id: null,
-        server_time: now,
+      if (previous.installation_id === installationId) {
+        return {
+          schema_version: BACKEND_SCHEMA_VERSION,
+          rekeyed: false,
+          installation_id: installationId,
+          previous_installation_id: null,
+          server_time: now,
+        }
       }
-    }
-    if (this.marketLedger.walletVersion(previous.installation_id) >= 0
-      && this.marketLedger.wallet(previous.installation_id).total_incense > 0) {
-      throw new CommunityAuthError(409, 'wallet_has_assets', 'wallet has assets; restore the original identity key instead of re-keying')
-    }
-    const cooldown = this.config.rekeyCooldownMs
-    if (cooldown > 0) {
-      const elapsed = now - previous.last_seen_at
-      if (elapsed < cooldown) {
-        throw new CommunityAuthError(
-          409,
-          'rekey_cooldown',
-          `device fingerprint was active ${elapsed} ms ago; wait ${cooldown - elapsed} ms before re-keying`,
-        )
+      if (this.marketLedger.walletVersion(previous.installation_id) >= 0
+        && this.marketLedger.wallet(previous.installation_id).total_incense > 0) {
+        throw new CommunityAuthError(409, 'wallet_has_assets', 'wallet has assets; restore the original identity key instead of re-keying')
       }
-    }
-    this.store.transaction(() => {
+      const cooldown = this.config.rekeyCooldownMs
+      if (cooldown > 0) {
+        const elapsed = now - previous.last_seen_at
+        if (elapsed < cooldown) {
+          throw new CommunityAuthError(
+            409,
+            'rekey_cooldown',
+            `device fingerprint was active ${elapsed} ms ago; wait ${cooldown - elapsed} ms before re-keying`,
+          )
+        }
+      }
       this.store.deleteIdentity(previous.installation_id)
       this.store.upsertIdentity({
         installation_id: installationId,
@@ -1015,18 +1017,19 @@ export class LiangxiangBackendService {
         created_at: now,
         last_seen_at: now,
       })
+      return {
+        schema_version: BACKEND_SCHEMA_VERSION,
+        rekeyed: true,
+        installation_id: installationId,
+        previous_installation_id: previous.installation_id,
+        server_time: now,
+      }
     })
-    this.warn(
-      `[liangxiang-backend] rekey: device ${deviceFingerprint.slice(0, 8)}… `
-      + `${previous.installation_id.slice(0, 8)}… -> ${installationId.slice(0, 8)}…`,
-    )
-    return {
-      schema_version: BACKEND_SCHEMA_VERSION,
-      rekeyed: true,
-      installation_id: installationId,
-      previous_installation_id: previous.installation_id,
-      server_time: now,
+    if (response.rekeyed) {
+      this.warn(`[liangxiang-backend] rekey: device ${deviceFingerprint.slice(0, 8)}… `
+        + `${response.previous_installation_id?.slice(0, 8)}… -> ${installationId.slice(0, 8)}…`)
     }
+    return response
   }
 
   /**

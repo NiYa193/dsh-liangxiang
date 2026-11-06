@@ -15,7 +15,13 @@ import { openBackendStore } from './store.ts'
 export function startBackend(env: Record<string, string | undefined> = process.env): { close: () => void } {
   const config = resolveBackendConfig(env)
   const store = openBackendStore(config.databasePath)
-  const service = new LiangxiangBackendService({ store, config })
+  let service: LiangxiangBackendService
+  try {
+    service = new LiangxiangBackendService({ store, config })
+  } catch (error) {
+    store.close()
+    throw error
+  }
   const api = createBackendHttpApi({
     service,
     store,

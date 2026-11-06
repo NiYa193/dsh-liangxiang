@@ -7,7 +7,7 @@ import { LiangxiangBackendService } from '../src/backend/service.ts'
 import { MarketLedger } from '../src/backend/market-ledger.ts'
 import { openBackendStore } from '../src/backend/store.ts'
 import { migrate } from '../src/backend/schema.ts'
-import { resolveBackendConfig } from '../src/backend/config.ts'
+import { BackendConfigError, resolveBackendConfig } from '../src/backend/config.ts'
 import { parseMarketHistoryResponse, parseMarketState, type MarketPositionRequest } from '../src/shared/market-v1.ts'
 import { createBackendFixture, createMutableClock, type BackendFixture } from './helpers/backend.ts'
 
@@ -190,6 +190,21 @@ describe('three daily sealed pools', () => {
 })
 
 describe('wallet v11 migration and durable restart', () => {
+  it('fails at construction before revaluing or gifting a persisted wallet with another token threshold', () => {
+    const f = boot()
+    f.grantIncense(A, 2, 49_000)
+    const before = f.service.marketState(A).wallet
+    const entries = f.store.database.prepare('SELECT COUNT(*) AS n FROM incense_wallet_entry').get()
+    const changed = { ...f.config, tokenPerIncense: 100_000 }
+    expect(() => new LiangxiangBackendService({ store: f.store, config: changed, clock: f.clock }))
+      .toThrow(BackendConfigError)
+    expect(() => new LiangxiangBackendService({ store: f.store, config: changed, clock: f.clock }))
+      .toThrow('explicit wallet-threshold migration is required')
+    expect(f.service.marketState(A).wallet).toEqual(before)
+    expect(f.store.database.prepare('SELECT COUNT(*) AS n FROM incense_wallet_entry').get()).toEqual(entries)
+    expect(() => new LiangxiangBackendService({ store: f.store, config: f.config, clock: f.clock })).not.toThrow()
+  })
+
   it('observes another process pool changes through the persisted market version', () => {
     const dir = mkdtempSync(join(tmpdir(), 'liangxiang-market-version-'))
     const path = join(dir, 'wallet.sqlite')

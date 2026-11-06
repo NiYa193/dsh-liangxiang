@@ -11,6 +11,7 @@ import {
 import { businessDayEndsAt, createBusinessDateProvider } from '../shared/business-date.ts'
 import { WireError } from '../shared/wire.ts'
 import type { BackendStore, CaseRow, IncenseRow, StatsRow } from './store.ts'
+import { BackendConfigError } from './config.ts'
 
 interface WalletRow { installation_id: string, available: number, frozen: number, token_remainder: number, token_per_incense: number, version: number }
 interface CursorRow { claimed_tokens: number, minted_incense: number }
@@ -24,6 +25,19 @@ export class MarketLedger {
   private readonly batchCache = new Map<string, { version: number, batches: BatchRow[] }>()
   constructor(private readonly store: BackendStore, private readonly timezone: string) {
     this.db = store.database
+  }
+
+  assertTokenThreshold(threshold: number, businessDate: string): void {
+    const wallet = this.db.prepare('SELECT token_per_incense FROM incense_wallet WHERE token_per_incense<>? LIMIT 1')
+      .get(threshold) as { token_per_incense: number } | undefined
+    const legacy = this.db.prepare('SELECT token_per_incense FROM daily_incense_state WHERE business_date=? AND token_per_incense<>? LIMIT 1')
+      .get(businessDate, threshold) as { token_per_incense: number } | undefined
+    const active = this.store.activeCaseFor(businessDate)
+    const stored = wallet?.token_per_incense ?? legacy?.token_per_incense
+      ?? (active !== undefined && active.token_per_incense !== threshold ? active.token_per_incense : undefined)
+    if (stored !== undefined) {
+      throw new BackendConfigError(`LIANGXIANG_TOKEN_PER_INCENSE=${threshold} differs from persisted wallet/case threshold ${stored}; an explicit wallet-threshold migration is required`)
+    }
   }
 
   /** Eagerly import ONLY the live cutover day, including users currently offline. */
