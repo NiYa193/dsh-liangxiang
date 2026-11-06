@@ -38,6 +38,45 @@ function position(f: BackendFixture, id: string, side: 'long' | 'short' | null, 
 }
 
 describe('cumulative server wallet', () => {
+  it('persists sub-stick progress across restart and rollover without zero-money journal rows', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'liangxiang-fractional-journal-'))
+    const path = join(directory, 'wallet.sqlite')
+    const config = resolveBackendConfig({ LIANGXIANG_BACKEND_DB: path,
+      LIANGXIANG_STARTER_INCENSE: '0', LIANGXIANG_ADMISSION_INVENTORY_TARGET: '0' })
+    const clock = createMutableClock(at(9))
+    let store = openBackendStore(path)
+    try {
+      let service = new LiangxiangBackendService({ store, config, clock, warn: () => undefined })
+      service.dailyState(A)
+      const journalRows = (): number => Number(store.database.prepare('SELECT COUNT(*) AS n FROM incense_wallet_entry').get()!.n)
+      expect(journalRows()).toBe(1) // Preserve the existing opening entry.
+      for (let tokens = 1_000; tokens <= 49_000; tokens += 1_000) {
+        service.applyTokenClaim(A, { claim_business_date: '2026-08-16', claimed_effective_tokens: tokens })
+      }
+      expect(service.marketState(A).wallet).toMatchObject({ available_incense: 0, token_remainder: 49_000, version: 49 })
+      expect(journalRows()).toBe(1)
+      expect(store.database.prepare('SELECT claimed_tokens,minted_incense FROM incense_wallet_cursor WHERE installation_id=?').get(A))
+        .toMatchObject({ claimed_tokens: 49_000, minted_incense: 0 })
+      store.close()
+      store = openBackendStore(path)
+      service = new LiangxiangBackendService({ store, config, clock, warn: () => undefined })
+      expect(service.dailyState(A).authoritative_personal_state).toMatchObject({ token_remainder: 49_000, tokens_to_next_incense: 1_000 })
+      clock.set(at(9, 0, 17))
+      service.applyTokenClaim(A, { claim_business_date: '2026-08-17', claimed_effective_tokens: 500 })
+      expect(service.dailyState(A).authoritative_personal_state).toMatchObject({ token_remainder: 49_500, tokens_to_next_incense: 500, earned_incense: 0 })
+      expect(journalRows()).toBe(1)
+      const minted = service.applyTokenClaim(A, { claim_business_date: '2026-08-17', claimed_effective_tokens: 1_000 })
+      expect(minted.authoritative_personal_state).toMatchObject({ remaining_incense: 1, token_remainder: 0, tokens_to_next_incense: 50_000, earned_incense: 1 })
+      expect(journalRows()).toBe(2)
+      expect(store.database.prepare("SELECT kind,available_delta,frozen_delta FROM incense_wallet_entry WHERE kind='incense'").all())
+        .toEqual([{ kind: 'incense', available_delta: 1, frozen_delta: 0 }])
+      service.applyTokenClaim(A, { claim_business_date: '2026-08-17', claimed_effective_tokens: 1_000 })
+      service.applyTokenClaim(A, { claim_business_date: '2026-08-17', claimed_effective_tokens: 1_001 })
+      expect(service.marketState(A).wallet).toMatchObject({ available_incense: 1, token_remainder: 1 })
+      expect(journalRows()).toBe(2)
+    } finally { store.close(); rmSync(directory, { recursive: true, force: true }) }
+  })
+
   it('carries unspent funds and fractional progress while daily statistics reset', () => {
     const f = boot()
     f.grantIncense(A, 2, 49_000)
@@ -135,6 +174,46 @@ describe('three daily sealed pools', () => {
     expect(receipt).toMatchObject({ invested_incense: 10, returned_incense: 17, pnl_incense: 7 })
     expect(receipt.business_date).toBe('2026-08-16')
     expect(receipt.close_point).toMatchObject({ case_id: 'case-2026-08-16', at: at(0, 0, 17), up_votes: 20, down_votes: 10 })
+  })
+
+  it('groups interleaved owners into stable three-batch receipts without changing payouts on replay', () => {
+    const f = boot(); fund(f)
+    const owners = [A, B, C, D] as const
+    const rows = [
+      [['long', 5], ['short', 7], ['long', 11], ['short', 13]],
+      [['short', 6], ['long', 8], ['short', 12], ['long', 14]],
+      [['long', 7], ['short', 9], ['long', 13], ['short', 15]],
+    ] as const
+    const marketId = f.service.marketState(A).market!.id
+    for (const batch of [1, 2, 3] as const) {
+      if (batch === 2) f.clock.set(at(12))
+      if (batch === 3) f.clock.set(at(18))
+      for (let n = 0; n < owners.length; n += 1) {
+        const [side, amount] = rows[batch - 1]![n]!
+        expect(position(f, owners[n]!, side, amount, `grouped-${batch}-${n}`, batch).accepted).toBe(true)
+      }
+    }
+    f.clock.set(at(21)); f.service.tick()
+    point(f, 'up', 10, 'grouped-final-up')
+    f.clock.set(at(0, 0, 17)); f.service.tick()
+    const expected = [
+      { invested_incense: 18, returned_incense: 26, pnl_incense: 8 },
+      { invested_incense: 24, returned_incense: 15, pnl_incense: -9 },
+      { invested_incense: 36, returned_incense: 54, pnl_incense: 18 },
+      { invested_incense: 42, returned_incense: 25, pnl_incense: -17 },
+    ]
+    const receipts = owners.map((owner, n) => {
+      const receipt = f.service.marketHistory(owner).receipts[0]!
+      expect(receipt).toMatchObject(expected[n]!)
+      expect(receipt.batches.map(batch => batch.batch)).toEqual([1, 2, 3])
+      return receipt
+    })
+    expect(receipts.reduce((n, r) => n + r.pnl_incense, 0)).toBe(0)
+    expect(owners.map(owner => f.service.marketState(owner).wallet.available_incense)).toEqual([108, 91, 118, 83])
+    f.clock.advance(1_000); f.service.tick()
+    expect(owners.map(owner => f.service.marketHistory(owner).receipts[0])).toEqual(receipts)
+    expect(f.store.database.prepare('SELECT COUNT(*) AS n FROM liang_market_receipt WHERE market_id=?').get(marketId))
+      .toMatchObject({ n: 4 })
   })
 
   it('refunds a tied pool, a one-sided pool, and an invalid reference without extra minting', () => {

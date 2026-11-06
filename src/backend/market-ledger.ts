@@ -88,7 +88,9 @@ export class MarketLedger {
     if (Number(credited.changes) !== 1) throw new WireError('claim', 'wallet capacity exceeded')
     this.db.prepare(`UPDATE incense_wallet_cursor SET claimed_tokens=?,minted_incense=minted_incense+?
       WHERE installation_id=? AND business_date=?`).run(row.claimed_effective_tokens, minted, row.installation_id, row.business_date)
-    this.entry(row.installation_id, `claim:${row.business_date}:${row.claimed_effective_tokens}`, kind, minted, 0, row.business_date, now)
+    // Fractional progress is durable in the wallet/cursor above. The money
+    // journal records only an actual mint, not every sub-stick usage sample.
+    if (minted > 0) this.entry(row.installation_id, `claim:${row.business_date}:${row.claimed_effective_tokens}`, kind, minted, 0, row.business_date, now)
   }
 
   mintedToday(installation: string, date: string): number {
@@ -315,10 +317,14 @@ export class MarketLedger {
 
   private writeReceipts(market: MarketRow, now: number): void {
     const positions = this.db.prepare('SELECT * FROM liang_market_position WHERE market_id=? AND amount>0 ORDER BY id').all(market.id) as unknown as PositionRow[]
-    const owners = new Set(positions.map(p => p.installation_id))
+    const owners = new Map<string, PositionRow[]>()
+    for (const position of positions) {
+      const own = owners.get(position.installation_id)
+      if (own === undefined) owners.set(position.installation_id, [position])
+      else own.push(position)
+    }
     const batches = this.batches(market.id)
-    for (const installation of owners) {
-      const own = positions.filter(p => p.installation_id === installation)
+    for (const [installation, own] of owners) {
       const invested = own.reduce((n, p) => n + p.amount, 0)
       const returned = own.reduce((n, p) => n + (p.payout ?? 0), 0)
       const receipt: MarketReceipt = { id: `${market.id}:receipt:${own[0]!.id}`, market_id: market.id,
