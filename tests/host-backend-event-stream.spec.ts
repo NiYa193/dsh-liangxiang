@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { startBackendEventStream, type BackendStreamStatus } from '../src/host/backend-event-stream.ts'
+afterEach(() => vi.useRealTimers())
 
 async function until(predicate: () => boolean): Promise<void> {
   for (let i = 0; i < 100; i += 1) {
@@ -28,6 +29,26 @@ function streamFetch(chunks: string[], onOpen?: (signal: AbortSignal | null | un
 }
 
 describe('Host cloud SSE transport', () => {
+  it('retains exponential jittered backoff when headers and a state frame immediately flap', async () => {
+    vi.useFakeTimers()
+    const calls: number[] = []
+    const stop = startBackendEventStream({ url: 'http://127.0.0.1/v1/events', headers: () => ({}),
+      retryMinMs: 1000, retryMaxMs: 8000, random: () => 0,
+      fetchImpl: (async () => {
+        calls.push(Date.now())
+        return new Response('data: {}\n\n', { headers: { 'content-type': 'text/event-stream' } })
+      }) as typeof fetch, onMessage: () => undefined, onStatus: () => undefined })
+    await vi.advanceTimersByTimeAsync(0)
+    const start = calls[0]!
+    await vi.advanceTimersByTimeAsync(3499)
+    expect(calls.map(t => t - start)).toEqual([0, 500, 1500])
+    await vi.advanceTimersByTimeAsync(1)
+    expect(calls.map(t => t - start)).toEqual([0, 500, 1500, 3500])
+    stop()
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(calls).toHaveLength(4)
+  })
+
   it('parses chunk boundaries, CRLF, heartbeat and multiline data; dispose aborts the only connection', async () => {
     const messages: Array<{ data: string, event: string }> = []
     const statuses: BackendStreamStatus[] = []

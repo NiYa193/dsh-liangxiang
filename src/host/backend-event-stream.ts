@@ -18,6 +18,8 @@ export interface BackendEventStreamOptions {
   retryMinMs?: number
   retryMaxMs?: number
   maxEventBytes?: number
+  /** Injectable jitter source for deterministic transport tests. */
+  random?: () => number
 }
 
 /** Headers are re-created per attempt so signed request timestamps stay fresh. */
@@ -52,6 +54,8 @@ export function startBackendEventStream(options: BackendEventStreamOptions): () 
     controller = active
     let reader: ReadableStreamDefaultReader<Uint8Array> | null = null
     let unsupported = false
+    let openedAt = 0
+    let receivedState = false
     status('connecting')
     armDeadline(options.connectTimeoutMs ?? 6_000, active)
     try {
@@ -64,14 +68,16 @@ export function startBackendEventStream(options: BackendEventStreamOptions): () 
       if (disposed || active.signal.aborted) return
       if (response.status === 404 || response.status === 405 || response.status === 501) {
         unsupported = true
-        await response.body?.cancel()
+        void response.body?.cancel().catch(() => undefined)
         status('unsupported')
         return
       }
       if (!response.ok || response.body === null) {
+        void response.body?.cancel().catch(() => undefined)
         throw new Error(`backend event stream returned HTTP ${response.status}`)
       }
       if (!response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) {
+        void response.body?.cancel().catch(() => undefined)
         throw new Error('backend event stream has an unexpected content type')
       }
       reader = response.body.getReader()
@@ -80,7 +86,7 @@ export function startBackendEventStream(options: BackendEventStreamOptions): () 
       let event = 'message'
       let data: string[] = []
       let dataSize = 0
-      retryDelay = retryMin
+      openedAt = Date.now()
       status('connected')
       armDeadline(options.idleTimeoutMs ?? 70_000, active)
       while (!disposed && !active.signal.aborted) {
@@ -96,7 +102,10 @@ export function startBackendEventStream(options: BackendEventStreamOptions): () 
           pending = pending.slice(end + 1)
           if (line.endsWith('\r')) line = line.slice(0, -1)
           if (line === '') {
-            if (data.length > 0 && !disposed) options.onMessage(data.join('\n'), event)
+            if (data.length > 0 && !disposed) {
+              options.onMessage(data.join('\n'), event)
+              receivedState = true
+            }
             event = 'message'
             data = []
             dataSize = 0
@@ -120,12 +129,19 @@ export function startBackendEventStream(options: BackendEventStreamOptions): () 
     } finally {
       clearDeadline()
       active.abort()
-      await reader?.cancel().catch(() => undefined)
+      // Transport teardown must not hold the retry loop forever if a network
+      // implementation stalls its cancellation promise after an aborted read.
+      void reader?.cancel().catch(() => undefined)
       reader?.releaseLock()
       if (controller === active) controller = null
       if (!disposed && !unsupported) {
         status('disconnected')
-        retryTimer = setTimeout(() => { void run() }, retryDelay)
+        // Headers alone are not a healthy connection. Flapping streams retain
+        // backoff, and independent Hosts do not reconnect in synchronized waves.
+        if (receivedState && Date.now() - openedAt >= 30_000) retryDelay = retryMin
+        const random = Math.max(0, Math.min(1, (options.random ?? Math.random)()))
+        const delay = Math.max(1, Math.round(retryDelay * (0.5 + random * 0.5)))
+        retryTimer = setTimeout(() => { void run() }, delay)
         retryTimer.unref?.()
         retryDelay = Math.min(retryMax, retryDelay * 2)
       }

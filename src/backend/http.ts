@@ -23,7 +23,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
-import { MARKET_CANDLE_INTERVAL_MS, parseMarketCandleInterval, parseMarketPositionRequest, type MarketStreamEvent } from '../shared/market-v1.ts'
+import { MARKET_CANDLE_INTERVAL_MS, parseMarketCandleInterval, parseMarketPositionRequest, type MarketStreamEvent, type MarketState } from '../shared/market-v1.ts'
 import { legacyLiangziView, legacyLiangziHistory } from './liangzi-compat.ts'
 import { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 import { formatLiangPosition } from '../domain/index.ts'
@@ -203,56 +203,106 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
   const admissionLimiter = new AdmissionRateLimiter(options.admissionClaimRateLimitPerMinute ?? 120)
   const expectedEvents = new ExpectedEventSampler(log)
   const epoch = randomUUID()
-  interface Stream { installation: string, res: ServerResponse, revision: number, global: string, personal: string, heartbeat: number }
+  interface Stream {
+    installation: string
+    res: ServerResponse
+    revision: number
+    global: string
+    personal: string
+    heartbeat: number
+    blockedAt: number | null
+    state?: MarketState
+  }
   const streams = new Set<Stream>()
   let streamTimer: ReturnType<typeof setInterval> | undefined
-  const closeStream = (stream: Stream): void => {
-    streams.delete(stream)
-    stream.res.end()
-    if (streams.size === 0 && streamTimer !== undefined) {
-      clearInterval(streamTimer)
+  let fanout: ReturnType<typeof setImmediate> | undefined
+  let pumping = false
+  let shared: ReturnType<typeof captureFrame> | undefined
+  function captureFrame() {
+    const snapshot = service.snapshotResponse()
+    const candle = service.marketCurrentCandle()
+    return { at: Date.now(), snapshot, candle,
+      global: JSON.stringify({ snapshot: { ...snapshot, server_time: 0 }, candle }),
+      marketVersion: service.marketGlobalStreamVersion(),
+      state: service.prepareMarketStreamFrame(snapshot.server_time) }
+  }
+  const closeStream = (stream: Stream, destroy = false): void => {
+    if (!streams.delete(stream)) return
+    if (destroy) stream.res.destroy()
+    else stream.res.end()
+    if (streams.size === 0) {
+      if (streamTimer !== undefined) clearInterval(streamTimer)
       streamTimer = undefined
+      if (fanout !== undefined) clearImmediate(fanout)
+      fanout = undefined
+      pumping = false
+      shared = undefined
+    }
+  }
+  const sendStream = (stream: Stream, frame: ReturnType<typeof captureFrame>, initial?: MarketState): void => {
+    try {
+      if (!streams.has(stream)) return
+      if (!allowUnsigned && store.identityByInstallation(stream.installation) === undefined) {
+        closeStream(stream, true)
+        return
+      }
+      const now = Date.now()
+      if (stream.res.destroyed || stream.res.writableLength > 65_536
+        || (stream.blockedAt !== null && now - stream.blockedAt >= 25_000)) {
+        closeStream(stream, true)
+        return
+      }
+      // A false write buffers the frame; it is not itself a disconnect.
+      // Keep at most the written frame and coalesce subsequent state until drain.
+      if (stream.blockedAt !== null) return
+      const walletVersion = initial?.wallet.version ?? service.marketWalletVersion(stream.installation)
+      const personal = `${frame.marketVersion}:${walletVersion}`
+      const event: MarketStreamEvent = { schema_version: 1, epoch, revision: stream.revision + 1,
+        server_time: frame.snapshot.server_time }
+      if (stream.global !== frame.global) {
+        event.snapshot = frame.snapshot
+        if (frame.candle !== undefined) { event.candle = frame.candle; event.candle_interval_ms = MARKET_CANDLE_INTERVAL_MS }
+      }
+      if (stream.personal !== personal) event.market_state = initial ?? frame.state(stream.installation, stream.state)
+      if (event.snapshot !== undefined || event.market_state !== undefined) {
+        const text = `id: ${epoch}:${event.revision}\nevent: state\ndata: ${JSON.stringify(event)}\n\n`
+        if (!stream.res.write(text)) stream.blockedAt = now
+        stream.revision = event.revision
+        stream.global = frame.global
+        stream.personal = `${frame.marketVersion}:${event.market_state?.wallet.version ?? walletVersion}`
+        if (event.market_state !== undefined) stream.state = event.market_state
+        stream.heartbeat = now
+      } else if (now - stream.heartbeat >= 25_000) {
+        if (!stream.res.write(': heartbeat\n\n')) stream.blockedAt = now
+        stream.heartbeat = now
+      }
+    } catch {
+      closeStream(stream, true)
     }
   }
   const pumpStreams = (): void => {
-    if (streams.size === 0) return
+    if (streams.size === 0 || pumping) return
     try {
-      const snapshot = service.snapshotResponse()
-      const candle = service.marketCurrentCandle()
-      const global = JSON.stringify({ snapshot: { ...snapshot, server_time: 0 }, candle })
-      const marketVersion = service.marketGlobalStreamVersion()
-      for (const stream of streams) {
-        try {
-          if (!allowUnsigned && store.identityByInstallation(stream.installation) === undefined) {
-            closeStream(stream)
-            continue
-          }
-          const personal = `${marketVersion}:${service.marketWalletVersion(stream.installation)}`
-          const event: MarketStreamEvent = { schema_version: 1, epoch, revision: stream.revision + 1, server_time: snapshot.server_time }
-          if (stream.global !== global) {
-            event.snapshot = snapshot
-            if (candle !== undefined) { event.candle = candle; event.candle_interval_ms = MARKET_CANDLE_INTERVAL_MS }
-          }
-          if (stream.personal !== personal) event.market_state = service.marketStateForStream(stream.installation, snapshot.server_time)
-          if (event.snapshot !== undefined || event.market_state !== undefined) {
-            const frame = `id: ${epoch}:${event.revision}\nevent: state\ndata: ${JSON.stringify(event)}\n\n`
-            if (stream.res.writableLength > 65_536 || !stream.res.write(frame)) {
-              closeStream(stream)
-              continue
-            }
-            stream.revision = event.revision
-            stream.global = global
-            stream.personal = `${marketVersion}:${service.marketWalletVersion(stream.installation)}`
-          } else if (Date.now() - stream.heartbeat >= 25_000) {
-            if (!stream.res.write(': heartbeat\n\n')) closeStream(stream)
-            stream.heartbeat = Date.now()
-          }
-        } catch {
-          closeStream(stream)
+      const frame = captureFrame()
+      shared = frame
+      const pending = [...streams][Symbol.iterator]()
+      pumping = true
+      const chunk = (): void => {
+        fanout = undefined
+        // Yield between bounded chunks so new connections and signed actions
+        // are accepted while broadcasting. Never queue a second whole fanout.
+        for (let n = 0; n < 64; n += 1) {
+          const next = pending.next()
+          if (next.done) { pumping = false; return }
+          sendStream(next.value, frame)
         }
+        if (streams.size === 0) { pumping = false; return }
+        fanout = setImmediate(chunk)
+        fanout.unref?.()
       }
+      chunk()
     } catch {
-      // A database failure terminates streams; clients must re-bootstrap authority.
+      pumping = false
       for (const stream of streams) closeStream(stream)
     }
   }
@@ -272,35 +322,18 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
 
     const installationId = parseInstallationId(headerValue(req, INSTALLATION_HEADER))
     const device = headerValue(req, DEVICE_HEADER) ?? null
-    authenticateCommunityRequest({
-      store,
-      method,
-      path,
-      body: rawBody,
-      installationId,
-      publicKey,
-      signature,
-      timestamp,
-      deviceFingerprint: device,
-      now: Date.now(),
-      skipFingerprintEnforcement: true,
-    })
     const known = store.identityByInstallation(installationId)
+    authenticateCommunityRequest({
+      store, method, path, body: rawBody, installationId, publicKey, signature,
+      timestamp, deviceFingerprint: device, now: Date.now(),
+      // Unknown installations still prove their signature before admission is
+      // rejected; they must never be auto-enrolled by ordinary API requests.
+      skipFingerprintEnforcement: known === undefined,
+    })
     if (known === undefined) {
       throw new CommunityAuthError(401, 'admission_required', '需要入梁券完成首次入群')
     }
-    return authenticateCommunityRequest({
-      store,
-      method,
-      path,
-      body: rawBody,
-      installationId,
-      publicKey,
-      signature,
-      timestamp,
-      deviceFingerprint: device,
-      now: Date.now(),
-    })
+    return installationId
   }
 
   /**
@@ -650,14 +683,18 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         return
       }
       // Bootstrap before sending headers so identity/storage failures stay ordinary HTTP errors.
-      service.marketState(installationId)
+      const initial = service.marketState(installationId)
       res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8',
         'cache-control': 'no-cache, no-transform', connection: 'keep-alive', 'x-accel-buffering': 'no' })
       res.flushHeaders()
-      const stream: Stream = { installation: installationId, res, revision: 0, global: '', personal: '', heartbeat: Date.now() }
+      const stream: Stream = { installation: installationId, res, revision: 0, global: '', personal: '', heartbeat: Date.now(), blockedAt: null }
       streams.add(stream)
       res.once('close', () => closeStream(stream))
-      pumpStreams()
+      res.on('drain', () => { stream.blockedAt = null })
+      // Initial state targets only the new subscriber, not every existing one.
+      if (shared === undefined || Date.now() - shared.at >= 1_000
+        || shared.snapshot.active_case.id !== initial.market?.case_id) shared = captureFrame()
+      sendStream(stream, shared, initial)
       if (streamTimer === undefined && streams.size > 0) {
         streamTimer = setInterval(pumpStreams, 1_000)
         streamTimer.unref?.()
@@ -836,6 +873,9 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       else res.end()
     })
   })
+  // Keep upstream HTTP sockets reusable across ordinary user think time.
+  // An explicit header deadline still bounds slow/incomplete requests.
+  server.keepAliveTimeout = 65_000
   const closeServer = server.close.bind(server)
   server.close = (callback) => {
     for (const stream of streams) closeStream(stream)

@@ -709,6 +709,19 @@ export class LiangxiangBackendService {
     return this.marketLedger.state(installationId, caseRow, now)
   }
 
+  /** One public read set per fanout, without per-subscriber steady-state writes. */
+  prepareMarketStreamFrame(now = this.clock.now()): (installationId: string, previous?: MarketState) => MarketState {
+    const caseRow = this.ensureActiveCase(now)
+    const state = this.marketLedger.streamStateFactory(caseRow, now)
+    return (installationId, previous) => {
+      if (previous?.market?.business_date !== caseRow.business_date
+        && this.store.incenseFor(installationId, caseRow.business_date) === undefined) {
+        this.store.transaction(() => this.ensureRow(installationId, caseRow, now))
+      }
+      return state(installationId, previous)
+    }
+  }
+
   setMarketPosition(installationId: string, request: MarketPositionRequest, now = this.clock.now()): MarketPositionResponse {
     const caseRow = this.ensureActiveCase(now)
     return this.store.transaction(() => {

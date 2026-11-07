@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ServerResponse } from 'node:http'
 import { createBackendHttpApi } from '../src/backend/http.ts'
 import { generateCommunityKeypair, signRequest, type CommunityKeypair } from '../src/host/community-keys.ts'
 import { DEVICE_HEADER, INSTALLATION_HEADER, PUBLIC_KEY_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from '../src/shared/backend-v1.ts'
@@ -6,7 +7,7 @@ import { parseMarketState, parseMarketStreamEvent, type MarketStreamEvent } from
 import { createBackendFixture } from './helpers/backend.ts'
 
 const cleanups: Array<() => Promise<void>> = []
-afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close() })
+afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.useRealTimers(); vi.restoreAllMocks() })
 const START = Date.UTC(2026, 7, 16, 1)
 async function setup(signed = false) {
   const fixture = createBackendFixture({}, START)
@@ -58,6 +59,48 @@ async function firstEvent(base: string, identity: string | CommunityKeypair): Pr
 }
 
 describe('market HTTP authority and cloud stream', () => {
+  it('keeps a backpressured connection alive and sends the latest private state after drain', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    const h = await setup()
+    const writes: string[] = []
+    let response: ServerResponse | undefined
+    h.api.server.prependListener('request', (req, res) => {
+      if (req.url !== '/v1/events') return
+      response = res
+      const write = res.write.bind(res)
+      res.write = ((text: string) => {
+        writes.push(text)
+        const result = write(text)
+        return writes.length === 1 ? false : result
+      }) as typeof res.write
+    })
+    h.grantIncense('slow-stream-owner', 10)
+    const subscription = await firstEvent(h.base, 'slow-stream-owner')
+    expect(response?.writableEnded).toBe(false)
+    h.grantIncense('slow-stream-owner', 1)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(writes).toHaveLength(1)
+    response!.emit('drain')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(writes).toHaveLength(2)
+    const payload = writes[1]!.split('\n').find(l => l.startsWith('data: '))!
+    expect(parseMarketStreamEvent(JSON.parse(payload.slice(6))).market_state?.wallet.available_incense).toBe(11)
+    subscription.cancel()
+  })
+
+  it('initializes only a new subscriber instead of rebroadcasting across existing streams', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const h = await setup()
+    const buildFrame = vi.spyOn(h.service, 'prepareMarketStreamFrame')
+    const subscriptions = []
+    for (let n = 0; n < 24; n += 1) subscriptions.push(await firstEvent(h.base, `stream-load-${n}`))
+    // All subscribers get a full state and independent revision. Opening 24
+    // streams must not perform 24 whole-population public reads/fanouts.
+    expect(buildFrame).toHaveBeenCalledTimes(1)
+    expect(subscriptions.every(s => s.event.revision === 1 && s.event.snapshot !== undefined)).toBe(true)
+    for (const subscription of subscriptions) subscription.cancel()
+  })
+
   it('requires signatures, protects query parameters, and rejects client-supplied balances', async () => {
     const h = await setup(true)
     const key = h.enroll('http-market-device-a', 10)

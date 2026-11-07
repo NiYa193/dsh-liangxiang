@@ -3,7 +3,7 @@ import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { resolveBackendConfig } from './config.ts'
+import { resolveBackendConfig, DEFAULT_BACKEND_LISTEN_BACKLOG } from './config.ts'
 import { createBackendHttpApi } from './http.ts'
 import { LiangxiangBackendService } from './service.ts'
 import { openBackendStore } from './store.ts'
@@ -80,7 +80,7 @@ export function startRehearsal(env: Record<string, string | undefined> = process
     return closing
   }
   api.server.once('error', () => { console.error('[liangxiang-backend] rehearsal listener failed'); process.exitCode = 1; void close() })
-  api.server.listen(4195, '127.0.0.1', () => console.log('[liangxiang-backend] ISOLATED REHEARSAL: synthetic business clock; soft-trust usage; signed requests required'))
+  api.server.listen(4195, '127.0.0.1', DEFAULT_BACKEND_LISTEN_BACKLOG, () => console.log('[liangxiang-backend] ISOLATED REHEARSAL: synthetic business clock; soft-trust usage; signed requests required'))
   return { close }
 }
 

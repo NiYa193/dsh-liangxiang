@@ -6,7 +6,7 @@
  * the authority mode out loud so nobody can mistake this process for a verified
  * production vote authority (AGENTS.md §16, docs/043).
  */
-import { resolveBackendConfig, BackendConfigError } from './config.ts'
+import { resolveBackendConfig, BackendConfigError, DEFAULT_BACKEND_LISTEN_BACKLOG } from './config.ts'
 import { createBackendHttpApi } from './http.ts'
 import { warnIfClockSkewed } from './ntp.ts'
 import { LiangxiangBackendService } from './service.ts'
@@ -44,7 +44,7 @@ export function startBackend(env: Record<string, string | undefined> = process.e
   }, Math.min(config.snapshotRefreshSeconds * 1000, 1_000))
   cadence.unref?.()
 
-  api.server.listen(config.port, config.host, () => {
+  api.server.listen(config.port, config.host, DEFAULT_BACKEND_LISTEN_BACKLOG, () => {
     console.log(
       `[liangxiang-backend] listening on http://${config.host}:${config.port}`
       + ` (authority_mode=${config.authorityMode}, tz=${config.timezone},`

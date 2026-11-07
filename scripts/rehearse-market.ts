@@ -120,7 +120,20 @@ export async function runMarketRehearsal(input: RehearsalOptions): Promise<Rehea
       const item = { name, passed: okay }; report.checks.push(item); state?.checks.push(item)
       if (!okay) throw new RehearsalFailure(name)
     }
-    const boundedFetch = (path: string, init?: RequestInit): Promise<Response> => fetch(`${url}${path}`, { ...init, signal: AbortSignal.timeout(timeout) })
+    const boundedFetch = async (path: string, init?: RequestInit): Promise<Response> => {
+      const deadline = Date.now() + timeout
+      const attempt = (): Promise<Response> => fetch(`${url}${path}`, { ...init,
+        signal: AbortSignal.timeout(Math.max(1, deadline - Date.now())) })
+      try { return await attempt() }
+      catch (error) {
+        // A restarted backend may close a pooled idle socket just before the
+        // first read reuses it. Retry one read within the original deadline.
+        // This helper must never replay a state-changing request.
+        if ((init?.method ?? 'GET') !== 'GET' || Date.now() >= deadline) throw error
+        await pause(Math.min(100, Math.max(0, deadline - Date.now())))
+        return attempt()
+      }
+    }
     const health = await boundedFetch('/v1/health')
     const healthBody = await health.json() as { status?: string, authority_mode?: string }
     check('dedicated_backend_soft_trust', health.ok && healthBody.status === 'ok' && healthBody.authority_mode === 'DEV_STAGING_ONLY')

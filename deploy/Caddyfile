@@ -36,6 +36,8 @@ api.liang.today, hk-api.liang.today {
 		# Caddy's reverse_proxy supplies the immediate client in
 		# X-Forwarded-For. The backend trusts it only across this loopback hop.
 		transport http {
+			# Shorter than the backend's 65s idle timeout; reuse sockets safely.
+			keepalive 60s
 			dial_timeout 3s
 			response_header_timeout 10s
 		}
