@@ -86,6 +86,13 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   const dialog = await openMarket(page)
   await expect(dialog).toBeFocused()
   await expect(dialog.locator('[data-liangxiang-market-main-whale]')).toHaveCount(1)
+  const fishBounds = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
+  const headerBounds = (await dialog.locator('.liangxiang-market-header').boundingBox())!
+  const chartBounds = (await dialog.locator('[data-liangxiang-market-chart-mode]').boundingBox())!
+  expect(fishBounds.x).toBeGreaterThanOrEqual(headerBounds.x)
+  expect(fishBounds.x + fishBounds.width).toBeLessThanOrEqual(headerBounds.x + headerBounds.width + 1)
+  expect(fishBounds.y).toBeGreaterThanOrEqual(headerBounds.y)
+  expect(fishBounds.y + fishBounds.height).toBeLessThanOrEqual(chartBounds.y + 1)
   expect((await artwork).status()).toBe(200)
   expect(await page.locator('[data-liangxiang-region]').count()).toBe(4)
   for (let i = 0; i < 30; i++) {
@@ -121,16 +128,19 @@ test('whole-position changes freeze only the difference and short whale state fo
   await expect(first).toContainText('当前占优')
   await expect(first).toContainText('预计返还 30 炷')
   await expect(first.locator('[data-mood="ahead"]')).toBeVisible()
-  await expect(first.getByRole('spinbutton')).toHaveCount(0)
+  await expect(first.getByRole('spinbutton')).toBeDisabled()
 })
 
 test('motion choice animates local whale parts and water, while static mode keeps distinct poses', async ({ page }, testInfo) => {
   const dialog = await openMarket(page), toggle = dialog.getByRole('switch', { name: '交易动画' })
   await expect(dialog).toHaveAttribute('data-animated', 'false')
-  await expect(toggle).toContainText('系统减少动态')
+  await expect(toggle).toContainText('大鱼干')
+  await expect(toggle).toHaveAttribute('title', /系统.*减少动态/)
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'true')
+  await expect(toggle).toContainText('大肥鱼')
+  await dialog.getByRole('button', { name: '潮汐', exact: true }).click()
   const live = fixture()
   live.server_time = DAY + 13 * HOUR
   live.current_point = { ...live.current_point!, at: live.server_time }
@@ -148,6 +158,7 @@ test('motion choice animates local whale parts and water, while static mode keep
   await dialog.screenshot({ path: testInfo.outputPath('market-surface-motion.png') })
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'false')
+  await expect(toggle).toContainText('大鱼干')
   const fish = dialog.locator('.liangxiang-market-current-whale').first()
   expect(await fish.evaluate(element => getComputedStyle(element).transitionDuration)).toBe('0s')
   expect(await dialog.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0)
@@ -171,19 +182,32 @@ test('motion choice animates local whale parts and water, while static mode keep
 
 test('stage tabs keep one batch visible and preserve an unsubmitted draft without spending', async ({ page }) => {
   const dialog = await openMarket(page)
+  const initialBounds = (await dialog.boundingBox())!
+  const chart = dialog.locator('[data-liangxiang-market-chart-mode]')
+  const initialChartBounds = (await chart.boundingBox())!
+  const expectStableFrame = async (): Promise<void> => {
+    const bounds = (await dialog.boundingBox())!, chartBounds = (await chart.boundingBox())!
+    expect(Math.abs(bounds.height - initialBounds.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(bounds.y - initialBounds.y)).toBeLessThanOrEqual(1)
+    expect(Math.abs(chartBounds.height - initialChartBounds.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(chartBounds.y - initialChartBounds.y)).toBeLessThanOrEqual(1)
+  }
   const amount = dialog.getByRole('spinbutton', { name: 'P1 总投入香火' })
   await amount.fill('17')
   await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
   await dialog.getByRole('tab', { name: /P2/ }).click()
   await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
-  await expect(dialog.getByRole('spinbutton')).toHaveCount(0)
+  await expect(dialog.getByRole('spinbutton')).toBeDisabled()
+  await expectStableFrame()
   await dialog.getByRole('tab', { name: /P1/ }).click()
   await expect(amount).toHaveValue('17')
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await page.keyboard.press('End')
   await expect(dialog.getByRole('tab', { name: /P3/ })).toHaveAttribute('aria-selected', 'true')
+  await expectStableFrame()
   await page.keyboard.press('Home')
   await expect(dialog.getByRole('tab', { name: /P1/ })).toHaveAttribute('aria-selected', 'true')
+  await expectStableFrame()
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
 })
 
@@ -191,6 +215,14 @@ test('tide uses smooth real anchors over the full day, leaves gaps and future op
   const data = candles().filter((_candle, index) => index < 48 || index >= 60)
   await page.route('**/liangxiang/api/market/candles?*', route => route.fulfill({ json: { schema_version: 1, case_id: 'case-market-browser', business_date: '2026-11-06', interval_ms: 300_000, candles: data, next_cursor: null } }))
   const dialog = await openMarket(page), chart = dialog.locator('[data-liangxiang-market-chart-mode]')
+  await expect(chart).toHaveAttribute('data-liangxiang-market-chart-mode', 'candles')
+  for (const key of ['open', 'high', 'low', 'close']) {
+    await expect(chart.locator(`[data-liangxiang-market-quote="${key}"]`)).toBeVisible()
+  }
+  const candleCount = await chart.locator('[data-liangxiang-market-candle]').count()
+  expect(candleCount).toBeGreaterThan(0)
+  expect(candleCount).toBeLessThan(data.length)
+  await chart.getByRole('button', { name: '潮汐', exact: true }).click()
   await expect(chart).toHaveAttribute('data-liangxiang-market-chart-mode', 'tide')
   const segments = chart.locator('[data-liangxiang-market-tide-segment]')
   await expect(segments).toHaveCount(2)
@@ -200,25 +232,28 @@ test('tide uses smooth real anchors over the full day, leaves gaps and future op
   const svg = chart.locator('svg').first()
   await expect(svg).toHaveAttribute('data-liangxiang-market-from', String(DAY))
   await expect(svg).toHaveAttribute('data-liangxiang-market-until', String(DAY + 24 * HOUR))
-  await expect(chart.locator('.liangxiang-market-time-tick text')).toHaveText(['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'])
+  const tickLabels = chart.locator('.liangxiang-market-time-tick text')
+  await expect(tickLabels).toHaveText((await svg.boundingBox())!.width >= 500
+    ? ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
+    : ['00:00', '08:00', '16:00', '24:00'])
   const future = chart.locator('[data-liangxiang-market-future]')
-  await expect(future).toContainText('尚未发生')
+  await expect(future).toContainText('待打梁')
   const futureX = Number(await future.locator('rect').getAttribute('x'))
   expect(geometry.every(segment => segment.x + segment.width <= futureX + .02)).toBe(true)
   await future.locator('rect').hover({ position: { x: 90, y: 80 } })
-  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('尚未发生')
-  const bubbles = chart.locator('[data-liangxiang-market-volume]')
-  expect(await bubbles.count()).toBeGreaterThan(0)
-  expect(await bubbles.count()).toBeLessThanOrEqual(48)
-  await bubbles.first().hover()
+  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('待打梁')
+  const volume = chart.locator('[data-liangxiang-market-volume]')
+  expect(await volume.count()).toBeGreaterThan(0)
+  await volume.first().hover()
   await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('本场新增')
   await expect(chart.locator('.liangxiang-market-chart-readout')).not.toContainText('全网')
-  expect(await bubbles.evaluateAll(nodes => nodes.every(node => node.getAnimations().length === 0))).toBe(true)
+  expect(await volume.evaluateAll(nodes => nodes.every(node => node.getAnimations().length === 0))).toBe(true)
+  await expect(chart).not.toContainText('气泡 =')
   await chart.screenshot({ path: testInfo.outputPath('market-tide.png') })
-  await chart.getByRole('button', { name: '烛线', exact: true }).click()
+  await chart.getByRole('button', { name: 'K 线', exact: true }).click()
   await expect(chart).toHaveAttribute('data-liangxiang-market-chart-mode', 'candles')
   await expect(chart.locator('[data-liangxiang-market-tide-segment]')).toHaveCount(0)
-  await expect(chart.locator('[data-liangxiang-market-candle]')).toHaveCount(data.length)
+  await expect(chart.locator('[data-liangxiang-market-candle]')).toHaveCount(candleCount)
   await chart.getByRole('button', { name: '潮汐', exact: true }).click()
   await expect(segments).toHaveCount(2)
 })
@@ -237,6 +272,42 @@ test('raised direction buttons depress and rebound without spending incense', as
   await dialog.screenshot({ path: testInfo.outputPath('market-button-pressed.png') })
   await page.mouse.up()
   await expect.poll(() => face.evaluate(element => getComputedStyle(element).transform)).toBe(rest)
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+})
+
+
+test('one market entry replaces the separate observed-bars entry without changing the wallet', async ({ page }) => {
+  const market = await openMarket(page)
+  await page.keyboard.press('Escape')
+  const panel = await openPanel(page)
+  await panel.locator('[data-liangxiang-utility-trigger]').click()
+  await expect(panel.locator('[data-liangxiang-utility-market]')).toBeVisible()
+  await expect(panel.locator('[data-liangxiang-utility-action="bars"]')).toHaveCount(0)
+  await panel.locator('[data-liangxiang-utility-market]').click()
+  await expect(market).toBeVisible()
+  await expect(page.getByRole('dialog', { name: '梁位走势', exact: true })).toHaveCount(0)
+  await expect(market.locator('[data-liangxiang-market-available]')).toHaveText('90')
+  await expect(market.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+})
+
+test('receipt and rules remain visible controls and use overlays without shifting the market', async ({ page }) => {
+  const dialog = await openMarket(page)
+  const bounds = (await dialog.boundingBox())!
+  for (const [name, kind] of [['我的回执', 'history'], ['玩法', 'rules']] as const) {
+    const trigger = dialog.getByRole('button', { name, exact: true })
+    await expect(trigger).toBeVisible()
+    await trigger.click()
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await expect(dialog.locator(`[data-liangxiang-market-popover="${kind}"]`)).toBeVisible()
+    const opened = (await dialog.boundingBox())!
+    expect(Math.abs(opened.height - bounds.height)).toBeLessThanOrEqual(1)
+    expect(Math.abs(opened.y - bounds.y)).toBeLessThanOrEqual(1)
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeVisible()
+    await expect(trigger).toBeFocused()
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  }
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
 })

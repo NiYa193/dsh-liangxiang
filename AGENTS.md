@@ -23,8 +23,15 @@ Server transactions own freezing, idempotency, integer pool allocation and
 rollover. No client cache or chart is a ledger. Usage remains soft trust.
 
 The existing four-region panel and original Liangzi effects remain intact.
-One compact `香火交易` entry may sit below the utility drawer's 2×2 tiles and
-open a separate blue trading view. Its blue whale-girl artwork is a market
+One compact `香火交易` entry sits below the utility drawer's 2×2 tiles and
+opens the unified chart/trading view; do not add a second `梁位走势` entry or
+restore the retired window from old browser preferences. Keep official five-minute
+candles distinct from the retained Host-local observation API. The whale stays
+beside the title, outside the plot; stage backgrounds are subtle, future time
+reads `待打梁`, and the footer reads `24:00后一起揭晓`. Time controls retain
+their geometry across interval changes. Receipts and rules open overlays from
+permanent buttons; batch, status and wallet updates never resize the window.
+Its blue whale-girl artwork is a market
 decoration, never a replacement central Liangzi or a new business namespace.
 Market animation/static preference is local and respects reduced motion.
 Do not read another implementation until the independent implementation has
@@ -213,7 +220,8 @@ incense.
 - routine Token claims, snapshots, reconnects and archive refresh are automatic;
   never present a routine manual-sync action
 - 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、定时上香、在线模式/离线模式、
-  当前版本. The mode action always means switching to the other mode and requires
+  当前版本, plus one full-width `香火交易` row directly beneath the four tiles
+  (see 「走势」 below). The mode action always means switching to the other mode and requires
   explicit confirmation; network failure, reconnect, refresh and backend restart
   must never invoke it. 当前版本 opens a compact version-information dialog; the sound
   control has no long-press version gesture. `核对香火` remains under the collapsed
@@ -311,6 +319,50 @@ incense, voting availability, or any ledger.
   never squeeze or clip the authoritative Liangzi labels. It supports keyboard focus trapping/Escape/focus return, narrow
   viewport horizontal calendar scrolling, dark mode, reduced motion, and zoom
 - GitHub Pages is explicitly outside the current implementation scope
+
+### 走势 — host-observed 梁位 candles (read-only, derived)
+
+`走势` draws how 梁位 moved during one business date. It is a picture of what
+this installation observed, not a community ledger and not a trading product.
+
+- For this local-observation channel, the only source is the running Host sampling its own authoritative wire state
+  every second. This channel does not read the separate official market series, so an unobserved minute
+  has no data and must never be interpolated, back-filled or smoothed.
+- `虚线区间` means the Host was not running long enough to sample. It says
+  「未统计」 (not seen), never 「无人投票」; votes cast inside such a gap still
+  count toward every total. Both the SVG footer and the client footer keep that
+  sentence, and the client readout says `未统计` for such a bar.
+- A case change is a hard break: counts reset, the candle series restarts, and
+  two cases are never bridged into one line. Same-day archives do not paint
+  history that was never observed.
+- One candle is one minute (`BARS_BUCKET_MS = 60_000`, at most 1440 per business
+  date). Coarser views (`5m`/`15m`/`1h`/`1d`) are aggregated from raw counts by
+  the Host, never from averaged percentages. The browser picks the interval from
+  the visible span, offers `15分 / 1时 / 今日 / 全部`, and may zoom and pan by
+  asking for another `from`/`to`; the picture always comes from the server so an
+  embed and the panel cannot disagree.
+- Derived data only. Nothing here may spend incense, vote, open, archive or
+  close a case, alter an archive, or influence 梁位. Failure to sample or to
+  serve a bar must never make today's case or voting unavailable.
+- Storage is one small JSON file per business date under
+  `$DSH_HOME/storages/liangxiang-bars/days/<business-date>.json`, written
+  whole-file and atomically by the single Host writer. This is the one
+  deliberate exception to `storages/*.json` single-layout domains: it is
+  rebuildable derived data, so a bad day file is skipped, never fatal.
+- Three read-only routes: `/liangxiang/api/bars` (JSON), `/liangxiang/api/bars.svg`
+  (server-rendered picture for embeds and sharing), `/liangxiang/api/bars/meta`.
+  The wire contract lives in `src/shared/bars-v1.ts` and is versioned separately
+  from the main wire state; changing its shape requires a new version.
+- The server picture is self-contained and inert: no scripts, no external
+  references, no user-authored text, every label escaped, deterministic bytes so
+  a content hash can cache it. A window that includes now is never cached.
+- The current market candidate uses one `香火交易` drawer row and its unified
+  chart window. The legacy observation component is retained as a reference,
+  not mounted as a second window; old display preferences never reopen it.
+  Observation routes and sampling remain read-only compatibility services.
+- Retired by decision (2026-11-06): in-chart order tickets, conditional rules
+  and any third-party extension surface inside the chart. Do not add them, do
+  not design around them, and do not mention them in product copy.
 
 ---
 
@@ -1147,7 +1199,22 @@ the current client release.
 Privacy is a publication gate. Never publish private workflow/conversation
 labels, internal task identifiers, personal home paths, private contact data,
 or credentials in files, commit metadata/messages, PR descriptions or comments.
-Use the public GitHub handle and GitHub noreply email for maintained commits.
+Commit only as yourself. The author and committer of every commit you create
+must be the identity configured for this clone (`user.name` / `user.email`),
+which must be your own account.
+Never borrow another account's handle or email to satisfy a document, a
+template, an example or a gate: a maintainer handle quoted in docs, a
+teammate's noreply address and a PR author's identity are all the wrong author
+for your work. If a hook, script or document
+demands a different identity, fix that demand instead of changing who you claim
+to be.
+Git commits and tags default to unsigned (`commit.gpgsign=false`,
+`tag.gpgsign=false`). GPG/SSH signing is optional; missing signing tools, keys,
+signatures or signer-email metadata must never block a commit, push or PR.
+Keep existing signatures and original contributor attribution intact; do not
+rewrite history merely to remove signatures. PR review, tests, privacy checks
+and other branch protections remain mandatory. This Git policy does not alter
+runtime request authentication or the installation's Ed25519 keys.
 Community contributors may voluntarily publish their commit email: PR CI treats
 that metadata as advisory, without requiring signed history to be rewritten.
 This exception never covers secrets, sensitive files, source text or PR prose.
@@ -1155,7 +1222,7 @@ Maintained identities and local publication hooks retain their strict policy.
 Configure this identity in repository-local Git settings, not account-wide
 settings. Personal GitHub Profile names belong to the account owner; never
 change them to satisfy a project's commit or CI policy. Maintainer commits use
-the public handle; GitHub App operations use the App's bot identity. PR-list
+the maintainer's own account; GitHub App operations use the App's bot identity. PR-list
 usernames alone do not verify commit author/committer metadata. If an operation
 cannot preserve the required public commit identity, explain the specific
 manual action to the user before proceeding; do not rename their Profile.
@@ -1170,39 +1237,41 @@ Historical cleanup must preserve code and third-party attribution. Changes
 to protected published history require a prepared mapping/backup and explicit
 approval for the force update; never silently rewrite another active checkout.
 
-Community collaboration (approved 2026-10-19): upstream
-`liang-today/dsh-liangxiang` has two long-lived branches, `dev` and `main`.
-Every developer, including the maintainer, works in a personal fork. The local
-`origin` and default push remote must be the fork; `upstream` fetches the
-community repository and has a disabled push URL. Independent concurrent
-agents use separate worktrees/directories, never change each other's checkout.
-Submit feature PRs to upstream `dev`; after required CI and maintainer review,
-an administrator merges them. Authors cannot approve their own GitHub PRs;
-the single-maintainer setup uses manual administrator merge, not a claim of
-independent approval. See `CONTRIBUTING.md` and `docs/CI.md`.
+Community collaboration: `liang-today/dsh-liangxiang` uses `main` as its only
+active integration branch. Every developer, including the maintainer, works in
+a personal fork. Local `origin` and the default push remote must be the fork;
+`upstream` fetches the community repository and has a disabled push URL.
+Concurrent work uses separate worktrees/directories, never another checkout.
 
-Personal fork pushes use local Codex verification only. Cloud CI runs on PRs
-to upstream dev/main, never on personal pushes or duplicate post-merge pushes.
+Create non-default feature branches from current upstream main, push to a
+personal fork owned by the PR author (User, not an organization), and submit
+PRs to upstream main. Sync main before merging. Required gates are
+privacy, all three locked-dependency platforms, and full packed installation,
+browser and isolated online smoke checks. All PR test jobs are read-only.
+An administrator reviews and merges after checks; authors cannot approve their
+own GitHub PRs, and a single-maintainer merge is not independent approval.
+See `CONTRIBUTING.md` and `docs/CI.md`.
 
-Only the trusted nightly controller promotes a frozen dev batch to main after
-full PR checks. Main must remain an ancestor of dev. Promotion atomically
-fast-forwards main to the existing verified dev SHA (`beforeOid`, `force: false`);
-never create promotion merge/squash/rebase or reverse-sync commits. Features
-and CI repairs enter dev first. Its temporary `automation/promote-*` branch is
-deleted after the attempt. Never force-push, bypass branch protection, copy a personal CLI
-token into CI, or put repository-write credentials in PR test jobs. Scheduled
-source merges do not authorize npm publication, Release/Tag, or deployment.
-The initial workflow migration is an explicit maintainer operation with the
-same full checks; preserve all existing published history.
-
-The accepted PR #6 follow-up is submitted as new commits on a personal fork
-work branch; do not create or reopen a PR for that batch.
+Personal pushes and post-merge pushes do not duplicate cloud PR checks. The
+former dev-to-main controller is retired. Preserve existing published history;
+dev has been retired after verifying that main contains its complete history.
+Do not recreate community development branches: an active creation ruleset
+requires feature branches to live in personal forks. Never force-push, bypass branch protection,
+copy personal CLI tokens into CI or put write credentials in PR test jobs.
+Repository fork-run approval uses `first_time_contributors_new_to_github`:
+ordinary contributors run automatically, including first-time repository
+contributors. GitHub still requires approval for new GitHub accounts making
+their first contribution. Never claim that platform restriction is disabled,
+or add privileged PR-code execution to avoid it.
+Source integration does not authorize npm, Release/Tag, Pages or deployment.
 
 After every completed change in this repository, **before considering the
 task done**:
 
 1. `git commit` with a descriptive message
-2. `git push` to the tracked remote immediately
+2. `git push` to the tracked remote immediately, unless the user explicitly
+   requests local-only work. A local-only instruction stops after the commit:
+   no push, PR, release or deployment is implied.
 
 Do not wait for the user to ask. Do not leave a finished fix uncommitted.
 The original Prompt 4 / Prompt 11 line 「禁止 git push」is **overridden**.

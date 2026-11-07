@@ -7,7 +7,7 @@
 
 | 项 | 当前事实 |
 |---|---|
-| 梁相版本 | 1.3.0-alpha.1 |
+| 梁相版本 | 1.3.0-alpha.2 |
 | 状态 | 未发布候选；沿用 1.2.0 的 DSH 基线，公开发布与实际服务状态单独核对 |
 | DSH CLI / Web App / UI renderer/layout/slots | 0.2.1-rc.2（同一版本） |
 | DSH tag / commit | dsh-v0.2.1-rc.2 / 687f282e86 |
@@ -71,7 +71,7 @@ window.__ModuleLoader__.load({ id, factory }) 和 CJS factory 包装。
 还执行构建产物的工厂并核对插件导出，避免格式漂移。真实 Profile 将服务的 combo 与构建产物
 比较；只按 client/modules/src/index.ts 的 prepareSource 去掉 sourceURL/sourceMappingURL
 尾注（已核对同一 commit），不依赖引号或缩进形式。
-图像继续内联 lossless WebP，单 client.js 预算为 raw ≤700 KB、gzip ≤400 KB。
+原梁子图像继续内联 lossless WebP，鲸鱼素材单独按需加载；单 client.js 预算为 raw ≤720 KB、gzip ≤430 KB。
 
 ## 验证边界
 

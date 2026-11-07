@@ -88,7 +88,7 @@ function prepareFirstInstallation(): void {
     : { installation_id: forced }
   if (identity === undefined) return
   prepared = true
-  fund(identity.installation_id, 100)
+  fund(identity.installation_id, 5_000)
   position(identity.installation_id, 1, 'short', 20)
   for (let i = 1; i <= 24; i += 1) {
     simulated = at(10) + i * 5 * 60_000
@@ -110,7 +110,7 @@ function prepareFirstInstallation(): void {
     throw new Error('preview should show an advantageous P1 short position')
   }
   runningSince = Date.now()
-  console.log('[liangxiang-preview] Synthetic funds and P1 short prepared; simulated clock is 13:00, P2 is open.')
+  console.log('[liangxiang-preview] Synthetic 5,000-incense funds and P1 short prepared; simulated clock is 13:00, P2 is open.')
 }
 
 const timer = setInterval(() => {

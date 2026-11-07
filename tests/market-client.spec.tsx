@@ -196,10 +196,10 @@ describe('market dialog rendering', () => {
     const shown = renderToStaticMarkup(<MarketDialog reducedMotion online onClose={() => {}} session={session}
       presentation={{ caseId: s.market!.case_id, policyId: LIANGZI_POLICY_VERSION, title: '同案标题' }} />)
     expect(shown).toContain('同案标题')
-    expect(shown).toContain('data-liangxiang-market-zone="xiao_nan_liang"')
+    expect(shown).toContain(' · 梁总')
     const stale = renderToStaticMarkup(<MarketDialog reducedMotion online onClose={() => {}} session={session}
       presentation={{ caseId: 'another-case', policyId: LIANGZI_POLICY_VERSION, title: '旧案标题' }} />)
     expect(stale).not.toContain('旧案标题')
-    expect(stale).not.toContain('data-liangxiang-market-zone=')
+    expect(stale).not.toContain(' · 梁总')
   })
 })

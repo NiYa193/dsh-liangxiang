@@ -1,222 +1,252 @@
-import { memo, useMemo, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react'
-import type { MarketCandle, MarketState, MarketBatchId } from '../../shared/market-v1.ts'
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react'
+import { MARKET_CANDLE_INTERVAL_MS, type MarketCandle, type MarketState, type MarketBatchId } from '../../shared/market-v1.ts'
 import { PLUGIN_VERSION } from '../../shared/index.ts'
-import { chartRange, marketRatioLabel, marketTime, pointRatio, positionMood } from './chart-model.ts'
-import { marketBubbleLabel, marketTideGaps, marketTidePath, marketTideSegments, marketVolumeBubbles, type VolumeBubble } from './tide-model.ts'
-import { marketBubbleDirection, marketDepthBands, type MarketDepthBand } from './pond-model.ts'
+import { chartRange, marketRatioLabel, marketTime, pointRatio } from './chart-model.ts'
+import { marketTideGaps, marketTidePath, marketTideSegments } from './tide-model.ts'
+import { marketDepthBands } from './pond-model.ts'
 import { createBusinessDateProvider } from '../../shared/business-date.ts'
 import { marketDayDomain, marketTimeWindow } from './time-window.ts'
-import { MarketWhaleFigure, WaterMotion } from './MarketWhaleFigure.tsx'
+import { marketDisplayCandles, type MarketDisplayCandle } from './candle-view.ts'
 
 export const MARKET_WHALE_PATH = `/liangxiang/api/market/art.webp?v=${encodeURIComponent(PLUGIN_VERSION)}`
-const WIDTH = 760, HEIGHT = 360, LEFT = 14, RIGHT = 96, TOP = 30, BOTTOM = 42
+const WIDTH = 760, HEIGHT = 272, LEFT = 12, RIGHT = 64, TOP = 24
 const INK = 'var(--liangxiang-market-blue, #4d6bfe)'
 const LIGHT_INK = 'var(--liangxiang-market-chart-text, #8a8271)'
 const PAPER = 'var(--liangxiang-market-paper, var(--dsw-alias-bg-layer-2, #fffcf5))'
-const TEXT = 'var(--liangxiang-market-ink, var(--dsw-alias-label-primary, #3a352c))'
 const BORDER = 'var(--liangxiang-market-border, rgba(74, 72, 55, .18))'
 const GOLD = 'var(--liangxiang-market-gold, #e2ae54)'
 const VERMILION = 'var(--liangxiang-market-vermilion, #d2503f)'
 const SLATE = 'var(--liangxiang-market-slate, #74839f)'
+const MODE_KEY = 'liangxiang.market.chart-mode.v1'
 
-export const CandleLayer = memo(function CandleLayer({ candles, from, until, min, max, observedAt }: { candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number }): ReactElement {
-  const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * (WIDTH - LEFT - RIGHT)
-  const y = (ratio: number): number => TOP + (max - ratio) / (max - min) * (HEIGHT - TOP - BOTTOM)
-  const width = Math.max(1.2, Math.min(10, 240_000 / Math.max(1, until - from) * (WIDTH - LEFT - RIGHT)))
+interface ChartGeometry { width: number, bottom: number }
+interface ChartViewport { scope: string, from: number, until: number }
+const geometry = (width = WIDTH, bottom = HEIGHT - 58): ChartGeometry => ({ width, bottom })
+const midpoint = (candle: MarketCandle, observedAt: number): number => Math.min((candle.at + ('until' in candle ? (candle as MarketDisplayCandle).until : candle.at + MARKET_CANDLE_INTERVAL_MS)) / 2, observedAt)
+
+export const CandleLayer = memo(function CandleLayer({ candles, from, until, min, max, observedAt, layout = geometry() }: {
+  candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number, layout?: ChartGeometry,
+}): ReactElement {
+  const plot = layout.width - LEFT - RIGHT
+  const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * plot
+  const y = (ratio: number): number => TOP + (max - ratio) / (max - min) * (layout.bottom - TOP)
   return <g>{candles.map(candle => {
     if (candle.open === null || candle.close === null || candle.high === null || candle.low === null) return null
-    const cx = x(Math.min(candle.at + 150_000, observedAt)), rising = candle.close >= candle.open
-    return <g key={candle.at} data-liangxiang-market-candle="">
-      <line x1={cx} x2={cx} y1={y(candle.high)} y2={y(candle.low)} stroke={INK} strokeWidth="1" />
-      <rect x={cx - width / 2} y={Math.min(y(candle.open), y(candle.close))} width={width} height={Math.max(1.3, Math.abs(y(candle.close) - y(candle.open)))} fill={rising ? INK : 'var(--dsw-alias-bg-layer-2, #fff)'} stroke={INK} strokeWidth="1" rx=".6" />
+    const span = 'until' in candle ? (candle as MarketDisplayCandle).until - candle.at : MARKET_CANDLE_INTERVAL_MS
+    const width = Math.max(1.5, Math.min(14, span * .68 / Math.max(1, until - from) * plot))
+    const cx = x(midpoint(candle, observedAt)), rising = candle.close >= candle.open
+    const color = rising ? VERMILION : SLATE
+    return <g key={candle.at} data-liangxiang-market-candle="" data-direction={rising ? 'up' : 'down'}>
+      <line x1={cx} x2={cx} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="1.2" />
+      <rect x={cx - width / 2} y={Math.min(y(candle.open), y(candle.close))} width={width} height={Math.max(1.5, Math.abs(y(candle.close) - y(candle.open)))} fill={color} rx=".7" />
     </g>
   })}</g>
 })
 
-const TideLayer = memo(function TideLayer({ candles, from, until, min, max, observedAt, animated }: { candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number, animated: boolean }): ReactElement {
+const TideLayer = memo(function TideLayer({ candles, from, until, min, max, observedAt, animated, layout }: {
+  candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number, animated: boolean, layout: ChartGeometry,
+}): ReactElement {
   const segments = useMemo(() => marketTideSegments(candles, observedAt), [candles, observedAt])
-  const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * (WIDTH - LEFT - RIGHT)
-  const y = (ratio: number): number => TOP + (max - ratio) / (max - min) * (HEIGHT - TOP - BOTTOM)
+  const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * (layout.width - LEFT - RIGHT)
+  const y = (ratio: number): number => TOP + (max - ratio) / (max - min) * (layout.bottom - TOP)
   return <g>{segments.map((segment, index) => {
-    const path = marketTidePath(segment, point => ({ x: x(point.at), y: y(point.ratio) }), HEIGHT - BOTTOM)
+    const path = marketTidePath(segment, point => ({ x: x(point.at), y: y(point.ratio) }), layout.bottom)
     const last = segment[segment.length - 1]!
+    const textureId = `liangxiang-market-tide-texture-${index}-${segment[0]!.at}`
+    const firstX = x(segment[0]!.at), span = x(last.at) - firstX
+    const textureY = TOP + (layout.bottom - TOP) * .86
     return <g key={segment[0]!.at}>
-      {path.area && <><path d={path.area} fill="url(#liangxiang-market-tide-fill)" data-liangxiang-market-tide-area="" /><path d={path.area} fill="url(#liangxiang-market-tide-sheen)" /><WaterMotion areaPath={path.area} animated={animated} /></>}
-      <path d={path.line} fill="none" stroke={INK} strokeOpacity=".12" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round" />
-      <path d={path.line} fill="none" stroke={INK} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" data-liangxiang-market-tide-segment={index} />
-      <circle cx={x(last.at)} cy={y(last.ratio)} r="2.5" fill={INK} />
+      {path.area && <><path d={path.area} fill="url(#liangxiang-market-tide-fill)" data-liangxiang-market-tide-area="" /><path d={path.area} fill="url(#liangxiang-market-tide-sheen)" /><g className="liangxiang-market-water-motion" data-motion={animated} aria-hidden="true" pointerEvents="none"><defs><clipPath id={textureId}><path d={path.area} /></clipPath></defs><g clipPath={`url(#${textureId})`}><g className="liangxiang-market-water-back" fill="none" stroke="#b6dcff" strokeWidth="1.8" strokeLinecap="round" opacity=".32"><path d={`M${firstX - 26} ${textureY}Q${firstX + span * .2} ${textureY - 8} ${firstX + span * .47} ${textureY}T${firstX + span + 30} ${textureY}`} /></g></g></g></>}
+      <path d={path.line} fill="none" stroke={INK} strokeOpacity=".1" strokeWidth="7" strokeLinejoin="round" strokeLinecap="round" />
+      <path d={path.line} fill="none" stroke={INK} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" data-liangxiang-market-tide-segment={index} />
+      <circle cx={x(last.at)} cy={y(last.ratio)} r="2" fill={INK} />
     </g>
   })}</g>
 })
 
-/** The proposal's pond structure is decoration; all band names come from policy. */
-function DepthZones({ bands, current }: { bands: MarketDepthBand[], current: number | null }): ReactElement {
-  const y = (ratio: number): number => TOP + (1 - ratio) * (HEIGHT - TOP - BOTTOM)
-  return <g data-liangxiang-market-depth="">{bands.map(band => {
-    const active = current !== null && current >= band.low && (current < band.high || (band.high === 1 && current === 1))
-    const cy = (y(band.low) + y(band.high)) / 2
-    return <g key={band.state} data-liangxiang-market-zone={band.state}>
-      <rect x={LEFT} y={y(band.high)} width={WIDTH - LEFT - RIGHT} height={y(band.low) - y(band.high)} fill={INK} opacity={active ? '.045' : '.012'} />
-      {band.low > 0 && <line x1={LEFT} x2={WIDTH - RIGHT} y1={y(band.low)} y2={y(band.low)} stroke={BORDER} strokeDasharray="2 6" strokeWidth="1.2" />}
-      <g className="liangxiang-market-depth-label" data-active={active} transform={`translate(${WIDTH - RIGHT + 48} ${cy})`}>
-        <rect x="-41" y="-10" width="82" height="20" rx="10" fill={active ? GOLD : 'none'} fillOpacity={active ? '.16' : '1'} stroke={active ? GOLD : BORDER} strokeWidth={active ? '1.5' : '1'} />
-        <text x="0" y="0" textAnchor="middle" dominantBaseline="central" fontSize="11.5" fontWeight={active ? '700' : '500'} fill={active ? TEXT : LIGHT_INK}>{band.label}<tspan className="liangxiang-market-depth-range"> {band.range}</tspan></text>
-      </g>
-    </g>
-  })}</g>
+function initialMode(): 'tide' | 'candles' {
+  try { return typeof window !== 'undefined' && window.localStorage.getItem(MODE_KEY) === 'tide' ? 'tide' : 'candles' } catch { return 'candles' }
 }
 
-function PondFloor(): ReactElement {
-  const waves = `M${LEFT - 6} ${HEIGHT - BOTTOM + 26}q24 -9 48 0${'t48 0'.repeat(Math.ceil((WIDTH - LEFT - RIGHT) / 48) - 1)}`
-  return <g data-liangxiang-market-pond-floor="" aria-hidden="true">
-    <path d={waves} fill="none" stroke={BORDER} strokeWidth="2" strokeLinecap="round" />
-    {[[60, 1], [205, .7], [480, 1.2], [590, .6]].map(([offset, scale]) => <ellipse key={offset} cx={LEFT + offset!} cy={HEIGHT - BOTTOM + 30 + scale! * 3} rx={9 * scale! + 6} ry={5 * scale! + 3} fill={LIGHT_INK} opacity=".16" />)}
-  </g>
-}
-
-export const MarketChart = memo(function MarketChart({ state, candles, animated, recent = false, selectedBatch, liangziPolicyId }: { state: MarketState, candles: MarketCandle[], animated: boolean, recent?: boolean, selectedBatch?: MarketBatchId, liangziPolicyId?: string }): ReactElement {
+export const MarketChart = memo(function MarketChart({ state, candles, animated, recent = false, selectedBatch, liangziPolicyId, onInteraction, onRecentChange }: {
+  state: MarketState, candles: MarketCandle[], animated: boolean, recent?: boolean, selectedBatch?: MarketBatchId, liangziPolicyId?: string, onInteraction?: () => void, onRecentChange?: (recent: boolean) => void,
+}): ReactElement {
   const [hover, setHover] = useState<number | null>(null)
-  const [mode, setMode] = useState<'tide' | 'candles'>('tide')
-  const [eventHover, setEventHover] = useState<VolumeBubble | null>(null)
-  const [gapHover, setGapHover] = useState<number | null>(null)
-  const [futureHover, setFutureHover] = useState(false)
+  const [pinned, setPinned] = useState<number | null>(null)
+  const [mode, setMode] = useState<'tide' | 'candles'>(initialMode)
+  const [special, setSpecial] = useState<string | null>(null)
+  const [size, setSize] = useState({ width: WIDTH, height: HEIGHT })
+  const [viewport, setViewport] = useState<ChartViewport | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ x: number, from: number, until: number, moved: boolean } | null>(null)
+  const skipClick = useRef(false)
+  useEffect(() => {
+    const element = box.current
+    if (!element) return
+    const measure = (): void => {
+      const bounds = element.getBoundingClientRect()
+      const next = { width: Math.max(240, Math.round(bounds.width)), height: Math.max(110, Math.round(bounds.height)) }
+      setSize(old => old.width === next.width && old.height === next.height ? old : next)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const market = state.market
   const timezone = market?.timezone ?? 'UTC'
   const dates = useMemo(() => createBusinessDateProvider(timezone), [timezone])
   const businessDate = market?.business_date ?? dates.businessDateOf(state.server_time)
   const day = useMemo(() => marketDayDomain(businessDate, timezone), [businessDate, timezone])
-  const bands = useMemo(() => marketDepthBands(liangziPolicyId), [liangziPolicyId])
-  const points = useMemo(() => market ? [...market.batches.map(batch => batch.reference), market.close_point, state.current_point] : [state.current_point], [market, state.current_point])
-  // A pond keeps its natural 0–100% depth. Auto-zoom belongs to the optional
-  // candle view; it made an ordinary 50% waterline look like a dry lakebed.
-  const range = useMemo(() => mode === 'tide' ? { min: 0, max: 1 } : chartRange(candles, points, 'ohlc'), [candles, points, mode])
-  const { from, until, ticks, observedUntil, futureFrom } = marketTimeWindow(day, state.server_time, timezone, recent)
-  const visible = useMemo(() => candles.filter(c => c.at + 300_000 > from && c.at < until && c.at <= observedUntil), [candles, from, until, observedUntil])
+  const base = marketTimeWindow(day, state.server_time, timezone, recent)
+  const scope = `${market?.case_id ?? businessDate}:${recent}`
+  const { from, until } = viewport?.scope === scope ? viewport : base
+  const observedUntil = base.observedUntil
+  const futureFrom = observedUntil < until ? Math.max(from, observedUntil) : null
+  const ticks = from === day.from && until === day.until ? day.ticks : Array.from({ length: 5 }, (_, index) => {
+    const at = from + (until - from) * index / 4
+    return { at, label: at === day.until ? '24:00' : marketTime(at, timezone) }
+  })
+  const interval = until - from <= 6 * 3_600_000 ? MARKET_CANDLE_INTERVAL_MS : size.width < 540 ? 1_800_000 : 900_000
+  const display = useMemo(() => marketDisplayCandles(candles.filter(c => c.at <= observedUntil), interval, day.from), [candles, observedUntil, interval, day.from])
+  const visible = useMemo(() => display.filter(c => c.until > from && c.at < until), [display, from, until])
+  const rawVisible = useMemo(() => candles.filter(c => c.at + MARKET_CANDLE_INTERVAL_MS > from && c.at < until && c.at <= observedUntil), [candles, from, until, observedUntil])
   const gaps = useMemo(() => marketTideGaps(candles).filter(gap => gap.until > from && gap.from < observedUntil).map(gap => ({ from: Math.max(from, gap.from), until: Math.min(observedUntil, gap.until) })), [candles, from, observedUntil])
-  const bubbles = useMemo(() => marketVolumeBubbles(candles.filter(candle => candle.at <= observedUntil)).filter(bubble => bubble.last_sample_at + 300_000 > from && bubble.last_sample_at < until), [candles, observedUntil, from, until])
-  const plotWidth = WIDTH - LEFT - RIGHT, plotHeight = HEIGHT - TOP - BOTTOM
+  const points = useMemo(() => [market?.close_point ?? state.current_point, ...(market?.batches.map(batch => batch.reference) ?? [])].filter(point => point && point.at >= from && point.at <= until), [market, state.current_point, from, until])
+  const range = useMemo(() => chartRange(mode === 'tide' ? rawVisible : visible, points, mode === 'tide' ? 'close' : 'ohlc'), [rawVisible, visible, points, mode])
+  const layout = geometry(size.width, size.height - 58)
+  const plotWidth = size.width - LEFT - RIGHT, plotHeight = layout.bottom - TOP
+  const volumeY = layout.bottom + 12, volumeHeight = 20
   const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * plotWidth
   const y = (ratio: number): number => TOP + (range.max - ratio) / (range.max - range.min) * plotHeight
   const current = pointRatio(market?.close_point ?? state.current_point)
-  const chosenBatch = selectedBatch === undefined ? market?.batches.find(batch => batch.position) : market?.batches.find(batch => batch.batch === selectedBatch)
-  const mood = chosenBatch?.position ? positionMood(chosenBatch, market?.close_point ?? state.current_point) : 'even'
-  const submerged = mood === 'behind' || mood === 'lost'
   const currentAt = market?.close_point?.at ?? state.current_point?.at ?? state.server_time
-  const currentX = x(currentAt)
   const currentInRange = currentAt >= from && currentAt <= until
-  const currentY = current === null ? HEIGHT - BOTTOM - 18 : y(current)
-  // Only the decorative character can be nudged away from an edge. The official
-  // dot and every reference remain at their exact time and ratio coordinates.
-  const fishX = current === null ? WIDTH * .62 : Math.max(LEFT + 44, Math.min(WIDTH - RIGHT - 58, currentX))
-  // The toolbar provides 30px of headroom above the plot. Only the illustration
-  // yields at a full pond; the official point and waterline never move.
-  const fishBaseline = Math.max(63, Math.min(HEIGHT - 21.32, currentY + 14 + (submerged ? 40 : 0)))
-  const fishLeft = fishX - 54, fishTop = fishBaseline - 91.02, fishWidth = 108, fishHeight = 112.34
+  const bands = useMemo(() => marketDepthBands(liangziPolicyId), [liangziPolicyId])
   const activeBand = current === null ? undefined : bands.find(band => current >= band.low && (current < band.high || (band.high === 1 && current === 1)))
-  const badgeWidth = 146, badgeHalf = badgeWidth / 2
-  const badgeOnLeft = currentX - 146 >= LEFT + badgeHalf
-  const badgeX = current === null ? LEFT + 150 : Math.max(LEFT + badgeHalf + 4, Math.min(WIDTH - RIGHT - badgeHalf - 4, currentX + (badgeOnLeft ? -146 : 146)))
-  const badgeTop = current === null ? TOP + 40 : Math.max(34, currentY - 78)
-  const selected = hover === null ? undefined : visible[hover]
-  const move = (event: PointerEvent<SVGSVGElement>): void => {
+  const selectedAt = pinned ?? hover
+  const selected = visible.find(c => c.at === selectedAt) ?? visible[visible.length - 1]
+  const maxVolume = Math.max(1, ...visible.map(c => c.volume))
+  const fullSelectedCopy = selected ? `${marketTime(selected.at, timezone)}—${marketTime(Math.min(selected.until, observedUntil), timezone)} · 本场新增 ${selected.volume.toLocaleString('zh-CN')} 炷 · ${selected.unknown_volume ? `其中 ${selected.unknown_volume.toLocaleString('zh-CN')} 炷方向未确认` : `夯 ${selected.confirmed_up.toLocaleString('zh-CN')} · 拉 ${selected.confirmed_down.toLocaleString('zh-CN')}`}` : '暂时没有官方行情'
+  const readout = special ?? fullSelectedCopy
+  const clampWindow = (start: number, span: number): { from: number, until: number } => {
+    const width = Math.min(day.until - day.from, Math.max(1_800_000, span))
+    const first = Math.max(day.from, Math.min(day.until - width, start))
+    return { from: first, until: first + width }
+  }
+  const changeWindow = (start: number, span: number): void => {
+    setViewport({ scope, ...clampWindow(start, span) }); setPinned(null); setHover(null); setSpecial(null)
+  }
+  const zoom = (factor: number): void => {
+    const span = (until - from) * factor
+    changeWindow(from + (until - from - span) / 2, span)
+    onInteraction?.()
+  }
+  const hit = (event: PointerEvent<SVGSVGElement>): number | null => {
     const bounds = event.currentTarget.getBoundingClientRect()
-    const at = from + ((event.clientX - bounds.left) / bounds.width * WIDTH - LEFT) / plotWidth * (until - from)
-    setEventHover(null)
-    if (futureFrom !== null && at > futureFrom) { setHover(null); setGapHover(null); setFutureHover(true); return }
-    setFutureHover(false)
-    if (visible.length === 0) return
-    if (gaps.some(gap => at >= gap.from && at < gap.until)) { setHover(null); setGapHover(at); return }
-    setGapHover(null)
-    let nearest = 0
-    for (let i = 1; i < visible.length; i++) if (Math.abs(visible[i]!.at - at) < Math.abs(visible[nearest]!.at - at)) nearest = i
-    setHover(nearest)
+    const at = from + ((event.clientX - bounds.left) / bounds.width * size.width - LEFT) / plotWidth * (until - from)
+    if (at < from || at > until) return null
+    if (futureFrom !== null && at > futureFrom) { setSpecial('待打梁 · 等香火慢慢落下'); return null }
+    const gap = gaps.find(g => at >= g.from && at < g.until)
+    if (gap) { setSpecial(`${marketTime(at, timezone)} · 这段未记录，走势不连线`); return null }
+    setSpecial(null)
+    let nearest = visible[0]
+    for (const candle of visible) if (!nearest || Math.abs(midpoint(candle, observedUntil) - at) < Math.abs(midpoint(nearest, observedUntil) - at)) nearest = candle
+    return nearest?.at ?? null
+  }
+  const move = (event: PointerEvent<SVGSVGElement>): void => {
+    const gesture = drag.current
+    if (gesture) {
+      const offset = event.clientX - gesture.x
+      if (Math.abs(offset) > 3) gesture.moved = true
+      if (gesture.moved) changeWindow(gesture.from - offset / Math.max(1, event.currentTarget.getBoundingClientRect().width) * size.width / plotWidth * (gesture.until - gesture.from), gesture.until - gesture.from)
+      return
+    }
+    if (pinned === null) setHover(hit(event))
   }
   const key = (event: KeyboardEvent<SVGSVGElement>): void => {
-    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-    event.preventDefault()
-    setEventHover(null); setGapHover(null); setFutureHover(false)
-    setHover(Math.max(0, Math.min(visible.length - 1, (hover ?? visible.length - 1) + (event.key === 'ArrowLeft' ? -1 : 1))))
+    if (event.key === 'Escape' && pinned !== null) { event.preventDefault(); event.stopPropagation(); setPinned(null); setHover(null); setSpecial(null); return }
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', '+', '-', '='].includes(event.key)) return
+    event.preventDefault(); event.stopPropagation()
+    if (event.key === '+' || event.key === '=') { zoom(.5); return }
+    if (event.key === '-') { zoom(2); return }
+    if (!visible.length) return
+    const index = Math.max(0, visible.findIndex(c => c.at === (selectedAt ?? selected?.at)))
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? visible.length - 1 : Math.max(0, Math.min(visible.length - 1, index + (event.key === 'ArrowLeft' ? -1 : 1)))
+    setHover(visible[next]!.at); setPinned(null); setSpecial(null); onInteraction?.()
   }
-  const selectedCopy = futureHover ? '尚未发生 · 等香火慢慢落下' : eventHover ? marketBubbleLabel(eventHover, timezone) : gapHover !== null ? `${marketTime(gapHover, timezone)} · 起雾啦（这段未记录，走势不连线）` : selected
-    ? `${marketTime(Math.min(selected.at + 300_000, state.server_time), timezone)} ${mode === 'tide' ? `梁位 ${marketRatioLabel(selected.close)}` : `开 ${marketRatioLabel(selected.open)} 高 ${marketRatioLabel(selected.high)} 低 ${marketRatioLabel(selected.low)} 收 ${marketRatioLabel(selected.close)}`} · 本场新增 ${selected.volume.toLocaleString('zh-CN')} 炷` : ''
+  const selectMode = (next: 'tide' | 'candles'): void => {
+    setMode(next); onInteraction?.()
+    try { window.localStorage.setItem(MODE_KEY, next) } catch { /* Cosmetic preference is optional. */ }
+  }
   return <figure className="liangxiang-market-chart" data-animated={animated} data-liangxiang-market-chart-mode={mode} style={{ margin: 0 }}>
     <div className="liangxiang-market-chart-toolbar">
-      <div className="liangxiang-market-chart-readout" aria-hidden="true">{selectedCopy || <><span className="liangxiang-market-phone-current">梁位 {marketRatioLabel(current)}</span><span className="liangxiang-market-chart-hint">碰一碰水面，看看香火</span></>}</div>
-      <div role="group" aria-label="走势画法" style={{ display: 'flex', gap: '4px', flexShrink: 0 }}><button type="button" aria-pressed={mode === 'tide'} data-selected={mode === 'tide'} onClick={() => setMode('tide')}>潮汐</button><button type="button" aria-pressed={mode === 'candles'} data-selected={mode === 'candles'} onClick={() => setMode('candles')}>烛线</button></div>
+      <div role="group" aria-label="走势画法"><button type="button" aria-pressed={mode === 'candles'} data-selected={mode === 'candles'} onClick={() => selectMode('candles')}>K 线</button><button type="button" aria-pressed={mode === 'tide'} data-selected={mode === 'tide'} onClick={() => selectMode('tide')}>潮汐</button></div>
+      <div className="liangxiang-market-chart-zoom" role="group" aria-label="图表缩放"><button type="button" aria-label="缩小走势" disabled={until - from >= day.until - day.from} onClick={() => zoom(2)}>−</button><button type="button" aria-label="放大走势" disabled={until - from <= 1_800_000} onClick={() => zoom(.5)}>＋</button></div>
+      <div className="liangxiang-market-chart-range" role="group" aria-label="走势时间范围">{onRecentChange && <><button type="button" aria-pressed={!recent} data-selected={!recent} onClick={() => { setViewport(null); onRecentChange(false); onInteraction?.() }}>今日</button><button type="button" aria-pressed={recent} data-selected={recent} onClick={() => { setViewport(null); onRecentChange(true); onInteraction?.() }}>近4时</button></>}<span className="liangxiang-market-chart-interval" style={{ display: 'inline-block', minWidth: '48px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{interval / 60_000}分钟</span></div>
     </div>
-    <div className="liangxiang-market-chart-scroll">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" tabIndex={0} data-liangxiang-market-from={from} data-liangxiang-market-until={until} style={{ width: '100%', minWidth: 0, height: 'auto', display: 'block', overflow: 'visible' }}
-        aria-label={`今日梁位${mode === 'tide' ? '潮汐' : '烛线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方五分钟数据；缺口不连线。${selectedCopy}`}
-        onPointerMove={move} onPointerLeave={() => { setHover(null); setEventHover(null); setGapHover(null); setFutureHover(false) }} onKeyDown={key}>
+    <div className="liangxiang-market-chart-quotes" aria-label="所选行情开高低收">
+      {(['open', 'high', 'low', 'close'] as const).map((key, i) => {
+        const ratio = selected?.[key] ?? null
+        const exact = marketRatioLabel(ratio)
+        const label = size.width < 340 && ratio !== null ? `${(Math.trunc(ratio * 1_000_000) / 10_000).toFixed(4)}%` : exact
+        return <div key={key}><span>{['开', '高', '低', '收'][i]}</span><b data-liangxiang-market-quote={key} aria-label={exact} title={exact}>{label}</b></div>
+      })}
+      <div className="liangxiang-market-chart-quote-time"><span>{pinned === null ? '选中时刻' : '已固定'}</span><b>{selected ? marketTime(selected.at, timezone) : '--:--'}</b></div>
+    </div>
+    <div className="liangxiang-market-chart-scroll" ref={box}>
+      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" tabIndex={0} data-liangxiang-market-from={from} data-liangxiang-market-until={until} data-liangxiang-market-interval={interval} data-liangxiang-market-pinned={pinned !== null}
+        style={{ width: '100%', height: '100%', display: 'block', overflow: 'hidden', touchAction: 'pan-y' }}
+        aria-label={`今日梁位${mode === 'tide' ? '潮汐' : 'K线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方行情，加减号缩放，拖动平移，点击固定，Escape解除固定；缺口不连线。${readout}`}
+        onPointerMove={move} onPointerDown={event => { if (event.button !== 0) return; skipClick.current = false; drag.current = { x: event.clientX, from, until, moved: false }; event.currentTarget.setPointerCapture(event.pointerId) }}
+        onPointerUp={event => { if (drag.current?.moved) { skipClick.current = true; onInteraction?.() } drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
+        onPointerCancel={() => { drag.current = null; skipClick.current = true }}
+        onClick={event => { if (skipClick.current) { skipClick.current = false; return } const at = hit(event as unknown as PointerEvent<SVGSVGElement>); if (at !== null) { setPinned(old => old === at ? null : at); setHover(at); onInteraction?.() } }}
+        onPointerLeave={() => { if (!drag.current && pinned === null) { setHover(null); setSpecial(null) } }} onKeyDown={key}>
         <defs>
-          <clipPath id="liangxiang-market-whale-scene"><rect x="0" y="-30" width={WIDTH} height={HEIGHT - BOTTOM + 30} /></clipPath>
-          <linearGradient id="liangxiang-market-tide-fill" x1="0" y1="0" x2="0" y2="1"><stop stopColor="var(--liangxiang-market-water-top, #4d6bfe)" stopOpacity=".44" /><stop offset="1" stopColor="var(--liangxiang-market-water-bottom, #4d6bfe)" stopOpacity=".1" /></linearGradient>
-          <linearGradient id="liangxiang-market-tide-sheen" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff" stopOpacity=".16" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
-          <pattern id="liangxiang-market-gap-fill" width="14" height="14" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><rect width="14" height="14" fill={LIGHT_INK} opacity=".08" /><path d="M0 0V14" stroke={LIGHT_INK} strokeOpacity=".3" strokeWidth="2.5" strokeDasharray="3 5" /></pattern>
+          <clipPath id="liangxiang-market-price-clip"><rect x={LEFT} y={TOP} width={plotWidth} height={plotHeight} /></clipPath>
+          <clipPath id="liangxiang-market-volume-clip"><rect x={LEFT} y={volumeY - 3} width={plotWidth} height={volumeHeight + 6} /></clipPath>
+          <linearGradient id="liangxiang-market-tide-fill" x1="0" y1="0" x2="0" y2="1"><stop stopColor="var(--liangxiang-market-water-top, #4d6bfe)" stopOpacity=".36" /><stop offset="1" stopColor="var(--liangxiang-market-water-bottom, #4d6bfe)" stopOpacity=".08" /></linearGradient>
+          <linearGradient id="liangxiang-market-tide-sheen" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff" stopOpacity=".12" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
+          <pattern id="liangxiang-market-gap-fill" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><path d="M0 0V10" stroke={LIGHT_INK} strokeOpacity=".2" strokeWidth="2" /></pattern>
         </defs>
-        <rect x={LEFT} y={TOP} width={plotWidth} height={plotHeight} fill={INK} opacity=".045" rx="16" />
-        {mode === 'tide' && <DepthZones bands={bands} current={current} />}
-        <PondFloor />
-        {futureFrom !== null && <g data-liangxiang-market-future="" role="img" aria-label="尚未发生：未来时段，不绘制走势">
-          <rect x={x(futureFrom)} y={TOP} width={x(until) - x(futureFrom)} height={plotHeight} fill={PAPER} fillOpacity=".72" />
-          <line x1={x(futureFrom)} x2={x(futureFrom)} y1={TOP} y2={HEIGHT - BOTTOM} stroke={INK} strokeDasharray="2 7" strokeOpacity=".18" />
-          {x(until) - x(futureFrom) >= 68 && <text x={(x(futureFrom) + x(until)) / 2} y={TOP + plotHeight / 2} fill={LIGHT_INK} fontSize="11.5" textAnchor="middle" opacity=".75">尚未发生</text>}
-        </g>}
-        {gaps.map(gap => {
-          const left = x(Math.max(from, gap.from)), right = x(Math.min(until, gap.until)), width = right - left
-          return <g key={gap.from} role="img" aria-label="起雾啦：此段未记录，不代表无人上香，走势未连接">
-            <rect x={left} y={TOP} width={width} height={plotHeight} fill="url(#liangxiang-market-gap-fill)" data-liangxiang-market-gap="" />
-            <line x1={left} x2={left} y1={TOP} y2={TOP + plotHeight} stroke={LIGHT_INK} strokeDasharray="5 4" strokeWidth="1.6" opacity=".6" />
-            <line x1={right} x2={right} y1={TOP} y2={TOP + plotHeight} stroke={LIGHT_INK} strokeDasharray="5 4" strokeWidth="1.6" opacity=".6" />
-            {width >= 35 && <text x={(left + right) / 2} y={TOP + 22} textAnchor="middle" fontSize="11.5" fontWeight="600" fill={LIGHT_INK}>{width >= 130 ? '起雾啦 · 此段未记录' : '未记录'}</text>}
-          </g>
+        {Array.from({ length: size.height < 190 ? 3 : 5 }, (_, index) => {
+          const ratio = range.max - (range.max - range.min) * index / (size.height < 190 ? 2 : 4), cy = y(ratio)
+          return <g key={index} data-liangxiang-market-price-axis=""><line x1={LEFT} x2={LEFT + plotWidth} y1={cy} y2={cy} stroke={BORDER} strokeWidth=".8" /><text x={LEFT + plotWidth + 6} y={cy + 4} fill={LIGHT_INK} fontSize="11">{(ratio * 100).toFixed(2)}%</text></g>
         })}
-        {mode === 'tide' ? <TideLayer candles={visible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} animated={animated} /> : <CandleLayer candles={visible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} />}
-        {mode === 'tide' && bubbles.map((bubble, index) => {
-          const direction = marketBubbleDirection(bubble), radius = Math.min(17, bubble.radius * 1.22)
-          const cx = x(Math.min(bubble.last_sample_at + 300_000, state.server_time))
-          const rawY = y(bubble.ratio) + (direction === 'up' ? -radius - 8 : radius + 8)
-          const cy = Math.max(radius + 3, Math.min(HEIGHT - 18 - radius, rawY))
-          const fill = direction === 'up' ? VERMILION : direction === 'down' ? SLATE : 'var(--liangxiang-market-bubble-unknown, #b4b1a8)'
-          const active = state.market?.status === 'open' && index >= bubbles.length - 3 && state.server_time - bubble.until < 1_800_000
-          return <g key={bubble.at} className="liangxiang-market-volume-bubble" data-active={active} data-direction={direction ?? 'none'} data-liangxiang-market-volume="" role="img" aria-label={marketBubbleLabel(bubble, timezone)} style={{ cursor: 'pointer' }}
-            onPointerMove={event => { event.stopPropagation(); setHover(null); setGapHover(null); setFutureHover(false); setEventHover(bubble) }} onPointerLeave={() => setEventHover(null)}>
-            <circle cx={cx} cy={cy} r={radius} fill={fill} opacity={direction === null ? '.48' : '1'} stroke={PAPER} strokeWidth="2" />
-            {direction !== null && radius >= 9 && <text x={cx} y={cy + 3.5} textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#fff">{direction === 'up' ? '夯' : '拉'}</text>}
-          </g>
-        })}
-        {current !== null && visible.every(candle => candle.close === null) && <text x={LEFT + plotWidth / 2} y={TOP + 25} textAnchor="middle" fill={LIGHT_INK} fontSize="12">等第一笔香火落进水里 · 缺失的走势不补画</text>}
-        {market?.batches.map(batch => {
-          const reference = pointRatio(batch.reference), at = batch.reference_at
-          if (at < from || at > until) return null
-          const cx = x(at)
-          return <g key={batch.batch} data-liangxiang-market-reference={batch.batch}>
-            <line x1={cx} x2={cx} y1={TOP + 6} y2={HEIGHT - BOTTOM} stroke={INK} strokeDasharray="2 7" opacity={batch.batch === selectedBatch ? '.2' : '.09'} />
-            <text x={cx} y={TOP + 17} textAnchor="middle" fill={LIGHT_INK} fontSize="11" fontWeight={batch.batch === selectedBatch ? '650' : '400'}>P{batch.batch} · {marketTime(at, timezone)}</text>
-            {reference !== null && <>
-              <circle cx={cx} cy={y(reference)} r={batch.batch === selectedBatch ? '4.5' : '3.2'} fill={INK} stroke={PAPER} strokeWidth="1.8" />
-              {batch.position && <text x={cx + 9} y={y(reference) + 4} fill={LIGHT_INK} fontSize="10">{batch.position.side === 'long' ? '多' : '空'}</text>}
-            </>}
-          </g>
-        })}
-        <g data-liangxiang-market-main-whale="" data-mood={current === null ? 'waiting' : mood} aria-hidden="true">
-          {current !== null && currentInRange && <path d={`M${badgeX + (badgeOnLeft ? badgeHalf : -badgeHalf)} ${badgeTop + 12}C${badgeX + (badgeOnLeft ? 95 : -95)} ${badgeTop + 4} ${currentX + (badgeOnLeft ? -35 : 35)} ${currentY - 26} ${currentX} ${currentY}`} fill="none" stroke={GOLD} strokeWidth="1.3" strokeDasharray="3 4" opacity=".8" />}
-          <g clipPath="url(#liangxiang-market-whale-scene)" data-liangxiang-market-whale-scene=""><MarketWhaleFigure x={fishLeft} y={fishTop} width={fishWidth} height={fishHeight} waterY={currentY} mood={current === null ? 'waiting' : mood} animated={animated} src={MARKET_WHALE_PATH} /></g>
-          {current === null && <text x={fishX + 37} y={fishTop + 16} fill={LIGHT_INK} fontSize="16">z z</text>}
-          {current !== null && currentInRange && <circle data-liangxiang-market-current-point="" cx={currentX} cy={currentY} r="3.4" fill={GOLD} stroke={PAPER} strokeWidth="1.5" />}
-          <g className="liangxiang-market-current-badge" data-liangxiang-market-current-badge="">
-            <rect x={badgeX - badgeHalf} y={badgeTop} width={badgeWidth} height="28" rx="14" fill={PAPER} stroke={GOLD} strokeWidth="1.5" />
-            <text x={badgeX} y={badgeTop + 19} textAnchor="middle" fontSize="12.5" fontWeight="700" fill={TEXT}>{current === null ? '待开梁' : `梁位 ${marketRatioLabel(current)}`}</text>
-            <text className="liangxiang-market-badge-note" x={badgeX} y={badgeTop - 7} textAnchor="middle" fontSize="10.5" fill={LIGHT_INK}>{current === null ? '今日还没有香火，先去攒香吧' : activeBand?.label ?? '官方记录'}</text>
-          </g>
+        <g clipPath="url(#liangxiang-market-price-clip)">
+          {market && [
+            { from: day.from, until: market.batches[0]!.opens_at, kind: 'before', label: '开盘前' },
+            ...market.batches.flatMap(batch => [{ from: batch.opens_at, until: batch.locks_at, kind: 'open', label: `P${batch.batch}投入` }, { from: batch.locks_at, until: batch.reference_at, kind: 'locked', label: `P${batch.batch}锁仓定线` }]),
+            { from: market.batches[2]!.reference_at, until: day.until, kind: 'closing', label: '尾盘打梁' },
+          ].filter(phase => phase.until > from && phase.from < until).map(phase => <rect key={`${phase.kind}-${phase.from}`} data-liangxiang-market-phase={phase.kind} role="img" aria-label={`${phase.label}：${marketTime(phase.from, timezone)}—${phase.until === day.until ? '24:00' : marketTime(phase.until, timezone)}`} x={x(Math.max(from, phase.from))} y={TOP} width={Math.max(0, x(Math.min(until, phase.until)) - x(Math.max(from, phase.from)))} height={plotHeight} fill={phase.kind === 'locked' || phase.kind === 'closing' ? GOLD : INK} fillOpacity={phase.kind === 'locked' ? '.065' : phase.kind === 'open' ? '.035' : '.018'} />)}
+          {futureFrom !== null && <g data-liangxiang-market-future="" role="img" aria-label="待打梁：未来时段，不绘制走势"><rect x={x(futureFrom)} y={TOP} width={Math.max(0, x(until) - x(futureFrom))} height={plotHeight} fill={PAPER} fillOpacity=".12" />{x(until) - x(futureFrom) >= 68 && <text x={(x(futureFrom) + x(until)) / 2} y={TOP + plotHeight / 2} fill={LIGHT_INK} fontSize="11" textAnchor="middle">待打梁</text>}</g>}
+          {gaps.map(gap => <g key={gap.from} role="img" aria-label="此段未记录，走势不连线"><rect x={x(gap.from)} y={TOP} width={Math.max(0, x(gap.until) - x(gap.from))} height={plotHeight} fill="url(#liangxiang-market-gap-fill)" data-liangxiang-market-gap="" />{x(gap.until) - x(gap.from) >= 45 && <text x={(x(gap.from) + x(gap.until)) / 2} y={TOP + 18} textAnchor="middle" fill={LIGHT_INK} fontSize="11">未记录</text>}</g>)}
+          {mode === 'tide' ? <TideLayer candles={rawVisible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} animated={animated} layout={layout} /> : <CandleLayer candles={visible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} layout={layout} />}
+          {market?.batches.map(batch => {
+            if (batch.reference_at < from || batch.reference_at > until) return null
+            const reference = pointRatio(batch.reference), cx = x(batch.reference_at)
+            return <g key={batch.batch} data-liangxiang-market-reference={batch.batch}><line x1={cx} x2={cx} y1={TOP} y2={layout.bottom} stroke={INK} strokeDasharray="3 5" opacity={batch.batch === selectedBatch ? '.3' : '.14'} />{reference !== null && <circle cx={cx} cy={y(reference)} r={batch.batch === selectedBatch ? '3.5' : '2.5'} fill={INK} stroke={PAPER} strokeWidth="1.3" />}</g>
+          })}
+          {current !== null && currentInRange && <circle data-liangxiang-market-current-point="" cx={x(currentAt)} cy={y(current)} r="3" fill={GOLD} stroke={PAPER} strokeWidth="1.4" />}
+          {selected && (hover !== null || pinned !== null) && <line x1={x(midpoint(selected, observedUntil))} x2={x(midpoint(selected, observedUntil))} y1={TOP} y2={layout.bottom} stroke={INK} strokeDasharray="2 3" opacity=".6" />}
         </g>
-        {selected && <line x1={x(selected.at + 150_000)} x2={x(selected.at + 150_000)} y1={TOP} y2={HEIGHT - BOTTOM} stroke={INK} strokeDasharray="2 3" opacity=".5" />}
-        {ticks.map((tick, index) => {
-          const cx = x(tick.at)
-          return <g key={tick.at} className="liangxiang-market-time-tick"><line x1={cx - 9} x2={cx + 9} y1={HEIGHT - BOTTOM + 10} y2={HEIGHT - BOTTOM + 10} stroke={LIGHT_INK} strokeWidth="1.6" strokeLinecap="round" opacity=".7" /><text x={cx} y={HEIGHT - 18} textAnchor={index === 0 ? 'start' : index === ticks.length - 1 ? 'end' : 'middle'} fill={LIGHT_INK} fontSize="11">{tick.label}</text></g>
-        })}
+        {market?.batches.filter(batch => batch.reference_at >= from && batch.reference_at <= until).map(batch => <text key={batch.batch} x={x(batch.reference_at)} y="15" textAnchor="middle" fill={LIGHT_INK} fontSize="11">P{batch.batch}{size.width < 560 ? '' : ` · ${marketTime(batch.reference_at, timezone)}`}</text>)}
+        <g clipPath="url(#liangxiang-market-volume-clip)">{visible.filter(c => c.volume > 0).map(c => {
+          const cx = x(midpoint(c, observedUntil)), h = c.volume / maxVolume * volumeHeight
+          const width = Math.max(1.5, Math.min(14, (c.until - c.at) * .68 / Math.max(1, until - from) * plotWidth))
+          const upH = h * c.confirmed_up / c.volume, downH = h * c.confirmed_down / c.volume
+          return <g key={c.at} className="liangxiang-market-volume-band" data-liangxiang-market-volume="" role="img" aria-label={`${marketTime(c.at, timezone)} · 本场新增 ${c.volume.toLocaleString('zh-CN')} 炷 · 夯 ${c.confirmed_up} · 拉 ${c.confirmed_down}${c.unknown_volume ? ` · 方向未确认 ${c.unknown_volume}` : ''}`}>
+            {upH > 0 && <rect data-direction="up" x={cx - width / 2} y={volumeY + volumeHeight - h} width={width} height={upH} rx=".7" fill={VERMILION} />}
+            {downH > 0 && <rect data-direction="down" x={cx - width / 2} y={volumeY + volumeHeight - h + upH} width={width} height={downH} rx=".7" fill={SLATE} />}
+            {c.unknown_volume > 0 && <rect data-direction="unknown" x={cx - width / 2} y={volumeY + volumeHeight - h + upH + downH} width={width} height={Math.max(0, h - upH - downH)} rx=".7" fill={LIGHT_INK} opacity=".5" />}
+            <rect x={cx - Math.max(3, width / 2)} y={volumeY - 3} width={Math.max(6, width)} height={volumeHeight + 6} fill="transparent" />
+          </g>
+        })}</g>
+        {ticks.filter((_tick, index) => size.width >= 500 || index === 0 || index === ticks.length - 1 || index % 2 === 0).map((tick, index, shown) => <g key={tick.at} className="liangxiang-market-time-tick"><text x={x(tick.at)} y={size.height - 5} textAnchor={index === 0 ? 'start' : index === shown.length - 1 ? 'end' : 'middle'} fill={LIGHT_INK} fontSize="11">{tick.label}</text></g>)}
       </svg>
     </div>
-    <figcaption className="liangxiang-market-pond-legend"><span><i style={{ background: VERMILION }} />夯</span><span><i style={{ background: SLATE }} />拉</span><span>气泡 = 半小时香火</span>{mode === 'tide' && bands.length > 0 && <span className="liangxiang-market-depth-caption">深度带 = 梁子称呼</span>}<span className="liangxiang-market-provenance">官方记录 · 缺口不连线</span></figcaption>
+    <div className="liangxiang-market-chart-readout" aria-live="off" title={`梁位 ${marketRatioLabel(current)}${activeBand ? ` · ${activeBand.label}` : ''} · ${readout}`}><span className="liangxiang-market-chart-current">梁位 {marketRatioLabel(current)}{activeBand ? ` · ${activeBand.label}` : ''}</span><span>{pinned !== null ? '已固定 · ' : ''}{readout}</span></div>
+    <figcaption className="liangxiang-market-pond-legend"><span><i style={{ background: VERMILION }} />夯</span><span><i style={{ background: SLATE }} />拉</span><span>量带高度看总量，分段看比例</span><span className="liangxiang-market-provenance">官方记录 · 缺口不连线</span></figcaption>
   </figure>
 })

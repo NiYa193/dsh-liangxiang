@@ -5,17 +5,17 @@
  * test deliberately fails when a version bump forgets to refresh this copy.
  * This is cosmetic localStorage only and never participates in authority.
  */
-export const RELEASE_NOTES_VERSION = '1.3.0-alpha.1'
+export const RELEASE_NOTES_VERSION = '1.3.0-alpha.2'
 export const RELEASE_NOTES_TITLE = `梁相 v${RELEASE_NOTES_VERSION} 更新`
 export const RELEASE_NOTES_ITEMS = [
   '香火能攒了：余额与交易收益跨日保留，可用与冻结一目了然。',
   '三次入场，一起收盘：做多做空、争参考线，冷门也有机会翻盘。',
-  '蓝色鲸鱼陪你看盘：动态与静态随心切换，走势与仓位更直观。',
+  '走势交易合一：烛线更清楚，大肥鱼陪你看盘，动静随心切换。',
   '上香更畅快：保留实时凝香反馈，定时参与和版本更新更省心。',
 ] as const
 export const RELEASE_NOTES_QQ = '梁相 QQ 群：453683905'
 export const RELEASE_NOTES_QQ_INVITE = '来群里一起出梁案、晒梁位、催更新，第一批梁友等你入席。'
-export const RELEASE_NOTES_THANKS = '鸣谢 @XChen446、@Ritanlisa、@xunxiaoQ，以及每位社区贡献者。'
+export const RELEASE_NOTES_THANKS = '鸣谢 @stuffed-cat、@XChen446、@Ritanlisa、@xunxiaoQ，以及每位社区贡献者。'
 
 const RELEASE_NOTES_KEY_PREFIX = 'liangxiang:release-notes:'
 export const RELEASE_NOTES_LATEST_SEEN_KEY = `${RELEASE_NOTES_KEY_PREFIX}latest-seen`

@@ -22,7 +22,7 @@ export function MarketWhaleFigure({ x, y, width, height, waterY, mood, animated,
   // Tint belongs to each cut-out, so its alpha silhouette follows that piece's
   // local rotation instead of leaving a blue copy of the resting tail behind.
   const tint = (part: string): ReactElement => <rect data-liangxiang-market-underwater-tint="" data-tint-part={part} x={x} y={line} width={width} height={Math.max(0, y + height - line)} fill={dive ? '#327ccc' : '#65b1ef'} opacity={dive ? '.58' : '.35'} mask={`url(#${id}-alpha)`} />
-  return <g className="liangxiang-market-current-whale" data-pose={pose} data-motion={animated && mood !== 'waiting'} data-liangxiang-market-whale-figure="" opacity={mood === 'waiting' ? '.65' : '1'}>
+  return <g className="liangxiang-market-current-whale" data-pose={pose} data-motion={animated} data-liangxiang-market-whale-figure="" opacity={mood === 'waiting' ? '.88' : '1'}>
     <defs>
       <clipPath id={`${id}-tail`}><path d={TAIL} transform={partTransform} /></clipPath>
       <clipPath id={`${id}-hair`}><path d={HAIR} transform={partTransform} /></clipPath>

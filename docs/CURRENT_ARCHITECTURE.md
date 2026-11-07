@@ -1,11 +1,11 @@
 # 梁相：当前架构与事实索引
 
-核对：2026-11-06。先读 [`AGENTS.md`](../AGENTS.md)，再按本文进入专题；历史文档不能覆盖现行契约。
+核对：2026-11-07。先读 [`AGENTS.md`](../AGENTS.md)，再按本文进入专题；历史文档不能覆盖现行契约。
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.1`，`SERVER_BUILD=1.3.0-alpha.1-u1`。
-当前源码为 **1.3.0-alpha.1 独立开发候选**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.2`，`SERVER_BUILD=1.3.0-alpha.2-u1`。
+当前源码为 **1.3.0-alpha.2 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定线与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **13**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
@@ -47,13 +47,14 @@ DSH 最终请求用量
 | 功能 | 最终规则与资料 |
 |---|---|
 | 累计钱包（候选） | 可用/冻结分离、余额与 Token 余量跨日；每日统计独立，旧客户端需配套升级。见 [`MARKET_WALLET.md`](MARKET_WALLET.md) |
-| 香火交易（候选） | 每日三批延迟定线、午夜共同收盘；整数分池、官方五分钟行情、00–24 点平滑水线、局部鱼尾/发梢与水波动作、单批操作及动态/静态选择。现行视觉见 [`MARKET_UI_COMPARISON.md`](MARKET_UI_COMPARISON.md) |
+| 香火交易（候选） | 案牍统一入口；每日三批延迟定线、午夜共同收盘。默认官方五分钟数据聚合烛线，支持潮汐、00–24 点、分列读数、缩放／平移／全屏；鲸鱼独立留白、图底分色量带、固定单批操作与动静选择。现行视觉见 [`MARKET_UI_COMPARISON.md`](MARKET_UI_COMPARISON.md) |
 | 小难梁 | 有票且梁位 <25%；25%–<50% 为梁工。旧梁案和档案保留原规则，见 [`ISSUE2_IMPLEMENTATION.md`](ISSUE2_IMPLEMENTATION.md) |
 | 凝香 | Pro ×1；Flash、其他及未知 ×0.5；按每个请求最终用量结算。V4.1 路由与重试/迁移边界见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)、[`PR7_REVIEW.md`](PR7_REVIEW.md) |
 | 拍梁子 | 单击 200ms 判定开合；双击/连拍保持面板状态。主面板固定，独立三行短句下落渐隐，见 [`PR6_FEEDBACK_REDESIGN.md`](PR6_FEEDBACK_REDESIGN.md) |
 | 定时上香 | 默认关闭，满 500 炷后每 10 分钟按限额上香，23:59 再收尾一次；复用原开关/方向，旧开关需重新开启，手动优先、意图持久化且不跨日补投，见 [`DAY_END_INCENSE.md`](DAY_END_INCENSE.md) |
 | 连接 | 候选优先每 Host 一条云 SSE；健康时低频校准、旧后台或故障回退 cadence；浏览器复用本机 SSE。已发布版的原轮询基线见 [`CONNECTION_EFFICIENCY.md`](CONNECTION_EFFICIENCY.md) |
 | 更新说明 | 仅展示当前版相对上次正式版的一份说明，不补播历史；最高已读版本防止旧版自动弹出，可从案牍主动重看。保留首次指导、QQ 二维码及鸣谢 |
+| 本机观察数据 | 保留 Host 每秒采样、1 分钟成桶、按日存储和只读出图接口；缺口不补、换案断开。本机观察不混入市场官方五分钟数据或结算；案牍统一进入香火交易。数据契约与旧独立界面说明见 [`LIANGXIANG_BARS.md`](LIANGXIANG_BARS.md) |
 
 投票额度默认每分钟恢复 500 炷，桶容量与单次请求仍各最多 500 炷；定时上香保持 10 分钟。
 凝香速度核对结论与未核验边界见 [`INCENSE_AUDIT.md`](INCENSE_AUDIT.md)。
@@ -72,6 +73,7 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 - `src/backend/`：HTTP、SQLite 事务、身份、票据、快照与梁祠。
 
 存储使用既有 DSH storage domain。在线为 `liangxiang.json`，离线为 `liangxiang_local.json`；
+走势是唯一例外，按业务日落 `storages/liangxiang-bars/days/<date>.json`（可重建的派生数据，坏文件只跳过）；
 正常更新/卸载不删除账本。Backend 数据位于运维配置的 SQLite 文件，迁移和备份规则见 [`121-vps-deploy.md`](121-vps-deploy.md)。
 
 ## 验证与协作
@@ -82,9 +84,11 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 隔离演示步骤见 [`MARKET_LOCAL_TEST.md`](MARKET_LOCAL_TEST.md)。
 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md) 仅保留 1.2 发布验收记录，不能代替当前候选检查。
 
-个人 fork 开发并提交到上游 `dev`；受保护的 `main` 只快进到经完整检查的固定 dev 提交。
-main 始终是 dev 的祖先，不新增晋级或反向同步提交；没有文件变化就跳过。
-三平台锁定依赖检查、隐私、安装与浏览器门禁及英国当地午夜流程以 [`CI.md`](CI.md) 为准。
-自动合并不构成 npm、Release、Tag 或生产部署授权，不绕过分支保护。
+个人 fork 从最新社区 main 开发并向 main 提 PR；三平台锁定依赖、隐私与完整安装、
+浏览器及隔离在线检查均通过后由维护者审核合入。CI 使用只读权限，不重复运行 push 检查。
+dev 已在全部历史进入 main 后删除，本机远程跟踪引用已清理；不再自动晋级。
+PR 必须来自作者本人的个人 fork、非默认功能分支；主仓禁止创建开发分支与直接推送。
+普通账号自动运行 CI；新注册账号首次贡献仍受 GitHub 运行审批限制。
+协作与 DSH alpha 预警以 [`CI.md`](CI.md) 为准，代码合入不授权发布或部署。
 
 每次上线均需独立执行 `scripts/deploy-check.sh` 核实真实运行版本；不能从源码或 CI 成功推断生产已更新。

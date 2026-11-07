@@ -62,6 +62,56 @@ test('community mode retains maintained public names and configured emails', () 
   assert.throws(() => inspectMetadata('123+other@users.noreply.github.com', 'NiYa193', true), /configured public email/);
 });
 
+test('the pre-commit hook rejects a borrowed or tool identity', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'liangxiang-privacy-identity-'));
+  const script = fileURLToPath(new URL('./check-privacy.mjs', import.meta.url));
+  const mine = { GIT_AUTHOR_NAME: 'Fixture Developer', GIT_AUTHOR_EMAIL: 'fixture@users.noreply.github.com',
+    GIT_COMMITTER_NAME: 'Fixture Developer', GIT_COMMITTER_EMAIL: 'fixture@users.noreply.github.com' };
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: directory });
+    execFileSync('git', ['config', 'user.name', 'Fixture Developer'], { cwd: directory });
+    execFileSync('git', ['config', 'user.email', 'fixture@users.noreply.github.com'], { cwd: directory });
+    execFileSync('git', ['config', 'commit.gpgsign', 'false'], { cwd: directory });
+    const preCommit = overrides => spawnSync(process.execPath, [script, '--pre-commit'],
+      { cwd: directory, env: { ...process.env, ...mine, ...overrides }, encoding: 'utf8' });
+    assert.equal(preCommit({}).status, 0);
+    assert.equal(preCommit({ GIT_AUTHOR_EMAIL: '16209318+NiYa193@users.noreply.github.com' }).status, 1,
+      'never another account');
+    assert.equal(preCommit({ GIT_COMMITTER_EMAIL: '16209318+NiYa193@users.noreply.github.com' }).status, 1,
+      'the committer must also be this clone\'s configured identity');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('unsigned maintained commits pass local identity and publication checks without a signing key', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'liangxiang-privacy-signature-'));
+  const script = fileURLToPath(new URL('./check-privacy.mjs', import.meta.url));
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'NiYa193', GIT_AUTHOR_EMAIL: '16209318+NiYa193@users.noreply.github.com',
+    GIT_COMMITTER_NAME: 'NiYa193', GIT_COMMITTER_EMAIL: '16209318+NiYa193@users.noreply.github.com' };
+  const git = (args, input) => execFileSync('git', args, { cwd: directory, env, input, encoding: 'utf8' }).trim();
+  const commit = parent => {
+    const blob = git(['hash-object', '-w', '--stdin'], 'Public fixture\n');
+    const tree = git(['mktree'], `100644 blob ${blob}\tpublic.txt\n`);
+    return git(['commit-tree', tree, ...(parent ? ['-p', parent] : [])], 'Fixture change\n');
+  };
+  try {
+    git(['init', '-q']);
+    git(['config', 'user.name', 'NiYa193']);
+    git(['config', 'user.email', '16209318+NiYa193@users.noreply.github.com']);
+    git(['config', 'commit.gpgsign', 'false']);
+    const base = commit();
+    const head = commit(base);
+    git(['update-ref', 'HEAD', head]);
+    assert.equal(git(['show', '-s', '--format=%G?', head]), 'N');
+    const preCommit = spawnSync(process.execPath, [script, '--pre-commit'], { cwd: directory, env, encoding: 'utf8' });
+    assert.equal(preCommit.status, 0);
+    const push = spawnSync(process.execPath, [script, '--pre-push'], {
+      cwd: directory, env, input: `refs/heads/work ${head} refs/heads/work ${base}\n`, encoding: 'utf8',
+    });
+    assert.equal(push.status, 0);
+    assert.match(push.stdout, /Privacy gate passed/);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
 test('the community CLI warns without exposing email and still blocks sensitive content/history', () => {
   const directory = mkdtempSync(join(tmpdir(), 'liangxiang-privacy-test-'));
   const email = 'contributor@' + 'personal-domain.test';
@@ -92,7 +142,7 @@ test('the community CLI warns without exposing email and still blocks sensitive 
     assert.match(advisory.stderr, /::warning::/);
     assert.ok(!advisory.stderr.includes(email));
     assert.equal(scan(head, base, false).status, 1);
-    assert.equal(push(head).status, 0, 'imported signed identities need no rewriting');
+    assert.equal(push(head).status, 0, 'imported contributor identities need no rewriting');
     assert.equal(push(head, { GIT_COMMITTER_EMAIL: email }).status, 1, 'our current identity stays strict');
     assert.equal(push(head, { GIT_COMMITTER_NAME: 'Private Fixture' }).status, 1);
     for (const [name, content, category] of [

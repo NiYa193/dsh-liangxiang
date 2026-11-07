@@ -26,7 +26,7 @@ describe('whale illustration and water decoration', () => {
     expect(html.match(/class="liangxiang-market-whale-bubble"/g)).toHaveLength(3)
     expect(html).not.toContain('animation:')
     const neutral = renderToStaticMarkup(<svg><MarketWhaleFigure {...geometry} mood="waiting" animated /></svg>)
-    expect(neutral).toContain('data-pose="neutral" data-motion="false"')
+    expect(neutral).toContain('data-pose="neutral" data-motion="true"')
     expect(neutral).not.toContain('data-liangxiang-market-dive-bubbles')
   })
 

@@ -37,6 +37,17 @@ export function inspectText(value, phrasePolicy = blocked) {
   return [...findings];
 }
 
+function tryGit(args) {
+  try { return git(args); } catch { return ''; }
+}
+
+/** The identity this clone commits as; the only identity a local commit may use. */
+export function configuredIdentity() {
+  const email = tryGit(['config', '--get', 'user.email']).trim();
+  const name = tryGit(['config', '--get', 'user.name']).trim();
+  return email && name ? { email, name } : null;
+}
+
 export function safeEmail(email) {
   return /^[^@\s]+@users\.noreply\.github\.com$/i.test(email) ||
     ['noreply@github.com', 'noreply@anthropic.com', 'noreply@openai.com'].includes(email.toLowerCase()) ||
@@ -44,8 +55,10 @@ export function safeEmail(email) {
 }
 
 export function assertMetadata(email, name) {
-  if (!safeEmail(email) || /@(?:example\.(?:com|org|net)|[^@]+\.invalid)$/i.test(email)) {
-    throw new Error('Commit identity must use a GitHub noreply email');
+  const configured = configuredIdentity();
+  const isSelf = Boolean(configured) && configured.email.toLowerCase() === (email ?? '').trim().toLowerCase();
+  if (!isSelf && (!safeEmail(email) || /@(?:example\.(?:com|org|net)|[^@]+\.invalid)$/i.test(email))) {
+    throw new Error('Commit identity must be this clone\'s own identity or a GitHub noreply email');
   }
   const allowedNames = policy.public_commit_identities?.[email.toLowerCase()];
   if (allowedNames && !allowedNames.includes(name?.normalize('NFKC'))) {
@@ -57,11 +70,16 @@ export function assertMetadata(email, name) {
 export function inspectMetadata(email, name, community = false) {
   const identities = policy.public_commit_identities ?? {};
   const normalizedName = name?.normalize('NFKC').toLowerCase();
-  const maintained = Object.hasOwn(identities, email.toLowerCase()) ||
-    Object.values(identities).some(names => names.some(value => value.toLowerCase() === normalizedName));
-  if (!community || maintained) {
+  const registeredEmail = Object.hasOwn(identities, (email ?? '').toLowerCase());
+  const registeredName = Object.values(identities).some(names =>
+    names.some(value => value.toLowerCase() === normalizedName));
+  const configured = configuredIdentity();
+  const isSelf = Boolean(configured) && configured.email.toLowerCase() === (email ?? '').toLowerCase();
+  if (!community || registeredEmail || registeredName || isSelf) {
     assertMetadata(email, name);
-    if (maintained && !Object.hasOwn(identities, email.toLowerCase())) throw new Error('Maintainer identity must use its configured public email');
+    if ((registeredEmail || registeredName) && !registeredEmail) {
+      throw new Error('Maintainer identity must use its configured public email');
+    }
     return [];
   }
   return safeEmail(email) ? [] : ['public-commit-email'];
@@ -111,6 +129,32 @@ function inspectRange(range, errors, warnings = [], community = false) {
   }
 }
 
+function assertLocalIdentity() {
+  const configured = configuredIdentity();
+  if (!configured) {
+    throw new Error('Set user.name and user.email to your own Git identity before committing');
+  }
+  for (const variable of ['GIT_AUTHOR_IDENT', 'GIT_COMMITTER_IDENT']) {
+    const ident = git(['var', variable]);
+    const email = (ident.match(/<([^>]+)>/)?.[1] ?? '').trim();
+    const name = (ident.match(/^(.+) </)?.[1] ?? '').trim();
+    if (email.toLowerCase() !== configured.email.toLowerCase() || name !== configured.name) {
+      throw new Error('Commit identity must be this clone\'s configured identity; never borrow another account\'s');
+    }
+  }
+}
+
+function pushBase(local, remote) {
+  if (!/^0+$/.test(remote)) return remote;
+  for (const name of ['upstream', 'origin', ...tryGit(['remote']).split('\n').filter(Boolean)]) {
+    const base = tryGit(['merge-base', local, `${name}/main`]);
+    if (base) return base;
+  }
+  // No fetched remote branch: check the new commit itself rather than refusing
+  // to push. A hook that always fails teaches agents to remove the hook.
+  return tryGit(['rev-parse', '--verify', `${local}^`]) || local;
+}
+
 export function run(args) {
   const errors = [];
   const warnings = [];
@@ -118,10 +162,7 @@ export function run(args) {
     const categories = inspectText(readFileSync(args[1], 'utf8'));
     if (categories.length) errors.push({ location: 'commit-message', categories });
   } else if (args[0] === '--pre-commit') {
-    for (const variable of ['GIT_AUTHOR_IDENT', 'GIT_COMMITTER_IDENT']) {
-      const ident = git(['var', variable]);
-      assertMetadata(ident.match(/<([^>]+)>/)?.[1] ?? '', ident.match(/^(.+) </)?.[1]?.trim());
-    }
+    assertLocalIdentity();
     inspectFiles(true, errors);
   } else {
     const refIndex = args.indexOf('--ref');
@@ -130,15 +171,15 @@ export function run(args) {
     inspectFiles(false, errors, ref);
     if (args[0] === '--range') inspectRange(args[1], errors, warnings, args.includes('--community-pr'));
     if (args[0] === '--pre-push') {
-      // Keep our own identity strict while preserving imported signed commits.
+      // Keep our own identity strict while preserving imported commits.
       const ident = git(['var', 'GIT_COMMITTER_IDENT']);
       assertMetadata(ident.match(/<([^>]+)>/)?.[1] ?? '', ident.match(/^(.+) </)?.[1]?.trim());
       const input = readFileSync(0, 'utf8');
       for (const line of input.trim().split('\n').filter(Boolean)) {
         const [, local, , remote] = line.split(' ');
         if (/^0+$/.test(local)) continue;
-        const base = /^0+$/.test(remote) ? git(['merge-base', local, 'upstream/main']) : remote;
-        inspectRange(`${base}..${local}`, errors, warnings, true);
+        const range = `${pushBase(local, remote)}..${local}`;
+        inspectRange(range, errors, warnings, true);
       }
     }
     for (const key of ['PR_TITLE', 'PR_BODY']) {
@@ -148,12 +189,12 @@ export function run(args) {
   }
   if (warnings.length) {
     // Advisory only; never repeat contributor addresses in logs or annotations.
-    console.warn('::warning::Some contributor commit emails are public. GitHub noreply is optional; signed commits need not be rewritten.');
+    console.warn('::warning::Some contributor commit emails are public. GitHub noreply is optional; existing commits need not be rewritten.');
   }
   if (errors.length) {
     // Do not echo matched content, filenames, identities, tokens or PR bodies.
     console.error('Privacy gate rejected publication: ' + JSON.stringify(errors));
-    console.error('Remove private context, paths, credentials or sensitive files; maintained commits must use their configured public identity. Do not bypass hooks.');
+    console.error('Remove private context, paths, credentials or sensitive files; commit as this clone\'s own identity. Do not bypass hooks.');
     return 1;
   }
   console.log('Privacy gate passed.');

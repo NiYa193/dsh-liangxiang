@@ -6,8 +6,10 @@ import { runInNewContext } from 'node:vm'
 import { createRequire } from 'node:module'
 
 const client = await readFile(new URL('../lib/client.js', import.meta.url))
-const rawLimit = 700_000
-// The original portraits remain pixel-identical. The market adds about 19 KB
+// Merging the existing read-only bars dialog adds 17.6 KB raw / 5.9 KB gzip.
+// Both chart surfaces stay available; no artwork or runtime dependency was added.
+const rawLimit = 720_000
+// The original portraits remain pixel-identical. The market adds about 22 KB
 // compressed code; its 23 KB sprite stays outside this always-loaded bundle.
 const gzipLimit = 430_000
 const gzipBytes = gzipSync(client, { level: 9 }).byteLength
