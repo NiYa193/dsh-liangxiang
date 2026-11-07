@@ -10,7 +10,7 @@ const client = await readFile(new URL('../lib/client.js', import.meta.url))
 // Both chart surfaces stay available; no artwork or runtime dependency was added.
 const rawLimit = 720_000
 // The original portraits remain pixel-identical. The market adds about 22 KB
-// compressed code; its 23 KB sprite stays outside this always-loaded bundle.
+// compressed code; its separately budgeted sprite stays outside this always-loaded bundle.
 const gzipLimit = 430_000
 const gzipBytes = gzipSync(client, { level: 9 }).byteLength
 

@@ -1,4 +1,5 @@
-import { MARKET_CANDLE_INTERVAL_MS, type MarketCandle } from '../../shared/market-v1.ts'
+import { MARKET_CANDLE_INTERVAL_MS, type MarketCandle, type MarketPoint } from '../../shared/market-v1.ts'
+import { pointRatio } from './chart-model.ts'
 
 /** A display bucket, never a settlement price or a replacement server candle. */
 export interface MarketDisplayCandle extends MarketCandle {
@@ -7,6 +8,27 @@ export interface MarketDisplayCandle extends MarketCandle {
   confirmed_up: number
   confirmed_down: number
   unknown_volume: number
+}
+
+export interface MarketLatestChartPoint {
+  at: number
+  ratio: number
+  source: 'candle' | 'snapshot' | 'close'
+}
+
+/** Latest plotted close uses its raw bucket end, never a display-bar midpoint or an older snapshot time. */
+export function marketLatestChartPoint(candles: readonly MarketCandle[], observedAt: number, sourceIntervalMs: number = MARKET_CANDLE_INTERVAL_MS, snapshot: MarketPoint | null = null, closePoint: MarketPoint | null = null): MarketLatestChartPoint | null {
+  if (closePoint) {
+    const ratio = pointRatio(closePoint)
+    return ratio === null || closePoint.at > observedAt ? null : { at: closePoint.at, ratio, source: 'close' }
+  }
+  for (let index = candles.length - 1; index >= 0; index--) {
+    const candle = candles[index]!
+    if (candle.at > observedAt || candle.close === null) continue
+    return { at: Math.min(candle.at + sourceIntervalMs, observedAt), ratio: candle.close, source: 'candle' }
+  }
+  const ratio = pointRatio(snapshot)
+  return ratio === null || !snapshot || snapshot.at > observedAt ? null : { at: snapshot.at, ratio, source: 'snapshot' }
 }
 
 const priced = (c: MarketCandle): boolean => c.open !== null && c.high !== null && c.low !== null && c.close !== null
@@ -59,12 +81,34 @@ export function marketZoomSpan(span: number, direction: 'in' | 'out', daySpan: n
     : [...stops].reverse().find(stop => stop > span + 1) ?? daySpan
 }
 
+/** Wheel deltas are pixels, lines or pages; normalize before applying sensitivity. */
+export function marketWheelPixels(deltaY: number, deltaMode: number, pageHeight: number, lineHeight = 16): number {
+  if (!Number.isFinite(deltaY)) return 0
+  return deltaY * (deltaMode === 1 ? Math.max(1, lineHeight) : deltaMode === 2 ? Math.max(1, pageHeight) : 1)
+}
+
+interface MarketChartWindow { from: number, until: number }
+
+/** Continuous wheel zoom preserves the pointer's timestamp unless a day edge intervenes. */
+export function marketWheelWindow(current: MarketChartWindow, deltaPixels: number, anchor: number, day: MarketChartWindow): MarketChartWindow {
+  if (!Number.isFinite(deltaPixels) || Math.abs(deltaPixels) < .01) return current
+  const previousSpan = current.until - current.from
+  const daySpan = day.until - day.from
+  const requested = previousSpan * Math.exp(Math.max(-.35, Math.min(.35, deltaPixels * .0015)))
+  const span = requested >= daySpan - 1 ? daySpan : requested <= 1_800_001 ? 1_800_000 : requested
+  if (span === previousSpan) return current
+  const start = current.from + (previousSpan - span) * Math.max(0, Math.min(1, anchor))
+  const from = Math.max(day.from, Math.min(day.until - span, start))
+  return { from, until: from + span }
+}
+
 /** The range badge is a duration, never the candle grain or a stale preset. */
 export function marketViewportLabel(span: number, daySpan: number): string {
   if (span === daySpan) return '今日'
-  const totalSeconds = Math.max(1, Math.round(span / 1000))
-  const hours = Math.floor(totalSeconds / 3600), minutes = Math.floor(totalSeconds % 3600 / 60), seconds = totalSeconds % 60
-  return `近${hours ? `${hours}时` : ''}${minutes ? `${minutes}分` : ''}${seconds ? `${seconds}秒` : ''}`
+  // Display at minute precision; never call an arbitrary wheel span a preset.
+  const totalMinutes = Math.max(1, Math.floor((span + 1) / 60_000))
+  const hours = Math.floor(totalMinutes / 60), minutes = totalMinutes % 60
+  return `近${hours ? `${hours}时` : ''}${minutes ? `${minutes}分` : ''}`
 }
 
 /** Candles and volume marks are drawn at the same observed midpoint. */

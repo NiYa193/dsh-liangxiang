@@ -114,8 +114,17 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
       expect(Math.abs(next[i]![key] - controlBounds[i]![key])).toBeLessThanOrEqual(1)
     }
   }
-  const range = toolbar.getByRole('button', { name: /复位走势时间范围$/ })
-  await expect(range).toHaveText('今日 ↺')
+  const range = toolbar.locator('.liangxiang-market-chart-window')
+  await expect(range).toHaveText('今日')
+  expect(await range.evaluate(element => element.tagName)).toBe('OUTPUT')
+  expect(await range.evaluate(element => element.tabIndex)).toBe(-1)
+  expect(await range.evaluate(element => {
+    const previous = element.parentElement!.previousElementSibling
+    return previous?.classList.contains('liangxiang-market-chart-zoom')
+      && getComputedStyle(element.parentElement!).position !== 'absolute'
+      && !['absolute', 'fixed'].includes(getComputedStyle(element).position)
+  })).toBe(true)
+  await expect(toolbar.getByRole('button', { name: /复位走势时间范围/ })).toHaveCount(0)
   await expect(toolbar.getByRole('combobox')).toHaveCount(0)
   await expect(toolbar.getByRole('button', { name: '近4时', exact: true })).toHaveCount(0)
   // The minute source is fetched in bounded pages; finer display never splits
@@ -127,15 +136,16 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('08:')
   for (const [hours, label] of [[12, '近12时'], [6, '近6时'], [3, '近3时'], [1, '近1时'], [.5, '近30分']] as const) {
     await chart.getByRole('button', { name: '放大走势', exact: true }).click()
-    await expect(range).toHaveText(`${label} ↺`)
+    await expect(range).toHaveText(label)
     const actual = Number(await svg.getAttribute('data-liangxiang-market-until')) - Number(await svg.getAttribute('data-liangxiang-market-from'))
     expect(actual).toBe(hours * HOUR)
     await expectStableControls()
   }
   await expect(svg).toHaveAttribute('data-liangxiang-market-interval', String(MINUTE))
   await expect(chart.getByRole('button', { name: '放大走势', exact: true })).toBeDisabled()
-  await range.click()
-  await expect(range).toHaveText('今日 ↺')
+  await svg.focus()
+  await page.keyboard.press('0')
+  await expect(range).toHaveText('今日')
   await expect(svg).toHaveAttribute('data-liangxiang-market-from', String(DAY))
   await expect(svg).toHaveAttribute('data-liangxiang-market-until', String(DAY + 24 * HOUR))
   await expectStableControls()
@@ -250,6 +260,96 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   await expect(page.locator('[data-liangxiang-utility-trigger]')).toBeFocused()
 })
 
+test('the latest marker stays on the true forming-minute endpoint in tide and aggregated K line views', async ({ page }) => {
+  const state = chartFixture(), observed = DAY + 13 * HOUR + 26 * MINUTE + 20_000
+  state.server_time = observed
+  state.current_point = { ...state.current_point!, at: DAY + 13 * HOUR }
+  const raw = Array.from({ length: 13 * 60 + 27 }, (_, index) => {
+    const close = .5 + Math.sin(index / 30) * .02
+    return { at: DAY + index * MINUTE, open: .5, close, high: Math.max(.5, close), low: Math.min(.5, close), up_votes: 50 + index, down_votes: 50 + index, volume: 2 }
+  })
+  await page.route('**/liangxiang/api/market', route => route.fulfill({ json: state, headers: { 'x-liangxiang-cache-scope': 'browser-chart-scope' } }))
+  await page.route('**/liangxiang/api/market/candles?*', route => route.fulfill({ json: candlePage(route.request().url(), raw) }))
+  const { chart } = await openChart(page)
+  const marker = chart.locator('[data-liangxiang-market-current-point]')
+  await expect(marker).toHaveAttribute('data-at', String(observed))
+  await expect(marker).toHaveAttribute('data-source', 'candle')
+  await chart.getByRole('button', { name: '潮汐', exact: true }).click()
+  const end = chart.locator('[data-liangxiang-market-tide-end]').last()
+  await expect(end).toHaveAttribute('data-at', String(observed))
+  expect(Number(await marker.getAttribute('cx'))).toBeCloseTo(Number(await end.getAttribute('cx')), 5)
+  expect(Number(await marker.getAttribute('cy'))).toBeCloseTo(Number(await end.getAttribute('cy')), 5)
+  const svg = chart.locator('svg[data-liangxiang-market-from]')
+  await svg.focus()
+  await page.keyboard.press('Home')
+  await expect(marker).toHaveAttribute('data-at', String(observed))
+  await chart.getByRole('button', { name: 'K 线', exact: true }).click()
+  await expect(marker).toHaveAttribute('data-at', String(observed))
+  const displayCenter = Number(await chart.locator('[data-liangxiang-market-candle]').last().getAttribute('data-liangxiang-market-candle-x'))
+  expect(Number(await marker.getAttribute('cx'))).toBeGreaterThan(displayCenter)
+})
+
+test('wheel zoom is continuous and cumulative around the pointer while the range stays a passive display', async ({ page }) => {
+  const { chart } = await openChart(page)
+  const svg = chart.locator('svg[data-liangxiang-market-from]')
+  const range = chart.locator('.liangxiang-market-chart-window')
+  const domain = async () => ({
+    from: Number(await svg.getAttribute('data-liangxiang-market-from')),
+    until: Number(await svg.getAttribute('data-liangxiang-market-until')),
+  })
+  const expectStableAnchor = async (view: { from: number, until: number }): Promise<void> => {
+    const plotCssWidth = await svg.evaluate(element => {
+      const svg = element as SVGSVGElement
+      return svg.getBoundingClientRect().width * (svg.viewBox.baseVal.width - 76) / svg.viewBox.baseVal.width
+    })
+    const span = view.until - view.from
+    // Browser input coordinates and fractional SVG bounds have CSS-pixel
+    // precision. Verify visible drift, rather than requiring sub-ms precision
+    // across a 24-hour domain; the pure projection tests retain exact anchors.
+    const driftCssPixels = Math.abs(view.from + span * .35 - (DAY + 24 * HOUR * .35)) / span * plotCssWidth
+    expect(driftCssPixels).toBeLessThanOrEqual(1)
+  }
+  const wheel = async (deltaY: number, count = 1): Promise<void> => {
+    await svg.evaluate((element, values) => {
+      const svg = element as SVGSVGElement, bounds = svg.getBoundingClientRect(), width = svg.viewBox.baseVal.width
+      const clientX = bounds.left + (12 + (width - 76) * .35) / width * bounds.width
+      for (let index = 0; index < values.count; index++) element.dispatchEvent(new WheelEvent('wheel', {
+        deltaY: values.deltaY, deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+        clientX, clientY: bounds.top + 50, bubbles: true, cancelable: true,
+      }))
+    }, { deltaY, count })
+  }
+  await wheel(-12)
+  await expect.poll(async () => { const view = await domain(); return view.until - view.from }).toBeLessThan(24 * HOUR)
+  const first = await domain(), firstSpan = first.until - first.from
+  expect(firstSpan).toBeGreaterThan(23 * HOUR)
+  expect(firstSpan).toBeCloseTo(24 * HOUR * Math.exp(-12 * .0015), 1)
+  await expectStableAnchor(first)
+  const minutes = Math.floor((firstSpan + 1) / MINUTE)
+  await expect(range).toHaveText(`近${Math.floor(minutes / 60)}时${minutes % 60}分`)
+
+  // A burst before the next animation frame must retain every delta, rather
+  // than repeatedly using the previous React render's viewport.
+  await wheel(-12, 3)
+  await expect.poll(async () => { const view = await domain(); return view.until - view.from }).toBeLessThan(firstSpan)
+  const accumulated = await domain()
+  expect(accumulated.until - accumulated.from).toBeCloseTo(24 * HOUR * Math.exp(-48 * .0015), 1)
+  await expectStableAnchor(accumulated)
+  expect(await range.evaluate(element => element.tabIndex)).toBe(-1)
+
+  await wheel(48)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-from', String(DAY))
+  await expect(svg).toHaveAttribute('data-liangxiang-market-until', String(DAY + 24 * HOUR))
+  await chart.getByRole('button', { name: '放大走势', exact: true }).click()
+  await expect(range).toHaveText('近12时')
+  const beforeRangeClick = await domain()
+  await range.click()
+  expect(await domain()).toEqual(beforeRangeClick)
+  await svg.focus()
+  await page.keyboard.press('0')
+  await expect(range).toHaveText('今日')
+})
+
 test('legacy five-minute history remains five-minute data and cannot offer invented one-minute bars', async ({ page }) => {
   const legacy = chartFixture()
   delete legacy.candle_interval_ms
@@ -260,7 +360,7 @@ test('legacy five-minute history remains five-minute data and cannot offer inven
   await expect(svg).toHaveAttribute('data-liangxiang-market-source-interval', '300000')
   for (let index = 0; index < 4; index++) await chart.getByRole('button', { name: '放大走势', exact: true }).click()
   await expect(svg).toHaveAttribute('data-liangxiang-market-interval', '300000')
-  await expect(chart.getByRole('button', { name: /复位走势时间范围$/ })).toHaveText('近1时 ↺')
+  await expect(chart.locator('.liangxiang-market-chart-window')).toHaveText('近1时')
   await expect(chart.locator('[data-liangxiang-market-candle]')).toHaveCount(6)
   expect(await chart.locator('[data-liangxiang-market-candle]').evaluateAll(nodes => nodes.map(node => Number(node.getAttribute('data-liangxiang-market-candle-x'))))
     .then(xs => new Set(xs).size === xs.length)).toBe(true)

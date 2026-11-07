@@ -4,6 +4,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The rehearsal instance has its own fixed service, storage and loopback port.
+case "${LIANGXIANG_DEPLOY_MODE:-standard}" in
+  standard) ;;
+  rehearsal) exec bash "$ROOT/scripts/deploy-rehearsal-check.sh" "$@" ;;
+  *) echo "refusing deploy: unsupported LIANGXIANG_DEPLOY_MODE" >&2; exit 1 ;;
+esac
 # shellcheck source=load-deploy-target.sh
 source "$ROOT/scripts/load-deploy-target.sh"
 PREFIX="${LIANGXIANG_PREFIX:-/opt/liangxiang}"

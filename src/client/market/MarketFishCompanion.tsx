@@ -9,9 +9,9 @@ import { fishMotion, marketCss, marketClass } from './market-motion-style.ts'
 export type { FishAction, FishReaction } from './fish-feedback.ts'
 
 export const COMPANION_CSS = marketCss(`
-.~companion{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:5px;width:260px;min-width:0;height:72px;flex:0 1 260px;pointer-events:none}
-.~companion>svg{display:block;width:72px;height:60px;overflow:visible}
-.~companion-speech{display:block;min-width:0;padding:4px 0;font-size:11px;line-height:1.45;color:var(--liangxiang-market-blue-text);white-space:pre-line;overflow-wrap:anywhere;text-align:left}
+.~companion{display:grid;grid-template-columns:96px minmax(0,1fr);align-items:center;gap:5px;width:300px;min-width:0;height:100px;flex:0 1 300px;pointer-events:none}
+.~companion>svg{display:block;width:96px;height:100px;overflow:visible}
+.~companion-speech{display:block;min-width:0;padding:4px 0;font-size:13px;line-height:1.4;color:var(--~blue-text);white-space:pre-line;overflow-wrap:anywhere;text-align:left}
 .~companion-actor{transform-box:fill-box;transform-origin:50% 65%}
 .~companion-sway{transform-box:fill-box;transform-origin:50% 65%}
 .~companion[data-motion=true] .~companion-sway{animation:liangxiang-market-fish-swim 4.2s ease-in-out infinite}
@@ -76,9 +76,9 @@ export function MarketFishCompanion({ mood, animated, visible = true, reaction }
   const quote = active?.text ?? fishResponse(mood, active?.action ?? 'idle', active?.id ?? idleVariant)
   const activeAccent = active ? fishMotion(active.action)?.accent : 'none'
   return <div className={marketClass('companion')} aria-hidden="true" data-motion={running} data-pose={underwater ? 'dive' : 'surface'} data-reaction-id={active?.id ?? ''} data-fish-gesture={active?.action ?? 'idle'}>
-    <svg viewBox="0 0 80 72" data-liangxiang-market-main-whale="">
+    <svg viewBox="0 0 80 84" data-liangxiang-market-main-whale="">
       <g ref={actor} className={marketClass('companion-actor')}><g className={marketClass('companion-sway')}>
-        <MarketWhaleFigure x={5} y={underwater ? 12 : -1} width={66} height={68} waterY={mood === 'waiting' ? 72 : 40} mood={mood} animated={running} src={MARKET_WHALE_PATH} />
+        <MarketWhaleFigure x={5} y={underwater ? 16 : 6} width={66} height={68} waterY={mood === 'waiting' ? 84 : 44} mood={mood} animated={running} src={MARKET_WHALE_PATH} />
       </g></g>
       <g ref={accent} key={active?.id ?? 'idle'} className={marketClass('companion-accent')} data-accent={activeAccent} fill="none" stroke="var(--liangxiang-market-blue-text)" strokeWidth="1.6">
         {activeAccent === 'bubbles' && <><circle cx="65" cy="47" r="2.4" /><circle cx="70" cy="39" r="3" /><circle cx="65" cy="31" r="1.8" /></>}

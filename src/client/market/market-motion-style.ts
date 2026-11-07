@@ -27,7 +27,7 @@ const MOTIONS: Record<Exclude<FishAction, 'idle'>, MotionSpec> = {
   pan: [900, 0, [5,0,3], [1,0,-3]],
   inspect: [850, 0, [3,-2,-4,1.04], [3,-1,-2]],
   reset: [950, 0, [-4,0,-5], [2,0,4]],
-  report: [1_000, 0, [0,-3,-3], [0,-3,3], [0,-2,-1]],
+  report: [1_200, 1, [0,-8,-7,1.06], [0,-4,6,1.04], [0,2,4,.99,1.02], [0,-2,-2]],
   periodic: [1_200, 0, [0,-1,-2], [0,1,2]],
   error: [650, 0, [-3], [3], [-2], [2]],
 }
@@ -42,7 +42,7 @@ export function fishMotion(action: FishAction): FishMotion | null {
 /** Source-only selector shorthand, expanded once at module initialization into the existing namespace. */
 export function marketClass(suffix: string): string { return 'liangxiang-market-' + suffix }
 
-export function marketCss(css: string): string { return css.replaceAll('.~', '.liangxiang-market-').replaceAll('[data-~', '[data-liangxiang-market-') }
+export function marketCss(css: string): string { return css.replaceAll('.~', '.liangxiang-market-').replaceAll('[data-~', '[data-liangxiang-market-').replaceAll('--~', '--liangxiang-market-') }
 
 export const MARKET_MOTION_CSS = marketCss(`
 .~current-whale{animation:none!important;transition:none}
@@ -55,8 +55,6 @@ export const MARKET_MOTION_CSS = marketCss(`
 .~current-whale[data-motion=true] .~whale-ripple{animation:liangxiang-market-ripple 3.4s ease-in-out infinite}
 .~current-whale[data-pose=dive][data-motion=true] .~whale-bubble{animation:liangxiang-market-dive-bubble 2.7s ease-out infinite}
 .~water-motion[data-motion=true] .~water-back{animation:liangxiang-market-water-drift 8s ease-in-out infinite}
-.~water-motion[data-motion=true] .~water-glint{animation:liangxiang-market-water-drift 6.5s ease-in-out infinite reverse}
-.~water-motion[data-motion=true] .~water-specks{animation:liangxiang-market-water-specks 7s ease-in-out infinite}
 .~companion-accent{transform-box:fill-box;transform-origin:center;pointer-events:none}
 .~companion-accent[data-accent=bubbles] circle{opacity:0}
 .~companion-accent[data-accent=stamp]{opacity:0}
@@ -66,6 +64,5 @@ export const MARKET_MOTION_CSS = marketCss(`
 @keyframes liangxiang-market-ripple{0%,100%{transform:scaleX(.84);opacity:.5}50%{transform:scaleX(1.2);opacity:1}}
 @keyframes liangxiang-market-dive-bubble{0%{transform:translateY(4px);opacity:.2}25%{opacity:.9}100%{transform:translate(3px,-20px);opacity:0}}
 @keyframes liangxiang-market-water-drift{0%,100%{transform:translateX(-9px);opacity:.5}50%{transform:translateX(9px);opacity:1}}
-@keyframes liangxiang-market-water-specks{0%,100%{transform:translateY(2px);opacity:.28}50%{transform:translateY(-4px);opacity:.52}}
 @media(prefers-reduced-motion:reduce){.~current-whale *,.~water-motion *{animation:none!important;transition:none!important}}
 `)

@@ -2,8 +2,9 @@ import { createRequire } from 'node:module'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { CandleLayer, MarketChart } from '../src/client/market/MarketChart.tsx'
-import { marketAutomaticInterval, marketDisplayCandles, marketViewportCandles, marketViewportLabel, marketZoomSpan } from '../src/client/market/candle-view.ts'
+import { marketAutomaticInterval, marketDisplayCandles, marketLatestChartPoint, marketViewportCandles, marketViewportLabel, marketWheelPixels, marketWheelWindow, marketZoomSpan } from '../src/client/market/candle-view.ts'
 import { chartRange } from '../src/client/market/chart-model.ts'
+import { marketTideSegments } from '../src/client/market/tide-model.ts'
 import { marketBubbleDirection, marketDepthBands } from '../src/client/market/pond-model.ts'
 import { LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION } from '../src/domain/liangzi.ts'
 import type { MarketState } from '../src/shared/market-v1.ts'
@@ -91,12 +92,13 @@ describe('readable official market chart, independent of the header illustration
     expect(html).not.toContain('liangxiang-market-volume-bubble')
   })
 
-  it('uses one fixed range-reset window instead of duplicate presets or a grain selector', () => {
+  it('uses one non-interactive range display instead of duplicate presets, reset buttons or a grain selector', () => {
     const minute = renderToStaticMarkup(<MarketChart state={state()} candles={[]} animated={false} candlesIntervalMs={60_000} />)
-    expect(minute).toContain('aria-label="今日，复位走势时间范围"')
+    expect(minute).toContain('<output class="liangxiang-market-chart-window" aria-label="走势时间范围" aria-live="off" title="00:00—24:00">今日</output>')
     expect(minute).toContain('class="liangxiang-market-chart-window"')
-    expect(minute).toContain('今日<span aria-hidden="true"> ↺</span>')
-    expect(minute).toContain('title="00:00—24:00 · 点击复位今日"')
+    expect(minute).not.toContain('↺')
+    expect(minute).not.toContain('复位走势时间范围')
+    expect(minute).not.toContain('点击复位')
     expect(minute).toContain('data-liangxiang-market-source-interval="60000"')
     expect(minute).not.toContain('分钟烛线')
     expect(minute).not.toContain('<select')
@@ -142,6 +144,40 @@ describe('readable official market chart, independent of the header illustration
     expect(dot(short)).toEqual(dot(long))
     expect(dot(long)).toBeDefined()
     expect(long).not.toContain('foreignObject')
+  })
+
+  it('places the latest marker at the forming raw-minute endpoint, independently of a stale snapshot and coarser display midpoint', () => {
+    const minute = 60_000, start = DAY + 13 * HOUR, observed = start + 26 * minute + 20_000
+    const raw = Array.from({ length: 27 }, (_, index) => ({ at: start + index * minute, open: .5, high: .6, low: .4, close: .5 + index / 1000, up_votes: 50, down_votes: 50, volume: 0 }))
+    const s = state()
+    s.server_time = observed
+    s.current_point = { ...s.current_point!, at: start }
+    const point = marketLatestChartPoint(raw, observed, minute, s.current_point)
+    expect(point).toEqual({ at: observed, ratio: .526, source: 'candle' })
+    expect(marketTideSegments(raw, observed, minute).at(-1)!.at(-1)).toEqual({ at: point!.at, ratio: point!.ratio })
+    const grouped = marketDisplayCandles(raw, 15 * minute, DAY, minute).at(-1)!
+    expect((grouped.at + grouped.until) / 2).toBeLessThan(point!.at)
+    const html = renderToStaticMarkup(<MarketChart state={s} candles={raw} animated={false} candlesIntervalMs={minute} />)
+    const marker = html.match(/<circle data-liangxiang-market-current-point=""[^>]+>/)![0]
+    expect(marker).toContain(`data-at="${observed}"`)
+    expect(marker).toContain('data-ratio="0.526"')
+    expect(marker).toContain('data-source="candle"')
+    expect(marker).toContain('最新行情 · 13:26')
+    expect(Number(marker.match(/cx="([^"]+)"/)![1])).toBeCloseTo(12 + (observed - DAY) / (24 * HOUR) * 684)
+  })
+
+  it('does not move a completed record into an unrecorded tail, and respects the true legacy forming interval', () => {
+    const minute = 60_000, start = DAY + 13 * HOUR, observed = start + 26 * minute + 20_000
+    const last = { at: start + 25 * minute, open: .5, high: .6, low: .4, close: .6, up_votes: 60, down_votes: 40, volume: 0 }
+    expect(marketLatestChartPoint([last], observed, minute)).toMatchObject({ at: start + 26 * minute, ratio: .6 })
+    expect(marketLatestChartPoint([last], observed, 5 * minute)).toMatchObject({ at: observed, ratio: .6 })
+    expect(marketLatestChartPoint([{ ...last, at: observed + minute }], observed, minute)).toBeNull()
+    const snapshot = { ...state().current_point!, at: start, up_votes: 70, down_votes: 30 }
+    expect(marketLatestChartPoint([], observed, minute, snapshot)).toEqual({ at: start, ratio: .7, source: 'snapshot' })
+    const close = { ...snapshot, at: DAY + 24 * HOUR, up_votes: 80, down_votes: 20 }
+    expect(marketLatestChartPoint([last], close.at, minute, snapshot, close)).toEqual({ at: close.at, ratio: .8, source: 'close' })
+    expect(marketLatestChartPoint([last], close.at, minute, snapshot, { ...close, up_votes: 0, down_votes: 0 })).toBeNull()
+    expect(chartRange([], [], 'ohlc', [.9])).toEqual({ min: .885, max: .915 })
   })
 
   it('leaves a zero-vote pond without an invented numeric water point', () => {
@@ -230,6 +266,45 @@ describe('official candle display aggregation', () => {
       expect(marketZoomSpan(12 * HOUR, 'out', hours * HOUR)).toBe(hours * HOUR)
     }
     expect(marketViewportLabel(90 * 60_000, 24 * HOUR)).toBe('近1时30分')
+    expect(marketViewportLabel(11 * HOUR + 36 * 60_000 + 45_000, 24 * HOUR)).toBe('近11时36分')
+    expect(marketZoomSpan(11.6 * HOUR, 'in', 24 * HOUR)).toBe(6 * HOUR)
+    expect(marketZoomSpan(11.6 * HOUR, 'out', 24 * HOUR)).toBe(12 * HOUR)
+  })
+  it('normalizes pixel, line and page wheel input without a DOM dependency', () => {
+    expect(marketWheelPixels(-48, 0, 480)).toBe(-48)
+    expect(marketWheelPixels(-3, 1, 480)).toBe(-48)
+    expect(marketWheelPixels(-.1, 2, 480)).toBe(-48)
+    expect(marketWheelPixels(-2, 1, 480, 20)).toBe(-40)
+    expect(marketWheelPixels(Number.NaN, 0, 480)).toBe(0)
+  })
+  it('zooms continuously around the pointer, composes every small delta and reverses without snapping to presets', () => {
+    const day = { from: DAY, until: DAY + 24 * HOUR }, anchor = .35
+    const first = marketWheelWindow(day, -12, anchor, day)
+    expect(first.until - first.from).toBeGreaterThan(23 * HOUR)
+    expect(first.until - first.from).toBeLessThan(24 * HOUR)
+    expect(first.until - first.from).toBeCloseTo(24 * HOUR * Math.exp(-12 * .0015), 2)
+    expect(first.from + (first.until - first.from) * anchor).toBeCloseTo(DAY + 24 * HOUR * anchor, 2)
+    const accumulated = Array.from({ length: 3 }).reduce<{ from: number, until: number }>(current => marketWheelWindow(current, -12, anchor, day), first)
+    const combined = marketWheelWindow(day, -48, anchor, day)
+    expect(accumulated.from).toBeCloseTo(combined.from, 2)
+    expect(accumulated.until).toBeCloseTo(combined.until, 2)
+    expect(marketWheelWindow(accumulated, 48, anchor, day)).toEqual(day)
+    expect(marketWheelWindow(first, 0, anchor, day)).toBe(first)
+  })
+  it('bounds continuous wheel zoom at thirty minutes and the true 23/24/25-hour business day', () => {
+    for (const hours of [23, 24, 25]) {
+      const day = { from: DAY, until: DAY + hours * HOUR }
+      const smallest = Array.from({ length: 30 }).reduce<{ from: number, until: number }>(current => marketWheelWindow(current, -1000, .5, day), day)
+      expect(smallest.until - smallest.from).toBe(30 * 60_000)
+      const largest = Array.from({ length: 30 }).reduce<{ from: number, until: number }>(current => marketWheelWindow(current, 1000, .5, day), smallest)
+      expect(largest).toEqual(day)
+      const left = marketWheelWindow({ from: day.from, until: day.from + HOUR }, 120, 0, day)
+      expect(left.from).toBe(day.from)
+      expect(left.until).toBeLessThanOrEqual(day.until)
+      const right = marketWheelWindow({ from: day.until - HOUR, until: day.until }, 120, 1, day)
+      expect(right.until).toBe(day.until)
+      expect(right.from).toBeGreaterThanOrEqual(day.from)
+    }
   })
   it('excludes offscreen bucket extremes when panning across a coarse-candle boundary', () => {
     const minute = 60_000

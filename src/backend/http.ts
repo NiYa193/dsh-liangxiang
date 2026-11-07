@@ -60,6 +60,8 @@ export interface BackendHttpOptions {
   voteRateLimitPerMinute: number
   /** Hard cap on active installation keys retained by the vote limiter. */
   voteRateLimitMaxKeys?: number
+  /** Dependency injection for private accelerated rehearsals; ordinary deployments use wall time. */
+  voteClock?: { now(): number }
   /** Accept the old unsigned installation header (localhost tests / curl smoke). */
   allowUnsigned?: boolean
   /** Server-wide first-install claims per minute; 0 disables the cap. */
@@ -764,10 +766,12 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
 
     // POST /v1/votes — parse first so a dump's `count` is known before the bucket.
     // Business time stays on the service clock (test fixtures freeze it);
-    // the limiter uses wall time. Replays must not be 429'd by an empty bucket.
+    // the limiter defaults to wall time. Private rehearsals inject the same clock
+    // as their persisted vote timestamps. Auth always retains real wall time.
+    // Replays must not be 429'd by an empty bucket.
     try {
       const intent = parseV1VoteRequest(body)
-      const limiterNow = Date.now()
+      const limiterNow = options.voteClock?.now() ?? Date.now()
       const lastVoteAt = store.lastAcceptedVoteAt(installationId)
       // Every valid business result (accepted or rejected) has a durable
       // receipt. Replays bypass the live rate bucket and return that receipt;

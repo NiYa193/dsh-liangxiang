@@ -1,5 +1,7 @@
 import { createRequire } from 'node:module'
+import { readFile } from 'node:fs/promises'
 import type { ReactElement } from 'react'
+import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { COMPANION_CSS, MarketFishCompanion } from '../src/client/market/MarketFishCompanion.tsx'
 import { createFishFeedback, expireFishFeedback, fishResponse, receiveFishFeedback, type FishAction } from '../src/client/market/fish-feedback.ts'
@@ -9,6 +11,18 @@ import type { PositionMood } from '../src/client/market/chart-model.ts'
 const { renderToStaticMarkup } = createRequire(import.meta.url)('react-dom/server') as { renderToStaticMarkup(element: ReactElement): string }
 
 describe('decorative header companion', () => {
+  it('ships a source-derived dense-display sprite separately, without packing its larger source PNG', async () => {
+    const source = await sharp(await readFile(new URL('../src/client/assets/market-whale-source.png', import.meta.url))).metadata()
+    const bytes = await readFile(new URL('../src/client/assets/market-whale.webp', import.meta.url))
+    const sprite = await sharp(bytes).metadata()
+    expect([source.width, source.height]).toEqual([1230, 1278])
+    expect([sprite.width, sprite.height]).toEqual([493, 512])
+    expect(sprite.hasAlpha).toBe(true)
+    expect(bytes.byteLength).toBeLessThanOrEqual(80_000)
+    const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { files: string[] }
+    expect(manifest.files).toContain('lib/market-whale.webp')
+    expect(manifest.files.some(file => file.includes('market-whale-source'))).toBe(false)
+  })
   it('has distinct water, underwater and waiting dialogue without a balance or payout promise', () => {
     expect(fishResponse('ahead', 'idle')).not.toBe(fishResponse('behind', 'idle'))
     expect(fishResponse('waiting', 'idle')).not.toBe(fishResponse('ahead', 'idle'))
@@ -28,6 +42,7 @@ describe('decorative header companion', () => {
     const html = renderToStaticMarkup(<MarketFishCompanion mood="ahead" animated reaction={{ id: 1, action: 'submit' }} />)
     expect(html).toContain('aria-hidden="true"')
     expect(html).toContain('data-liangxiang-market-main-whale')
+    expect(html).toContain('viewBox="0 0 80 84"')
     expect(html.match(/data-liangxiang-market-whale-art=/g)).toHaveLength(1)
     expect(html).toContain('data-fish-action="submit"')
     expect(html).toContain('等回执')
@@ -116,6 +131,9 @@ describe('decorative header companion', () => {
     expect(new Set(motions.map(motion => JSON.stringify(motion.frames))).size).toBe(actions.length)
     expect(fishMotion('short')?.accent).toBe('bubbles')
     expect(fishMotion('confirmed')?.accent).toBe('stamp')
+    expect(fishMotion('report')?.accent).toBe('bubbles')
+    expect(fishMotion('report')?.frames[1]?.transform).toContain('translate(0px,-8px)')
+    expect(fishMotion('report')?.frames.length).toBeGreaterThan(fishMotion('periodic')!.frames.length)
     expect(fishMotion('idle')).toBeNull()
     expect(fishMotion('long')?.frames[1]?.transform).toContain('translate(0px,-6px)')
     expect(fishMotion('short')?.frames[1]?.transform).toContain('translate(2px,6px)')

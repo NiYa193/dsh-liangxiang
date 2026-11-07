@@ -96,7 +96,9 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   await expect(dialog.locator('.liangxiang-market-header')).not.toContainText(/本地演示|三批投入|午夜共同收盘/)
   await expect(dialog.getByRole('combobox', { name: '烛线间隔' })).toHaveCount(0)
   await expect(dialog.getByRole('button', { name: '近4时', exact: true })).toHaveCount(0)
-  await expect(dialog.getByRole('group', { name: '走势时间范围' }).getByRole('button')).toHaveCount(1)
+  const range = dialog.getByRole('group', { name: '走势时间范围' })
+  await expect(range.getByRole('button')).toHaveCount(0)
+  expect(await range.locator('output').evaluate(element => element.tabIndex)).toBe(-1)
   await expect(dialog.locator('[data-liangxiang-market-main-whale]')).toHaveCount(1)
   const fishBounds = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
   const headerBounds = (await dialog.locator('.liangxiang-market-header').boundingBox())!
@@ -104,8 +106,65 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   expect(fishBounds.x).toBeGreaterThanOrEqual(headerBounds.x)
   expect(fishBounds.x + fishBounds.width).toBeLessThanOrEqual(headerBounds.x + headerBounds.width + 1)
   expect(fishBounds.y).toBeGreaterThanOrEqual(headerBounds.y)
-  expect(fishBounds.y + fishBounds.height).toBeLessThanOrEqual(chartBounds.y + 1)
+  expect(fishBounds.y + fishBounds.height).toBeLessThanOrEqual(chartBounds.y + 40)
   expect((await artwork).status()).toBe(200)
+  const resolution = await dialog.locator('[data-liangxiang-market-whale-art]').evaluate(async element => {
+    const image = new Image()
+    image.src = element.getAttribute('href')!
+    await image.decode()
+    return [image.naturalWidth, image.naturalHeight]
+  })
+  expect(resolution).toEqual([493, 512])
+  const checkHeader = async (): Promise<void> => {
+    const groups = await dialog.locator('.liangxiang-market-window-actions,.liangxiang-market-motion').evaluateAll(nodes => nodes.map(node => {
+      const { width, right, top, bottom } = node.getBoundingClientRect()
+      return { width, right, top, bottom }
+    }))
+    expect(groups).toHaveLength(2)
+    for (const group of groups) expect(group.width).toBeCloseTo(64, 0)
+    expect(groups[0]!.right).toBeCloseTo(groups[1]!.right, 0)
+    expect(groups[1]!.top - groups[0]!.bottom).toBeCloseTo(6, 0)
+    for (const group of groups) expect(group.bottom - group.top).toBeCloseTo(28, 0)
+    const title = (await dialog.locator('.liangxiang-market-header h2').boundingBox())!
+    expect(title.y).toBeCloseTo(groups[0]!.top, 0)
+    const halves = await dialog.locator('.liangxiang-market-window-actions button').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width))
+    expect(halves).toHaveLength(2)
+    for (const width of halves) expect(width).toBeCloseTo(28, 0)
+    const controlGap = await dialog.locator('.liangxiang-market-window-actions').evaluate(element => {
+      const [first, second] = [...element.children].map(child => child.getBoundingClientRect())
+      return second!.left - first!.right
+    })
+    expect(controlGap).toBeCloseTo(8, 0)
+    const rangeBounds = (await range.boundingBox())!, zoomBounds = (await dialog.locator('.liangxiang-market-chart-zoom').boundingBox())!
+    expect(rangeBounds.x).toBeGreaterThanOrEqual(zoomBounds.x + zoomBounds.width)
+    expect(Math.abs(rangeBounds.y + rangeBounds.height / 2 - zoomBounds.y - zoomBounds.height / 2)).toBeLessThanOrEqual(1)
+    await expect(range.locator('output')).toHaveCSS('border-top-width', '0px')
+    await expect(range.locator('output')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+    await expect(dialog.locator('.liangxiang-market-chart-quotes')).toHaveCSS('text-align', 'center')
+    await expect(dialog.locator('.liangxiang-market-chart-readout')).toHaveCSS('justify-content', 'center')
+    await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveCSS('font-size', '13px')
+    const fish = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
+    expect(fish.width).toBeGreaterThanOrEqual(95)
+    expect(fish.height).toBeGreaterThanOrEqual(99)
+    expect(await dialog.evaluate(element => {
+      const bounds = element.getBoundingClientRect()
+      return element.scrollWidth <= element.clientWidth + 1 && [...element.querySelectorAll('.liangxiang-market-header-copy,.liangxiang-market-companion-trigger,.liangxiang-market-window-controls,.liangxiang-market-chart-window')].every(node => {
+        const rect = node.getBoundingClientRect()
+        return rect.left >= bounds.left && rect.right <= bounds.right + 1
+      })
+    })).toBe(true)
+  }
+  await checkHeader()
+  await dialog.getByRole('button', { name: '大肥鱼：播报本盘香池与时间', exact: true }).hover()
+  await expect(dialog.locator('.liangxiang-market-companion-trigger')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  const motion = dialog.getByRole('switch', { name: '交易动画' })
+  await motion.hover()
+  await expect(motion).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(motion).toHaveCSS('border-top-width', '0px')
+  const viewport = page.viewportSize()!
+  try {
+    for (const width of [360, 662]) { await page.setViewportSize({ width, height: 820 }); await checkHeader() }
+  } finally { await page.setViewportSize(viewport) }
   expect(await page.locator('[data-liangxiang-region]').count()).toBe(4)
   for (let i = 0; i < 30; i++) {
     await page.keyboard.press('Tab')
@@ -183,12 +242,12 @@ test('whole-position changes freeze only the difference and a short position fol
 test('motion uses distinct local gestures without replaying ordinary frames, hidden actions or a wheel burst', async ({ page }, testInfo) => {
   const dialog = await openMarket(page), toggle = dialog.getByRole('switch', { name: '交易动画' })
   await expect(dialog).toHaveAttribute('data-animated', 'false')
-  await expect(toggle).toContainText('鱼干')
+  await expect(toggle).toContainText('大鱼干')
   await expect(toggle).toHaveAttribute('title', /系统.*减少动态/)
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'true')
-  await expect(toggle).toContainText('动态')
+  await expect(toggle).toContainText('大肥鱼')
   await dialog.getByRole('button', { name: '潮汐', exact: true }).click()
   const companion = dialog.locator('.liangxiang-market-companion')
   const speech = companion.locator('.liangxiang-market-companion-speech')
@@ -217,7 +276,9 @@ test('motion uses distinct local gestures without replaying ordinary frames, hid
   ordinaryFrame.server_time += 1_000
   ordinaryFrame.current_point = { ...ordinaryFrame.current_point!, at: ordinaryFrame.server_time, sequence: 2 }
   await page.evaluate(state => window.__liangxiangMarketFrame?.(state), ordinaryFrame)
-  await expect(point).not.toHaveAttribute('cx', initialX!)
+  // A newer snapshot alone must not move the latest raw-candle endpoint.
+  await expect(point).toHaveAttribute('data-source', 'candle')
+  await expect(point).toHaveAttribute('cx', initialX!)
   expect(await actorNode!.evaluate(element => element.isConnected)).toBe(true)
   await expect(companion).toHaveAttribute('data-reaction-id', reaction!)
   await expect(actor).toHaveAttribute('data-test-action-plays', '1')
@@ -284,7 +345,8 @@ test('motion uses distinct local gestures without replaying ordinary frames, hid
   await expect(speech).toHaveText(wheelText!)
   await expect(actor).toHaveAttribute('data-test-action-plays', wheelPlays!)
   expect(Number(await svg.getAttribute('data-liangxiang-market-until')) - Number(await svg.getAttribute('data-liangxiang-market-from'))).toBeLessThan(Number(initialUntil) - Number(initialFrom))
-  await dialog.getByRole('button', { name: /复位走势时间范围/ }).click()
+  await svg.focus()
+  await page.keyboard.press('0')
   await expect(dialog.getByRole('button', { name: '缩小走势', exact: true })).toBeDisabled()
   await dialog.getByRole('button', { name: 'K 线', exact: true }).click()
   await expect(speech).toHaveAttribute('data-fish-action', 'mode-candles')
@@ -304,10 +366,17 @@ test('motion uses distinct local gestures without replaying ordinary frames, hid
   await dialog.getByRole('button', { name: '潮汐', exact: true }).click()
   const water = dialog.locator('.liangxiang-market-water-motion .liangxiang-market-water-back').first()
   await expect.poll(() => water.evaluate(element => element.getAnimations().some(animation => animation.playState === 'running'))).toBe(true)
+  const pose = await companion.getAttribute('data-pose')
+  await dialog.getByRole('button', { name: '大肥鱼：播报本盘香池与时间', exact: true }).click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'report')
+  await expect(actor).toHaveAttribute('data-test-action-frames', /translate\(0px,-8px\)/)
+  await expect.poll(() => actor.evaluate(element => new DOMMatrixReadOnly(getComputedStyle(element).transform).m42)).toBeLessThan(-4)
+  await expect(companion.locator('[data-accent="bubbles"] circle')).toHaveCount(3)
+  expect(await companion.getAttribute('data-pose')).toBe(pose)
   await dialog.screenshot({ path: testInfo.outputPath('market-surface-motion.png') })
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'false')
-  await expect(toggle).toContainText('鱼干')
+  await expect(toggle).toContainText('大鱼干')
   await expect(companion).toHaveAttribute('data-motion', 'false')
   // React consumes/cancels the previous WAAPI gesture in a passive effect after
   // rendering its static attributes; allow that cleanup, never a lasting loop.

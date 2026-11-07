@@ -4,10 +4,16 @@ Original transparent artwork generated with the built-in imagegen tool for the
 blue market view. The user's reference informed the palette and character
 direction; the existing Liangzi portraits are unchanged.
 
-The shipped `market-whale.webp` is 256 pixels high, 23,084 bytes, with alpha.
-Encoding was reduced for small in-interface display. It is served separately
-on demand instead of inlining another data URI in the browser bundle. Motion,
-water and bubbles are local presentation; the server stores no animation frames.
+`market-whale-source.png` retains the original 1230×1278 transparent image.
+The shipped `market-whale.webp` is 493×512 pixels, 79,664 bytes, with alpha.
+It is downsampled directly from that source with Sharp: height 512, no
+enlargement, WebP quality 94, alpha quality 100, effort 6 and smart subsampling.
+No character was redrawn and no new image generation or upscaling was used.
+The source PNG is excluded from the npm package; only the WebP is served
+separately on demand, within the existing 80 KB transfer budget. It supports
+the roughly 81-pixel-tall header figure on dense displays without inlining
+another data URI in the browser bundle. Motion, water and bubbles are local
+presentation; the server stores no animation frames.
 
 ## Generation prompt
 

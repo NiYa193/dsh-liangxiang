@@ -49,8 +49,8 @@ export function marketRatioLabel(ratio: number | null): string {
   return ratio === null ? '--' : `${(Math.trunc(ratio * 100_000_000) / 1_000_000).toFixed(6)}%`
 }
 
-export function chartRange(candles: readonly MarketCandle[], points: readonly (MarketPoint | null)[], source: 'ohlc' | 'close' = 'ohlc'): { min: number, max: number } {
-  const values: number[] = []
+export function chartRange(candles: readonly MarketCandle[], points: readonly (MarketPoint | null)[], source: 'ohlc' | 'close' = 'ohlc', displayedRatios: readonly number[] = []): { min: number, max: number } {
+  const values: number[] = [...displayedRatios]
   for (const c of candles) {
     if (source === 'close') { if (c.close !== null) values.push(c.close) }
     else {

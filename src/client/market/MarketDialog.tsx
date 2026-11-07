@@ -148,11 +148,14 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
           <MarketFishCompanion mood={fishMood} animated={animatedNow} visible={visible} reaction={fishReaction} />
         </button>
         <div className={marketClass('window-controls')}>
-        <button className={marketClass('motion')} type="button" role="switch" aria-checked={animated} aria-label="交易动画" data-fish-action="motion"
-          title={reducedMotion ? '系统设置了减少动态，当前静态显示' : '仅影响本窗口的鱼和水波'}
-          onClick={() => { writeMarketAnimation(browserMarketStorage(), !animated); setAnimated(!animated) }}><span aria-hidden="true" className={animatedNow ? '' : 'liangxiang-market-dried-fish'}>🐟</span><span>{animatedNow ? '动态' : '鱼干'}</span></button>
+        <div className={marketClass('window-actions')}>
         <button className={marketClass('fullscreen')} type="button" data-fish-action={fullscreen ? 'restore' : 'fullscreen'} data-liangxiang-market-fullscreen="" aria-label={fullscreen ? '退出全屏香火交易' : '全屏香火交易'} aria-pressed={fullscreen} onClick={() => setFullscreen(!fullscreen)}><svg viewBox="0 0 24 24" aria-hidden="true"><path d={fullscreen ? 'M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5' : 'M9 4H4v5M15 4h5v5M4 15v5h5M20 15v5h-5'} /></svg></button>
         <button className={marketClass('close')} type="button" aria-label="关闭香火交易" onClick={onClose}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+        </div>
+        <button className={marketClass('motion')} type="button" role="switch" aria-checked={animated} aria-label="交易动画" data-fish-action="motion"
+          title={reducedMotion ? '系统设置了减少动态，当前静态显示' : '仅影响本窗口的鱼和水波'}
+          onClick={() => { writeMarketAnimation(browserMarketStorage(), !animated); setAnimated(!animated) }}><span aria-hidden="true" className={animatedNow ? '' : 'liangxiang-market-dried-fish'}>🐟</span><span>{animatedNow ? '大肥鱼' : '大鱼干'}</span></button>
+
         </div>
       </header>
       <span className={marketClass('a11y')} aria-live="polite">{fishReaction?.action === 'confirmed' ? fishReaction.text : ''}</span>
@@ -162,7 +165,7 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
       </div>
       {online && view.status === 'loading' && <p className={marketClass('loading')}>正在唤醒大肥鱼…</p>}
       {state && online && <>
-        <MarketChart state={state} candles={view.candles} candlesIntervalMs={view.candleIntervalMs ?? 300_000} animated={animatedNow} selectedBatch={selected} onInteraction={(action, gesture) => reactFish(action ?? 'inspect', undefined, !gesture)} {...(casePresentation === undefined ? {} : { liangziPolicyId: casePresentation.policyId })} />
+        <MarketChart state={state} candles={view.candles} candlesIntervalMs={view.candleIntervalMs ?? 300_000} animated={animatedNow} selectedBatch={selected} onInteraction={(action, gesture, range) => reactFish(action ?? 'inspect', range ? `镜头${action === 'pan' ? '平移' : action === 'zoom-in' ? '拉近' : '拉远'}啦，${range}。` : undefined, !gesture)} {...(casePresentation === undefined ? {} : { liangziPolicyId: casePresentation.policyId })} />
         {!market && <p className={marketClass('empty')}>今日交易尚未开场，正常上香不受影响。</p>}
         {market && <>
           <div className={marketClass('stage-tabs')} role="tablist" aria-label="三次入场">

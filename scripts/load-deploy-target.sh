@@ -12,13 +12,10 @@ done <<< "$DEPLOY_TARGET_CONFIG"
 unset DEPLOY_TARGET_CONFIG key value
 source "$ROOT/scripts/load-deploy-ssh.sh"
 
-deploy_target_preflight() {
-  local actual
-  actual="$("${DEPLOY_SSH[@]}" -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" hostname)"
-  node "$ROOT/scripts/deploy-target.mjs" hostname "$DEPLOY_EXPECTED_HOSTNAME" <<< "$actual"
-  DEPLOY_STANDBY_PROXY_SHA="not-used"
-  if [[ "$DEPLOY_ROLE" == standby ]]; then
-    DEPLOY_STANDBY_PROXY_SHA="$("${DEPLOY_SSH[@]}" "$REMOTE" sudo -n bash -s <<'PROXY_CHECK'
+# Keep the heredoc outside a quoted command substitution: macOS Bash 3.2
+# otherwise misparses the remote case statement before SSH receives it.
+standby_proxy_check_script() {
+  cat <<'PROXY_CHECK'
 set -euo pipefail
 CONFIG=/etc/caddy/Caddyfile.standby
 for property in ExecStart ExecReload; do
@@ -30,7 +27,15 @@ for property in ExecStart ExecReload; do
 done
 sha256sum "$CONFIG" | cut -d ' ' -f 1
 PROXY_CHECK
-)"
+}
+
+deploy_target_preflight() {
+  local actual
+  actual="$("${DEPLOY_SSH[@]}" -o BatchMode=yes -o ConnectTimeout=10 "$REMOTE" hostname)"
+  node "$ROOT/scripts/deploy-target.mjs" hostname "$DEPLOY_EXPECTED_HOSTNAME" <<< "$actual"
+  DEPLOY_STANDBY_PROXY_SHA="not-used"
+  if [[ "$DEPLOY_ROLE" == standby ]]; then
+    DEPLOY_STANDBY_PROXY_SHA="$(standby_proxy_check_script | "${DEPLOY_SSH[@]}" "$REMOTE" sudo -n bash -s)"
     if [[ ! "$DEPLOY_STANDBY_PROXY_SHA" =~ ^[a-f0-9]{64}$ ]]; then
       echo "refusing deploy: invalid standby proxy fingerprint" >&2
       exit 1
