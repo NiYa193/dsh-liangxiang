@@ -29,6 +29,23 @@ function streamFetch(chunks: string[], onOpen?: (signal: AbortSignal | null | un
 }
 
 describe('Host cloud SSE transport', () => {
+  it('can reconnect even when an aborted transport never resolves reader cancellation', async () => {
+    let calls = 0
+    const statuses: BackendStreamStatus[] = []
+    const stop = startBackendEventStream({ url: 'http://127.0.0.1/v1/events', headers: () => ({}),
+      retryMinMs: 2, retryMaxMs: 4, maxEventBytes: 32,
+      fetchImpl: (async () => {
+        calls += 1
+        if (calls > 1) return new Response('', { status: 404 })
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) { controller.enqueue(new TextEncoder().encode(`data: ${'x'.repeat(100)}\n\n`)) },
+          cancel: () => new Promise<void>(() => undefined),
+        }), { headers: { 'content-type': 'text/event-stream' } })
+      }) as typeof fetch, onMessage: () => undefined, onStatus: status => statuses.push(status) })
+    try { await until(() => statuses.includes('unsupported')); expect(calls).toBe(2) }
+    finally { stop() }
+  })
+
   it('retains exponential jittered backoff when headers and a state frame immediately flap', async () => {
     vi.useFakeTimers()
     const calls: number[] = []

@@ -59,6 +59,24 @@ async function firstEvent(base: string, identity: string | CommunityKeypair): Pr
 }
 
 describe('market HTTP authority and cloud stream', () => {
+  it('destroys a persistently blocked socket after the bounded recovery window', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    const h = await setup()
+    let response: ServerResponse | undefined
+    h.api.server.prependListener('request', (req, res) => {
+      if (req.url !== '/v1/events') return
+      response = res
+      const write = res.write.bind(res)
+      res.write = ((text: string) => { write(text); return false }) as typeof res.write
+    })
+    const subscription = await firstEvent(h.base, 'blocked-stream-owner')
+    await vi.advanceTimersByTimeAsync(24_000)
+    expect(response?.destroyed).toBe(false)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(response?.destroyed).toBe(true)
+    subscription.cancel()
+  })
+
   it('keeps a backpressured connection alive and sends the latest private state after drain', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
     const h = await setup()
