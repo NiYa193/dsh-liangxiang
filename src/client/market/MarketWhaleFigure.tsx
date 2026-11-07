@@ -40,14 +40,17 @@ export function MarketWhaleFigure({ x, y, width, height, waterY, mood, animated,
       <mask id={`${id}-alpha`} maskUnits="userSpaceOnUse" x={x} y={y} width={width} height={height} style={{ maskType: 'alpha' }}><image {...art} /></mask>
     </defs>
     <g mask={`url(#${id}-occlusion)`} data-liangxiang-market-water-occlusion={pose}>
-      <g className="liangxiang-market-whale-breath">
-        <g data-liangxiang-market-whale-piece="body" mask={`url(#${id}-body)`}><image data-liangxiang-market-whale-art="" {...art} />{tint('body')}</g>
+        {/* A separate mask pass keeps the face out of the moving tail/hair raster layer. */}
+        <g data-liangxiang-market-whale-piece="body" data-liangxiang-market-steady-face="" mask={`url(#${id}-body)`}><image data-liangxiang-market-whale-art="" {...art} />{tint('body')}</g>
+    </g>
+    <g mask={`url(#${id}-occlusion)`}>
+        <g className="liangxiang-market-companion-sway">
         <g className="liangxiang-market-whale-tail" data-liangxiang-market-whale-piece="tail" clipPath={`url(#${id}-tail)`} style={{ transformOrigin: `${x + 188 * sx}px ${y + 176 * sy}px` }}><image {...art} />{tint('tail')}</g>
+        </g>
         <g className="liangxiang-market-whale-hair" data-liangxiang-market-whale-piece="hair" clipPath={`url(#${id}-hair)`} style={{ transformOrigin: `${x + 49 * sx}px ${y + 144 * sy}px` }}><image {...art} />{tint('hair')}</g>
-      </g>
     </g>
     {mood !== 'waiting' && <g className="liangxiang-market-whale-ripples" data-liangxiang-market-water-front="">
-      <ellipse cx={cx} cy={waterY + 4} rx={width * .37} ry="5" fill={BLUE} fillOpacity=".1" />
+      <ellipse className="liangxiang-market-whale-breath" cx={cx} cy={waterY + 4} rx={width * .37} ry="5" fill={BLUE} fillOpacity=".1" />
       <path className="liangxiang-market-whale-ripple" d={`M${cx - width * .43} ${waterY + 1}q${width * .15} 7 ${width * .28} 2m${width * .3} 0q${width * .13} 4 ${width * .28} -2`} fill="none" stroke={BLUE} strokeOpacity=".43" strokeWidth="1.6" strokeLinecap="round" />
       <path d={`M${cx - width * .24} ${waterY + 2}q${width * .24} 7 ${width * .48} 0`} fill="none" stroke="#d7f1ff" strokeOpacity=".8" strokeWidth="1.8" strokeLinecap="round" />
     </g>}

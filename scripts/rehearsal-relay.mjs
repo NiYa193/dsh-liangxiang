@@ -7,7 +7,7 @@ if (!/^[\w.-]+@[\w.-]+$/.test(remote ?? '') || !/^\d+$/.test(sshPort) || !/^\d+$
   || Number(sshPort) < 1 || Number(sshPort) > 65535 || Number(localPort) < 1024 || Number(localPort) > 65535) {
   throw new Error('Usage: node scripts/rehearsal-relay.mjs user@standby ssh-port local-port')
 }
-const program = 'const s=require("node:net").connect(4195,"127.0.0.1");process.stdin.pipe(s);s.pipe(process.stdout);s.on("error",()=>process.exit(1));s.on("close",()=>process.exit());process.stdin.on("end",()=>s.end())'
+const program = 'const s=require("node:net").connect(4195,"127.0.0.1");process.stdin.pipe(s);s.pipe(process.stdout);s.on("error",()=>{process.exitCode=1});s.on("close",()=>process.stdin.destroy());process.stdin.on("end",()=>s.end())'
 const children = new Set()
 const server = createServer(socket => {
   const child = spawn('ssh', ['-T', '-p', sshPort, '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '-o', 'ServerAliveInterval=15', remote, `node -e '${program}'`], { stdio: ['pipe', 'pipe', 'pipe'] })

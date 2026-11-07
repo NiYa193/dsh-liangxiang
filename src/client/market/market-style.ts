@@ -50,7 +50,7 @@ export const MARKET_DIALOG_CSS = marketCss(`
 .~companion-trigger .~companion-speech{padding:6px 8px;border-radius:12px 12px 12px 4px;background:color-mix(in srgb,var(--~blue) 7%,transparent)}
 .~window-controls{display:grid;gap:var(--~gap);align-self:start;width:64px}
 .~window-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-[data-~dialog] .~motion{display:flex;gap:4px;align-items:center;justify-content:center;white-space:nowrap;width:100%;height:var(--~control);min-height:var(--~control);padding:0;font-size:12px;color:var(--~blue-text)}
+[data-~dialog] .~motion{display:flex;gap:4px;align-items:center;justify-content:center;white-space:nowrap;width:100%;height:var(--~control);min-height:var(--~control);margin-top:4px;padding:0;font-size:12px;color:var(--~blue-text)}
 [data-~dialog] button.~motion:hover:not(:disabled){background:transparent}
 .~motion>span:first-child{font-size:17px}
 .~dried-fish{filter:grayscale(1);transform:rotate(-18deg)}

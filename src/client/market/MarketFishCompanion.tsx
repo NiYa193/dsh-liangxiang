@@ -77,9 +77,9 @@ export function MarketFishCompanion({ mood, animated, visible = true, reaction }
   const activeAccent = active ? fishMotion(active.action)?.accent : 'none'
   return <div className={marketClass('companion')} aria-hidden="true" data-motion={running} data-pose={underwater ? 'dive' : 'surface'} data-reaction-id={active?.id ?? ''} data-fish-gesture={active?.action ?? 'idle'}>
     <svg viewBox="0 0 80 84" data-liangxiang-market-main-whale="">
-      <g ref={actor} className={marketClass('companion-actor')}><g className={marketClass('companion-sway')}>
+      <g ref={actor} className={marketClass('companion-actor')}>
         <MarketWhaleFigure x={5} y={underwater ? 16 : 6} width={66} height={68} waterY={mood === 'waiting' ? 84 : 44} mood={mood} animated={running} src={MARKET_WHALE_PATH} />
-      </g></g>
+      </g>
       <g ref={accent} key={active?.id ?? 'idle'} className={marketClass('companion-accent')} data-accent={activeAccent} fill="none" stroke="var(--liangxiang-market-blue-text)" strokeWidth="1.6">
         {activeAccent === 'bubbles' && <><circle cx="65" cy="47" r="2.4" /><circle cx="70" cy="39" r="3" /><circle cx="65" cy="31" r="1.8" /></>}
         {activeAccent === 'stamp' && <><circle cx="65" cy="17" r="8" fill="var(--liangxiang-market-paper)" /><path d="m61 17 3 3 5-6" strokeLinecap="round" strokeLinejoin="round" /></>}
