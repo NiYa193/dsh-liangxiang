@@ -59,6 +59,25 @@ async function firstEvent(base: string, identity: string | CommunityKeypair): Pr
 }
 
 describe('market HTTP authority and cloud stream', () => {
+  it('refreshes a same-case initial frame after a business-clock cutoff within one wall second', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    const h = await setup()
+    for (const id of ['cutoff-owner-a', 'cutoff-owner-b']) h.grantIncense(id, 100)
+    const market = h.service.marketState('cutoff-owner-a').market!
+    for (const [index, id] of ['cutoff-owner-a', 'cutoff-owner-b'].entries()) {
+      h.service.setMarketPosition(id, { market_id: market.id, batch: 1,
+        side: index === 0 ? 'long' : 'short', amount: 10, request_id: `cutoff-${index}` })
+    }
+    const before = await firstEvent(h.base, 'cutoff-owner-a')
+    h.clock.advance(2 * 60 * 60 * 1000)
+    h.service.tick()
+    const after = await firstEvent(h.base, 'cutoff-owner-b')
+    expect(after.event.server_time).toBe(h.clock.now())
+    expect(after.event.market_state?.server_time).toBe(after.event.server_time)
+    expect(after.event.market_state?.market?.batches[0]?.status).toBe('locked')
+    before.cancel(); after.cancel()
+  })
+
   it('destroys a persistently blocked socket after the bounded recovery window', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
     const h = await setup()

@@ -283,12 +283,25 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
   const pumpStreams = (): void => {
     if (streams.size === 0 || pumping) return
     try {
-      const frame = captureFrame()
+      let frame = captureFrame()
       shared = frame
       const pending = [...streams][Symbol.iterator]()
       pumping = true
       const chunk = (): void => {
         fanout = undefined
+        // A midnight or operator replacement may occur while we yield. Never
+        // resume a captured old-case frame against the new case's private data.
+        try {
+          const date = service.businessDate()
+          if (date !== frame.snapshot.business_date || store.activeCaseFor(date)?.id !== frame.snapshot.active_case.id) {
+            frame = captureFrame()
+            shared = frame
+          }
+        } catch {
+          pumping = false
+          for (const stream of streams) closeStream(stream, true)
+          return
+        }
         // Yield between bounded chunks so new connections and signed actions
         // are accepted while broadcasting. Never queue a second whole fanout.
         for (let n = 0; n < 64; n += 1) {
@@ -693,6 +706,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       res.on('drain', () => { stream.blockedAt = null })
       // Initial state targets only the new subscriber, not every existing one.
       if (shared === undefined || Date.now() - shared.at >= 1_000
+        || initial.server_time - shared.snapshot.server_time >= 1_000
         || shared.snapshot.active_case.id !== initial.market?.case_id) shared = captureFrame()
       sendStream(stream, shared, initial)
       if (streamTimer === undefined && streams.size > 0) {
