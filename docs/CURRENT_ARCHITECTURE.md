@@ -4,7 +4,7 @@
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.6`，`SERVER_BUILD=1.3.0-alpha.6-u1`。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.6`，`SERVER_BUILD=1.3.0-alpha.6-u2`。
 当前源码为 **1.3.0-alpha.6 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定线与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **14**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。

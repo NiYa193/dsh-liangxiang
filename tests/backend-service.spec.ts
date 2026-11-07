@@ -3,7 +3,7 @@
  * spend, idempotency, unique voters, business-date rollover, snapshot cadence
  * and versioning, and the personal/global separation.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -791,6 +791,21 @@ describe('business date rollover', () => {
 })
 
 describe('same-day publish', () => {
+  it('shares public lifetime scans within one cadence while spends remain immediate', () => {
+    const f = boot()
+    f.grantIncense(INSTALLATION, 20)
+    f.clock.advance(1_000)
+    const scans = vi.spyOn(f.store, 'lifetimeTotals')
+    for (let i = 0; i < 10; i++) {
+      expect(vote(f, INSTALLATION, 'up', `lifetime-cache-${i}`).authoritative_personal_state.remaining_incense).toBe(19 - i)
+    }
+    expect(scans).toHaveBeenCalledTimes(1)
+    f.clock.advance(1_000)
+    expect(f.service.snapshotResponse().global_snapshot.lifetime_incense).toBe(10)
+    expect(scans).toHaveBeenCalledTimes(2)
+    expect(f.service.resetTodayCase().global_snapshot.lifetime_incense).toBe(0)
+    expect(scans).toHaveBeenCalledTimes(3)
+  })
   it('archives the active case without resurrecting incense already spent', () => {
     const f = boot()
     f.grantIncense(INSTALLATION, 5, 47_000)

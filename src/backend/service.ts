@@ -100,6 +100,12 @@ export class LiangxiangBackendService {
   private readonly warn: (message: string) => void
   private archiveCheckedBusinessDate: string | null = null
   private readonly marketLedger: MarketLedger
+  // Public decoration follows the published cadence. Never cache wallets,
+  // eligibility, identity checks or transaction results here.
+  private lifetimeFrame: {
+    caseId: string, at: number,
+    totals: { incense: number, voters: number },
+  } | undefined
 
   constructor(deps: BackendServiceDeps) {
     this.store = deps.store
@@ -780,6 +786,7 @@ export class LiangxiangBackendService {
       }
       this.marketLedger.cancel(active.id, now)
       const cleared = this.store.resetBusinessDate(businessDate, now)
+      this.lifetimeFrame = undefined
       const after = this.store.activeCaseFor(businessDate) ?? active
       return {
         business_date: businessDate,
@@ -873,6 +880,7 @@ export class LiangxiangBackendService {
     const businessDate = this.businessDate(now)
     return this.store.transaction(() => {
       const cleared = this.store.clearHistoryArchives(businessDate)
+      this.lifetimeFrame = undefined
       return {
         business_date: businessDate,
         days: cleared.days,
@@ -1446,7 +1454,15 @@ export class LiangxiangBackendService {
       policy_version: caseRow.liangzi_policy_version,
       captured_at: now,
     }
-    return toV1Snapshot(row, liangziPolicyForVersion(row.policy_version), this.store.lifetimeTotals())
+    const cached = this.lifetimeFrame
+    if (cached === undefined || cached.caseId !== row.case_id
+      || now < cached.at || now - cached.at >= 1_000) {
+      this.lifetimeFrame = {
+        caseId: row.case_id, at: now,
+        totals: this.store.lifetimeTotals(),
+      }
+    }
+    return toV1Snapshot(row, liangziPolicyForVersion(row.policy_version), this.lifetimeFrame!.totals)
   }
 
   private isPublishDue(latest: SnapshotRow | undefined, stats: StatsRow, now: number): boolean {

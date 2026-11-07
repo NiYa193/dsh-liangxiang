@@ -342,6 +342,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       // Unknown installations still prove their signature before admission is
       // rejected; they must never be auto-enrolled by ordinary API requests.
       skipFingerprintEnforcement: known === undefined,
+      knownIdentity: known ?? null,
     })
     if (known === undefined) {
       throw new CommunityAuthError(401, 'admission_required', '需要入梁券完成首次入群')
