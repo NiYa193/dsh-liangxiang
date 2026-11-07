@@ -528,7 +528,7 @@ test('tide uses smooth real anchors over the full day, leaves gaps and future op
   await expect(future).toContainText('待打梁')
   const futureX = Number(await future.locator('rect').getAttribute('x'))
   expect(geometry.every(segment => segment.x + segment.width <= futureX + .02)).toBe(true)
-  await future.locator('rect').hover({ position: { x: 90, y: 80 } })
+  await future.hover()
   await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('待打梁')
   const volume = chart.locator('[data-liangxiang-market-volume]')
   expect(await volume.count()).toBeGreaterThan(0)
@@ -615,6 +615,85 @@ test('receipt and rules remain visible controls and use overlays without shiftin
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
 })
 
+test('a delayed position receipt preserves its submitted draft through older ordinary frames', async ({ page }) => {
+  const attempts: MarketPositionRequest[] = []
+  let release!: () => void
+  const held = new Promise<void>(resolve => { release = resolve })
+  const confirmed = fixture()
+  confirmed.server_time += 1
+  confirmed.wallet = { ...confirmed.wallet, available_incense: 77, frozen_incense: 23, version: 2 }
+  confirmed.market!.batches[1] = { ...confirmed.market!.batches[1]!, long_incense: 20, short_incense: 43,
+    position: { side: 'short', amount: 23, submitted_at: confirmed.server_time, payout: null } }
+  await page.route('**/liangxiang/api/market/position', async route => {
+    const intent = route.request().postDataJSON() as MarketPositionRequest
+    attempts.push(intent)
+    await held
+    await route.fulfill({ json: { accepted: true, reason: null, request_id: intent.request_id, state: confirmed }, headers: { 'x-liangxiang-cache-scope': 'browser-market-scope' } })
+  })
+  try {
+    const dialog = await openMarket(page), ticket = dialog.locator('[data-liangxiang-market-batch="2"]'), amount = ticket.getByRole('spinbutton')
+    const short = ticket.getByRole('button', { name: '↘ 做空' })
+    await short.click()
+    await amount.fill('23')
+    await ticket.getByRole('button', { name: '确认调整' }).click()
+    await expect(amount).toBeDisabled()
+    await expect(amount).toHaveValue('23')
+    await expect(short).toHaveAttribute('aria-pressed', 'true')
+    const ordinary = fixture(); ordinary.server_time += 1_000
+    await page.evaluate(state => window.__liangxiangMarketFrame?.(state), ordinary)
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+    await expect(amount).toHaveValue('23')
+    await expect(short).toHaveAttribute('aria-pressed', 'true')
+    await ticket.locator('form').evaluate(form => (form as HTMLFormElement).requestSubmit())
+    await expect.poll(() => attempts.length).toBe(1)
+    expect(attempts[0]).toMatchObject({ side: 'short', amount: 23 })
+    await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+    await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+    release()
+    await expect(amount).toBeEnabled()
+    await expect(amount).toHaveValue('23')
+    await expect(short).toHaveAttribute('aria-pressed', 'true')
+    await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('77')
+    await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('23')
+    await expect(dialog.locator('.liangxiang-market-companion-speech')).toContainText('已确认空23炷')
+    expect(attempts).toHaveLength(1)
+  } finally { release() }
+})
+
+test('a delayed withdrawal keeps the visible draft until the authoritative refund arrives', async ({ page }) => {
+  let release!: () => void
+  const held = new Promise<void>(resolve => { release = resolve }), attempts: MarketPositionRequest[] = []
+  const refunded = fixture()
+  refunded.server_time += 1
+  refunded.wallet = { ...refunded.wallet, available_incense: 100, frozen_incense: 0, version: 2 }
+  refunded.market!.batches[1] = { ...refunded.market!.batches[1]!, long_incense: 20, position: null }
+  await page.route('**/liangxiang/api/market/position', async route => {
+    const intent = route.request().postDataJSON() as MarketPositionRequest
+    attempts.push(intent)
+    await held
+    await route.fulfill({ json: { accepted: true, reason: null, request_id: intent.request_id, state: refunded }, headers: { 'x-liangxiang-cache-scope': 'browser-market-scope' } })
+  })
+  try {
+    const dialog = await openMarket(page), ticket = dialog.locator('[data-liangxiang-market-batch="2"]'), amount = ticket.getByRole('spinbutton')
+    const short = ticket.getByRole('button', { name: '↘ 做空' })
+    await short.click()
+    await amount.fill('23')
+    await ticket.getByRole('button', { name: '撤回', exact: true }).click()
+    await expect(amount).toBeDisabled()
+    await expect(amount).toHaveValue('23')
+    await expect(short).toHaveAttribute('aria-pressed', 'true')
+    await expect.poll(() => attempts.length).toBe(1)
+    expect(attempts[0]).toMatchObject({ side: null, amount: 0 })
+    await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+    release()
+    await expect(amount).toBeEnabled()
+    await expect(amount).toHaveValue('5')
+    await expect(ticket.getByRole('button', { name: '↗ 做多' })).toHaveAttribute('aria-pressed', 'true')
+    await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('100')
+    await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('0')
+  } finally { release() }
+})
+
 test('an uncertain position retries its durable intent and applies the returned wallet once', async ({ page }) => {
   const attempts: MarketPositionRequest[] = []
   const confirmed = fixture()
@@ -636,16 +715,24 @@ test('an uncertain position retries its durable intent and applies the returned 
   const retry = dialog.getByRole('button', { name: '核对上一笔', exact: true })
   await expect(retry).toBeVisible()
   await expect(ticket.getByRole('spinbutton')).toBeDisabled()
+  await expect(ticket.getByRole('spinbutton')).toHaveValue('20')
+  await expect(ticket.getByRole('button', { name: '↘ 做空' })).toHaveAttribute('aria-pressed', 'true')
   await expect(ticket.getByRole('button', { name: '撤回', exact: true })).toBeDisabled()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   expect(attempts).toHaveLength(1)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('liangxiang.market.pending.v1') ?? 'null')?.intent)).toEqual(attempts[0])
+  const ordinary = fixture(); ordinary.server_time += 1_000
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), ordinary)
+  await expect(ticket.getByRole('spinbutton')).toHaveValue('20')
+  await expect(ticket.getByRole('button', { name: '↘ 做空' })).toHaveAttribute('aria-pressed', 'true')
   await retry.click()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
   expect(attempts).toHaveLength(2)
   expect(attempts[1]).toEqual(attempts[0])
   await expect(retry).toHaveCount(0)
+  await expect(ticket.getByRole('spinbutton')).toHaveValue('20')
+  await expect(ticket.getByRole('spinbutton')).toBeEnabled()
   expect(await page.evaluate(() => localStorage.getItem('liangxiang.market.pending.v1'))).toBeNull()
   await page.evaluate(state => window.__liangxiangMarketFrame?.(state), confirmed)
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
