@@ -180,7 +180,7 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
             <BatchCard batch={batch} state={state} now={now} pending={view.sending || view.pending !== null || view.status !== 'live'} onInteract={() => select(batch.batch)} onDraft={() => reactFish('amount')}
               onSet={(side, amount) => {
                 reactFish(side === null ? 'withdraw' : 'submit')
-                void session.submit({ market_id: market.id, batch: batch.batch, side, amount }).then(() => {
+                return session.submit({ market_id: market.id, batch: batch.batch, side, amount }).then(() => {
                   const receipt = session.getSnapshot()
                   const confirmed = receipt.error === null && receipt.pending === null && receipt.status === 'live'
                   const actual = receipt.state?.market?.batches.find(item => item.batch === batch.batch)
@@ -218,18 +218,26 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
   </div>
 }
 
-function BatchCard({ batch, state, now, pending, onSet, onInteract, onDraft }: { batch: MarketBatch, state: MarketState, now: number, pending: boolean, onSet(side: MarketSide | null, amount: number): void, onInteract(): void, onDraft(): void }): ReactElement {
+function BatchCard({ batch, state, now, pending, onSet, onInteract, onDraft }: { batch: MarketBatch, state: MarketState, now: number, pending: boolean, onSet(side: MarketSide | null, amount: number): Promise<void>, onInteract(): void, onDraft(): void }): ReactElement {
   const [side, setSide] = useState<MarketSide>(batch.position?.side ?? 'long')
   const [amount, setAmount] = useState(String(batch.position?.amount ?? 5))
   const [editing, setEditing] = useState(false)
-  useEffect(() => { if (!editing) { setSide(batch.position?.side ?? 'long'); setAmount(String(batch.position?.amount ?? 5)) } }, [batch.position?.side, batch.position?.amount, editing])
+  const submitting = useRef(false)
+  useEffect(() => { if (!editing && !pending) { setSide(batch.position?.side ?? 'long'); setAmount(String(batch.position?.amount ?? 5)) } }, [batch.position?.side, batch.position?.amount, editing, pending])
   const editable = batch.status === 'open' && now < batch.locks_at && state.market?.status === 'open'
   const maximum = Math.min(MARKET_AMOUNT_MAX, state.wallet.available_incense + (batch.position?.amount ?? 0))
   const bounded = (raw: string): number => maximum === 0 ? 0 : Math.min(maximum, Math.max(1, Math.trunc(Number(raw === '' ? 5 : raw) || 1)))
   const value = bounded(amount)
   const ready = editable && maximum > 0 && !pending
+  const commit = async (direction: MarketSide | null, count: number): Promise<void> => {
+    if (!ready || submitting.current) return
+    submitting.current = true
+    setEditing(true)
+    try { await onSet(direction, count) }
+    finally { submitting.current = false; setEditing(false) }
+  }
   return <article className={marketClass('batch')} data-status={batch.status} data-liangxiang-market-batch={batch.batch} onFocusCapture={onInteract} onPointerDown={onInteract}>
-    <form noValidate onSubmit={event => { event.preventDefault(); setAmount(String(value)); if (ready) { setEditing(false); onSet(side, value) } }}>
+    <form noValidate onSubmit={event => { event.preventDefault(); setAmount(String(value)); void commit(side, value).catch(() => undefined) }}>
       <div className={marketClass('order')}>
         <div className={marketClass('direction')} role="group" aria-label={`P${batch.batch} 仓位方向`}>
           <button type="button" data-fish-action="long" aria-pressed={side === 'long'} disabled={pending || !editable} onClick={() => { setSide('long'); setEditing(true) }}><span className={marketClass('button-face')}>↗ 做多</span></button>
@@ -241,7 +249,7 @@ function BatchCard({ batch, state, now, pending, onSet, onInteract, onDraft }: {
         </label>
         <div className={marketClass('order-actions')}>
           <button className="liangxiang-market-action liangxiang-market-primary" type="submit" disabled={!ready}><span className={marketClass('button-face')}>{!editable ? batch.status === 'pending' ? '待开放' : '已封盘' : maximum === 0 ? '暂无香火' : pending ? '确认中…' : batch.position ? '确认调整' : '确认投入'}</span></button>
-          <button className="liangxiang-market-action liangxiang-market-withdraw" type="button" disabled={pending || !editable || !batch.position} onClick={() => { setEditing(false); onSet(null, 0) }}><span className={marketClass('button-face')}>撤回</span></button>
+          <button className="liangxiang-market-action liangxiang-market-withdraw" type="button" disabled={pending || !editable || !batch.position} onClick={() => { void commit(null, 0).catch(() => undefined) }}><span className={marketClass('button-face')}>撤回</span></button>
         </div>
       </div>
     </form>

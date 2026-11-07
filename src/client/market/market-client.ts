@@ -160,7 +160,10 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
   const adopt = (state: MarketState, scope: string): void => {
     if (disposed) return
     const identityChanged = scope !== '' && view.scope !== '' && scope !== view.scope
-    if (!identityChanged && view.state && state.server_time < view.state.server_time) return
+    // Wallet versions order confirmed personal transactions; Host clock
+    // projection is not a receipt revision and can run ahead of the backend.
+    if (!identityChanged && view.state && (state.wallet.version < view.state.wallet.version
+      || (state.wallet.version === view.state.wallet.version && state.server_time < view.state.server_time))) return
     adoptScope(scope)
     const old = view.state
     const market = state.market

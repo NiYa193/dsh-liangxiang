@@ -136,6 +136,8 @@ export class BackendLiangService implements LiangHostService {
   private ticks = 0
   private disposed = false
   private marketState: MarketState | null = null
+  /** Raw private snapshot revision, independent of the projected/held wallet. */
+  private marketWalletVersion = -1
   private marketInFlight: Promise<MarketState> | null = null
   private stopCloudStream: (() => void) | null = null
   private cloudStreamUnsupported = false
@@ -205,6 +207,7 @@ export class BackendLiangService implements LiangHostService {
     this.cloudEpoch = null
     this.cloudRevision = -1
     this.marketState = null
+    this.marketWalletVersion = -1
     this.marketInFlight = null
     this.pendingClaim = null
     this.deferredWalletVersion = 0
@@ -607,6 +610,11 @@ export class BackendLiangService implements LiangHostService {
   }
 
   private adoptMarketState(state: MarketState): void {
+    // Compare the raw private snapshot revision: marketState.wallet may be held
+    // back during a claim or advanced separately by a personal-state response.
+    // Neither projected balance can order the incoming own-position snapshot.
+    if (state.wallet.version < this.marketWalletVersion) return
+    this.marketWalletVersion = state.wallet.version
     const wallet = this.personal?.wallet
     const holdWallet = wallet !== undefined && this.pendingClaim !== null
     if (holdWallet) this.deferredWalletVersion = Math.max(this.deferredWalletVersion, state.wallet.version)

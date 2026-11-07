@@ -141,7 +141,7 @@ describe('market transport state machine', () => {
       requestId: () => `request-${ids.length + 1}`,
       dispose() { disposed = true },
     }
-    return { current, calls, ids, transport, setUncertain: () => { uncertain = true }, feed: (data: MarketState) => handler?.(data, 'identity-a'), closed: () => closed, disposed: () => disposed }
+    return { current, calls, ids, transport, setUncertain: () => { uncertain = true }, feed: (data: MarketState, scope = 'identity-a') => handler?.(data, scope), closed: () => closed, disposed: () => disposed }
   }
   it('starts with only today candles and a twenty-receipt page, without polling', async () => {
     const f = fixture(), session = createMarketSession(f.transport, memoryStorage())
@@ -167,6 +167,66 @@ describe('market transport state machine', () => {
     await session.retryPending()
     expect(f.ids).toEqual(['request-1', 'request-1'])
     expect(session.getSnapshot().pending).toBeNull()
+    session.dispose()
+  })
+  it.each([0, -60_000])('adopts a higher-wallet-version position receipt even when its server timestamp changes by %ims', async offset => {
+    const f = fixture()
+    f.current.wallet = { ...f.current.wallet, available_incense: 95, frozen_incense: 5, version: 3 }
+    f.current.market!.batches[0]!.position = { side: 'long', amount: 5, submitted_at: f.current.server_time, payout: null }
+    const session = createMarketSession(f.transport, memoryStorage())
+    await session.start()
+    const confirmed: MarketState = { ...f.current, server_time: f.current.server_time + offset,
+      wallet: { ...f.current.wallet, available_incense: 91, frozen_incense: 9, version: 4 },
+      market: { ...f.current.market!, batches: f.current.market!.batches.map(batch => batch.batch === 1
+        ? { ...batch, position: { side: 'short', amount: 9, submitted_at: f.current.server_time + offset, payout: null } } : batch) } }
+    const request = f.transport.request
+    f.transport.request = async (path, intent) => intent
+      ? { body: { accepted: true, reason: null, request_id: intent.request_id, state: confirmed }, scope: 'identity-a' }
+      : request(path)
+    await session.submit({ market_id: confirmed.market!.id, batch: 1, side: 'short', amount: 9 })
+    const view = session.getSnapshot()
+    expect(view.state?.wallet).toEqual(confirmed.wallet)
+    expect(view.state?.market?.batches[0]?.position).toEqual(confirmed.market!.batches[0]!.position)
+    expect(view.state?.server_time).toBe(confirmed.server_time)
+    expect(view.pending).toBeNull()
+    expect(view.sending).toBe(false)
+    expect(view.error).toBeNull()
+    session.dispose()
+  })
+  it('refuses a newer-timestamp SSE with an older wallet version so balance and own position cannot roll back', async () => {
+    const f = fixture()
+    f.current.wallet = { ...f.current.wallet, available_incense: 91, frozen_incense: 9, version: 4 }
+    f.current.market!.batches[0]!.position = { side: 'short', amount: 9, submitted_at: f.current.server_time, payout: null }
+    const session = createMarketSession(f.transport, memoryStorage())
+    await session.start()
+    const confirmed = session.getSnapshot().state
+    const old: MarketState = { ...f.current, server_time: f.current.server_time + HOUR,
+      wallet: { ...f.current.wallet, available_incense: 95, frozen_incense: 5, version: 3 },
+      market: { ...f.current.market!, batches: f.current.market!.batches.map(batch => batch.batch === 1
+        ? { ...batch, position: { side: 'long', amount: 5, submitted_at: f.current.server_time, payout: null } } : batch) } }
+    f.feed(old)
+    expect(session.getSnapshot().state).toBe(confirmed)
+    expect(session.getSnapshot().state?.wallet.version).toBe(4)
+    expect(session.getSnapshot().state?.market?.batches[0]?.position).toMatchObject({ side: 'short', amount: 9 })
+    session.dispose()
+  })
+  it('retains timestamp protection at the same wallet version and accepts a different identity own version and cache', async () => {
+    const f = fixture(), storage = memoryStorage()
+    f.current.wallet.version = 4
+    const session = createMarketSession(f.transport, storage)
+    await session.start()
+    const confirmed = session.getSnapshot().state
+    f.feed({ ...f.current, server_time: f.current.server_time - 1_000 })
+    expect(session.getSnapshot().state).toBe(confirmed)
+    const otherCache = emptyMarketCache('identity-b')
+    otherCache.receipts = [receipt(2)]
+    writeMarketCache(storage, otherCache)
+    const other: MarketState = { ...f.current, server_time: f.current.server_time - 60_000, wallet: { ...f.current.wallet, version: 1 } }
+    f.feed(other, 'identity-b')
+    expect(session.getSnapshot().scope).toBe('identity-b')
+    expect(session.getSnapshot().state?.wallet.version).toBe(1)
+    expect(session.getSnapshot().state?.server_time).toBe(other.server_time)
+    expect(session.getSnapshot().receipts).toEqual([receipt(2)])
     session.dispose()
   })
   it('does not persist private cached history without an identity scope', async () => {
