@@ -31,7 +31,7 @@ const config = resolveBackendConfig({
   LIANGXIANG_ADMISSION_INVENTORY_TARGET: '10',
 })
 const store = openBackendStore(config.databasePath)
-let simulated = at(9)
+let simulated = at(0)
 let runningSince: number | null = null
 const clock = { now: (): number => simulated + (runningSince === null ? 0 : Date.now() - runningSince) }
 const service = new LiangxiangBackendService({ store, config, clock })
@@ -67,13 +67,17 @@ fund(maker, 3_000)
 fund(peerLong, 200)
 fund(peerShort, 200)
 service.retitleActiveCase('本地演示 · 三批投入，午夜共同收盘')
-vote('up', 20)
-vote('down', 20)
-for (let i = 1; i <= 12; i += 1) {
-  simulated = at(9) + i * 5 * 60_000
-  const up = 10 + Math.round(Math.sin(i / 2) * 5)
-  vote('up', up)
-  vote('down', 20 - up)
+vote('up', 200)
+vote('down', 200)
+// Initial seed votes warm up the disposable case before recorded history.
+// Keep their accepted votes, then begin the demonstration at the first minute.
+store.database.prepare('DELETE FROM liang_market_minute_candle WHERE case_id=? AND at=?')
+  .run(service.ensureActiveCase().id, at(0))
+for (let i = 1; i <= 600; i += 1) {
+  simulated = at(0) + i * 60_000
+  const up = 1 + Math.round(Math.sin(i / 25))
+  if (up > 0) vote('up', up)
+  if (up < 2) vote('down', 2 - up)
 }
 simulated = at(10)
 position(peerLong, 1, 'long', 50)
@@ -90,15 +94,15 @@ function prepareFirstInstallation(): void {
   prepared = true
   fund(identity.installation_id, 5_000)
   position(identity.installation_id, 1, 'short', 20)
-  for (let i = 1; i <= 24; i += 1) {
-    simulated = at(10) + i * 5 * 60_000
-    vote('up', 11 + Math.round(Math.sin(i / 3) * 3))
-    vote('down', 10)
+  for (let i = 1; i <= 120; i += 1) {
+    simulated = at(10) + i * 60_000
+    vote('up', 2 + Math.round(Math.sin(i / 15)))
+    vote('down', 1)
   }
-  for (let i = 1; i <= 12; i += 1) {
-    simulated = at(12) + i * 5 * 60_000
-    vote('up', 9)
-    vote('down', 10)
+  for (let i = 1; i <= 60; i += 1) {
+    simulated = at(12) + i * 60_000
+    vote('up', 1)
+    vote('down', 2)
   }
   simulated = at(13)
   service.tick()

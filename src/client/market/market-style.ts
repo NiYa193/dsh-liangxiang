@@ -1,192 +1,172 @@
 import { font } from '../theme.ts'
 import { MARKET_MOTION_CSS } from './market-motion-style.ts'
+import { COMPANION_CSS } from './MarketFishCompanion.tsx'
 
 export const MARKET_DIALOG_CSS = `
-[data-liangxiang-market-backdrop]{background-image:radial-gradient(#9cb4dc1a .8px,transparent 1px);background-size:14px 14px}
+[data-liangxiang-market-backdrop]{background-image:radial-gradient(#9cb4dc15 .8px,transparent 1px);background-size:14px 14px}
 [data-liangxiang-market-dialog]{
-  --liangxiang-market-paper:light-dark(#fffcf5,#222731);
-  --liangxiang-market-paper-2:light-dark(#eff3fb,#2c3544);
-  --liangxiang-market-ink:light-dark(#30394b,#e7edf8);
-  --liangxiang-market-sub:light-dark(#626e80,#b2bfd2);
-  --liangxiang-market-border:light-dark(#cbd4e5,#46546a);
-  --liangxiang-market-gold:#e2ae54;
-  --liangxiang-market-vermilion:#c44836;
-  --liangxiang-market-slate:#61718b;
-  --liangxiang-market-blue:#4d6bfe;
-  --liangxiang-market-blue-text:light-dark(#3651b9,#a1b7ff);
-  --liangxiang-market-water-top:#4d6bfe;
-  --liangxiang-market-water-bottom:#729dff;
-  --liangxiang-market-chart-text:var(--liangxiang-market-sub);
-  box-sizing:border-box;
-  color:var(--liangxiang-market-ink);
-  font:13px ${font.family};
-  color-scheme:light dark;
-  width:min(920px,100%);
-  height:min(760px,calc(100dvh - 24px));
-  max-height:calc(100dvh - 24px);
-  display:flex;
-  flex-direction:column;
-  position:relative;
-  overflow:auto;
-  scrollbar-width:thin;
-  background:var(--liangxiang-market-paper);
-  border:1.5px solid var(--liangxiang-market-border);
-  border-radius:18px;
-  padding:18px 20px 12px;
-  box-shadow:inset 0 1px 0 #ffffff24,0 4px 0 #24345235,0 18px 44px #081d463d;
-  outline:none
+ --liangxiang-market-paper:light-dark(#fffcf7,#222731);
+ --liangxiang-market-paper-2:light-dark(#f0f4fb,#2b3443);
+ --liangxiang-market-ink:light-dark(#30394b,#e7edf8);
+ --liangxiang-market-sub:light-dark(#5c687b,#b1bfd2);
+ --liangxiang-market-border:light-dark(#ced7e6,#465267);
+ --liangxiang-market-gold:#dca858;
+ --liangxiang-market-vermilion:light-dark(#b95440,#e39479);
+ --liangxiang-market-slate:light-dark(#667f9c,#9fb6d2);
+ --liangxiang-market-blue:#4d6bfe;
+ --liangxiang-market-blue-text:light-dark(#3651b9,#a1b7ff);
+ --liangxiang-market-water-top:#4d6bfe;
+ --liangxiang-market-water-bottom:#729dff;
+ --liangxiang-market-chart-text:var(--liangxiang-market-sub);
+ box-sizing:border-box;position:relative;display:flex;flex-direction:column;
+ width:min(880px,100%);height:min(600px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);
+ padding:12px 16px 8px;overflow:auto;scrollbar-width:thin;
+ background:var(--liangxiang-market-paper);color:var(--liangxiang-market-ink);
+ border:1px solid var(--liangxiang-market-border);border-radius:16px;
+ box-shadow:0 3px 0 #24345229,0 16px 42px #081d4633;
+ font:13px ${font.family};color-scheme:light dark;outline:none
 }
+[data-liangxiang-market-dialog][data-fullscreen=true]{width:100%;height:calc(100dvh - 24px)}
 [data-liangxiang-market-dialog] *{box-sizing:border-box}
-[data-liangxiang-market-dialog] :is(button,input){font:inherit}
-[data-liangxiang-market-dialog] button{cursor:pointer;border:0;background:transparent;color:var(--liangxiang-market-ink);border-radius:9px;padding:7px 11px;min-height:32px}
-[data-liangxiang-market-dialog] button:hover:not(:disabled){background:color-mix(in srgb,#4d6bfe 9%,var(--liangxiang-market-paper))}
-[data-liangxiang-market-dialog] button:disabled{opacity:.45;cursor:default}
-[data-liangxiang-market-dialog] :is(button,input,summary,svg):focus-visible{outline:2px solid #4d6bfe;outline-offset:3px}
-.liangxiang-market-header{display:flex;align-items:center;gap:9px;margin-bottom:0;flex:none;height:88px}
-.liangxiang-market-header-copy{flex:1;min-width:90px}
-.liangxiang-market-header-title{display:flex;align-items:center;gap:8px;height:88px}
-.liangxiang-market-header-caption{min-width:0;max-width:190px}
-.liangxiang-market-header h2{margin:0;font-size:18px;font-weight:600;letter-spacing:.2px}
-.liangxiang-market-header-copy p{margin:4px 0 0;font-size:11px;color:var(--liangxiang-market-sub);max-width:310px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.liangxiang-market-wallet{display:flex;align-items:baseline;gap:14px;white-space:nowrap;color:var(--liangxiang-market-sub);font-size:11px}
-.liangxiang-market-wallet strong{color:var(--liangxiang-market-ink);font-variant-numeric:tabular-nums;font-size:15px;margin:0 3px;font-weight:650}
-.liangxiang-market-wallet [data-liangxiang-market-available]{color:var(--liangxiang-market-blue-text);font-size:22px}
-[data-liangxiang-market-dialog] .liangxiang-market-motion{font-size:11px;color:var(--liangxiang-market-blue-text);padding:5px 8px;white-space:nowrap;display:flex;align-items:center;gap:5px;border:1px solid var(--liangxiang-market-border);background:var(--liangxiang-market-paper-2);box-shadow:0 2px 0 var(--liangxiang-market-border)}
-[data-liangxiang-market-dialog] .liangxiang-market-close{font-size:22px;color:var(--liangxiang-market-sub);padding:0;min-width:28px;min-height:28px;border:1.5px solid var(--liangxiang-market-border);border-radius:50%;background:var(--liangxiang-market-paper-2);box-shadow:0 1px 0 var(--liangxiang-market-border)}
-.liangxiang-market-chart{overflow:hidden;flex:1;min-height:280px;display:flex;flex-direction:column}
-.liangxiang-market-chart-toolbar{display:flex;align-items:center;gap:4px;padding:0;flex:none;height:34px;justify-content:space-between;white-space:nowrap}
-.liangxiang-market-chart-readout{flex:none;min-width:0;font-size:11px;color:var(--liangxiang-market-sub);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:22px;padding:2px 0}
-[data-liangxiang-market-dialog] .liangxiang-market-chart-toolbar button{padding:2px 7px;min-height:23px;font-size:11px;color:var(--liangxiang-market-sub)}
-[data-liangxiang-market-dialog] button[data-selected=true]{background:color-mix(in srgb,#4d6bfe 12%,var(--liangxiang-market-paper));color:var(--liangxiang-market-ink);font-weight:650}
-.liangxiang-market-chart-scroll{overflow:hidden;flex:1;min-height:150px}
-.liangxiang-market-chart figcaption{padding:0;font-size:11px;color:var(--liangxiang-market-sub);line-height:1.5;flex:none;min-height:20px}
-.liangxiang-market-pond-legend{display:flex;align-items:center;flex-wrap:wrap;gap:5px 11px}
-.liangxiang-market-pond-legend span{display:inline-flex;align-items:center;gap:5px}
-.liangxiang-market-pond-legend i{display:inline-block;width:6px;height:6px;flex:none;border-radius:50%}
-.liangxiang-market-provenance{margin-left:auto;font-variant-numeric:tabular-nums}
-.liangxiang-market-stage-tabs{display:flex;gap:8px;margin:8px 0 0;flex:none;height:48px}
-[data-liangxiang-market-dialog] .liangxiang-market-stage-tabs button{position:relative;flex:1;display:flex;align-items:center;justify-content:center;padding:0;border-radius:11px;background:var(--liangxiang-market-border);color:var(--liangxiang-market-sub);min-width:0}
-.liangxiang-market-stage-tabs strong{font-size:12px;font-weight:600}
-.liangxiang-market-stage-tabs small{font-size:11px}
-[data-liangxiang-market-dialog] .liangxiang-market-stage-tabs [aria-selected=true]{background:#27429c;box-shadow:0 1px 0 #27429c}
-.liangxiang-market-batch{padding:8px 0 2px;min-width:0;height:144px}
-.liangxiang-market-batch-meta{display:flex;justify-content:space-between;gap:7px;color:var(--liangxiang-market-sub);font-size:11px;line-height:1.6;height:30px;margin:0;align-items:start}
-.liangxiang-market-batch-meta p{margin:0;overflow:auto;max-height:30px;line-height:1.35}
-.liangxiang-market-pool-info{position:relative;flex-shrink:0}
-.liangxiang-market-pool-info summary{cursor:pointer;list-style:none;white-space:nowrap}
-.liangxiang-market-pool-info[open] .liangxiang-market-pool-detail{position:absolute;right:0;top:22px;z-index:5;min-width:150px;padding:10px 13px;border-radius:10px;border:1px solid var(--liangxiang-market-border);background:var(--liangxiang-market-paper);box-shadow:0 5px 20px #0002;line-height:1.9}
-.liangxiang-market-position{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;margin:0 0 5px;height:31px;overflow:auto;align-content:center}
-.liangxiang-market-position [data-mood]{color:var(--liangxiang-market-blue-text);font-weight:600}
-.liangxiang-market-position small{color:var(--liangxiang-market-sub);margin-left:auto}
-.liangxiang-market-order{display:flex;align-items:center;gap:7px;height:42px}
-.liangxiang-market-direction{display:flex;gap:7px}
-[data-liangxiang-market-dialog] .liangxiang-market-direction button{white-space:nowrap;padding:0;min-height:32px;color:var(--liangxiang-market-sub);background:var(--liangxiang-market-border);min-width:73px;box-shadow:0 2px 0 var(--liangxiang-market-border)}
-[data-liangxiang-market-dialog] .liangxiang-market-direction button[aria-pressed=true]{background:#263e9a;color:#fff;box-shadow:0 2px 0 #263e9a}
-.liangxiang-market-amount{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex:1;min-width:100px;color:var(--liangxiang-market-sub);font-size:11px}
-.liangxiang-market-amount input{width:100%;max-width:94px;min-width:50px;height:35px;border:1px solid var(--liangxiang-market-border);border-radius:9px;padding:6px 9px;background:var(--liangxiang-market-paper);color:var(--liangxiang-market-ink);font-variant-numeric:tabular-nums}
-[data-liangxiang-market-dialog] .liangxiang-market-primary{background:#243e9a;color:#fff;padding:0;min-height:38px;white-space:nowrap;font-weight:600;box-shadow:0 3px 7px #16286124}
-[data-liangxiang-market-dialog] .liangxiang-market-primary:hover:not(:disabled){background:#243e9a;color:#fff}
-.liangxiang-market-button-face{position:relative;display:flex;align-items:center;justify-content:center;min-height:32px;padding:6px 14px;border:1px solid var(--liangxiang-market-border);border-radius:8px;background:linear-gradient(180deg,var(--liangxiang-market-paper),var(--liangxiang-market-paper-2));box-shadow:inset 0 1px 0 #ffffff55;transform:translateY(-2px)}
-.liangxiang-market-button-face::after{content:'';position:absolute;top:2px;left:5px;right:5px;height:36%;border-radius:6px;background:linear-gradient(#ffffff24,transparent);pointer-events:none}
-[data-liangxiang-market-dialog] .liangxiang-market-primary .liangxiang-market-button-face,[data-liangxiang-market-dialog] .liangxiang-market-direction [aria-pressed=true] .liangxiang-market-button-face{background:linear-gradient(180deg,#4664db,#3c58cb 58%,#304ebd);border-color:#2949bf;box-shadow:inset 0 1px 0 #ffffff66,inset 0 -1px 0 #182b7c44;color:#fff}
-[data-liangxiang-market-dialog] .liangxiang-market-primary .liangxiang-market-button-face{min-height:38px;padding:9px 16px;transform:translateY(-4px)}
-[data-liangxiang-market-dialog] button:active:not(:disabled)>.liangxiang-market-button-face{transform:translateY(0) scaleX(.985);box-shadow:inset 0 2px 4px #15234a30}
-[data-liangxiang-market-dialog][data-animated=true] .liangxiang-market-button-face{transition:transform 260ms cubic-bezier(.18,.9,.3,1.5),box-shadow 160ms ease}
-[data-liangxiang-market-dialog][data-animated=true] button:active>.liangxiang-market-button-face{transition-duration:65ms}
-[data-liangxiang-market-dialog][data-animated=true] .liangxiang-market-stage-tabs button{transition:transform 220ms cubic-bezier(.18,.9,.3,1.5),box-shadow 140ms ease}
-[data-liangxiang-market-dialog][data-animated=true] .liangxiang-market-stage-tabs button:hover{transform:translateY(-1px)}
-[data-liangxiang-market-dialog] .liangxiang-market-stage-tabs button:active{transform:translateY(2px);box-shadow:none}
-[data-liangxiang-market-dialog] .liangxiang-market-withdraw{font-size:11px;color:var(--liangxiang-market-sub);padding:3px 0;white-space:nowrap;width:32px;flex:none}
-.liangxiang-market-order-hint{margin:5px 0 0;color:var(--liangxiang-market-sub);font-size:11px;line-height:1.35;height:27px;overflow:auto}
-.liangxiang-market-idle{margin:0;color:var(--liangxiang-market-sub);line-height:1.7}
-.liangxiang-market-footer{display:flex;align-items:center;gap:10px;border-top:1px solid var(--liangxiang-market-border);color:var(--liangxiang-market-sub);font-size:11px;line-height:1.7;flex:none;height:36px;padding:4px 0 0;margin:0;position:sticky;bottom:-12px;z-index:4;background:var(--liangxiang-market-paper)}
-.liangxiang-market-connection{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
-.liangxiang-market-connection i{display:inline-block;width:5px;height:5px;margin-right:5px;border-radius:50%;background:#4d6bfe;vertical-align:middle}
-.liangxiang-market-receipt{border-bottom:1px solid var(--liangxiang-market-border);padding:10px 0}
-.liangxiang-market-receipt small{color:var(--liangxiang-market-sub)}
 [data-liangxiang-market-dialog] [hidden]{display:none!important}
-[data-liangxiang-market-dialog][data-fullscreen=true]{width:100%;height:calc(100dvh - 24px);max-width:none}
-.liangxiang-market-header-fish{position:relative;flex:none;width:86px;height:88px;padding-top:14px}
-.liangxiang-market-header-fish>svg{display:block;width:86px;height:74px;overflow:visible}
-.liangxiang-market-fish-reply{position:absolute;top:-1px;left:16px;right:0;text-align:center;line-height:14px;font-size:11px;color:var(--liangxiang-market-blue-text);pointer-events:none;opacity:0}
-.liangxiang-market-fish-reaction{transform-box:fill-box;transform-origin:50% 80%}
-[data-animated=true] .liangxiang-market-fish-reaction[data-active=true]{animation:liangxiang-market-greet 520ms cubic-bezier(.2,.8,.25,1)}
-[data-animated=true] .liangxiang-market-fish-reply[data-active=true]{animation:liangxiang-market-reply 850ms ease-out}
-.liangxiang-market-motion>span{font-size:17px}
+[data-liangxiang-market-dialog] :is(button,input,select){font:inherit}
+[data-liangxiang-market-dialog] button{min-height:30px;padding:5px 9px;border:0;border-radius:8px;background:transparent;color:inherit;cursor:pointer}
+[data-liangxiang-market-dialog] button:disabled{opacity:.45;cursor:default}
+[data-liangxiang-market-dialog] button:hover:not(:disabled){background:color-mix(in srgb,var(--liangxiang-market-blue) 8%,var(--liangxiang-market-paper))}
+[data-liangxiang-market-dialog] :is(button,input,select,summary,svg):focus-visible{outline:2px solid var(--liangxiang-market-blue);outline-offset:3px}
+.liangxiang-market-header{display:grid;grid-template-columns:minmax(0,1fr) auto auto 28px 28px;gap:8px;align-items:center;flex:none;height:64px}
+.liangxiang-market-header-copy{min-width:0}
+.liangxiang-market-header-title{display:flex;align-items:center;gap:8px;height:64px;min-width:0}
+.liangxiang-market-header-caption{min-width:0;max-width:200px;flex:0 1 200px}
+.liangxiang-market-header h2{margin:0;font-size:18px;font-weight:600}
+.liangxiang-market-header-copy p{margin:3px 0 0;font-size:11px;line-height:1.4;color:var(--liangxiang-market-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.liangxiang-market-wallet{display:flex;align-items:baseline;gap:10px;white-space:nowrap;font-size:11px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-wallet strong{margin:0 3px;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--liangxiang-market-ink)}
+.liangxiang-market-wallet [data-liangxiang-market-available]{font-size:20px;color:var(--liangxiang-market-blue-text)}
+[data-liangxiang-market-dialog] .liangxiang-market-motion{display:flex;gap:4px;align-items:center;white-space:nowrap;padding:5px 7px;font-size:11px;background:var(--liangxiang-market-paper-2);color:var(--liangxiang-market-blue-text);border:1px solid var(--liangxiang-market-border);box-shadow:0 1px 0 var(--liangxiang-market-border)}
+.liangxiang-market-motion>span{font-size:15px}
 .liangxiang-market-dried-fish{filter:grayscale(1);transform:rotate(-18deg)}
-[data-liangxiang-market-dialog] .liangxiang-market-fullscreen{padding:0;min-width:28px;font-size:22px;color:var(--liangxiang-market-sub)}
-.liangxiang-market-status{flex:none;display:flex;align-items:center;gap:8px;height:24px;font-size:11px;line-height:1.4;color:var(--liangxiang-market-sub);overflow:auto}
-.liangxiang-market-status button{flex:none;padding:3px 6px;min-height:24px;background:var(--liangxiang-market-paper-2)!important}
+[data-liangxiang-market-dialog] :is(.liangxiang-market-close,.liangxiang-market-fullscreen){padding:0;min-height:28px;min-width:28px;font-size:21px;color:var(--liangxiang-market-sub)}
+[data-liangxiang-market-dialog] .liangxiang-market-close{border:1px solid var(--liangxiang-market-border);border-radius:50%;background:var(--liangxiang-market-paper-2)}
+.liangxiang-market-status{position:absolute;z-index:7;left:16px;right:16px;bottom:44px;display:flex;align-items:center;gap:8px;padding:6px 9px;max-height:75px;overflow:auto;border:1px solid var(--liangxiang-market-border);border-radius:8px;background:var(--liangxiang-market-paper-2);color:var(--liangxiang-market-ink);font-size:11px;line-height:1.5;box-shadow:0 3px 12px #081d4620}
+.liangxiang-market-status:empty{display:none}
+.liangxiang-market-status button{flex:none;font-size:11px;min-height:25px;padding:3px 6px;color:var(--liangxiang-market-blue-text)}
 .liangxiang-market-loading,.liangxiang-market-empty{flex:1;display:grid;place-items:center;color:var(--liangxiang-market-sub);font-size:12px}
+.liangxiang-market-chart{display:flex;flex-direction:column;flex:1;min-height:250px;overflow:hidden}
+.liangxiang-market-chart-toolbar{display:flex;justify-content:space-between;align-items:center;gap:7px;flex:none;height:32px;white-space:nowrap}
 .liangxiang-market-chart-toolbar>div{display:flex;align-items:center;gap:2px;flex:none}
-.liangxiang-market-chart-toolbar .liangxiang-market-chart-range{margin-left:auto}
-.liangxiang-market-chart-interval{width:48px;flex:none;color:var(--liangxiang-market-sub);font-size:11px}
-.liangxiang-market-chart-quotes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) 1.15fr;gap:14px;flex:none;min-height:48px;padding:6px 0 8px;border-bottom:1px solid var(--liangxiang-market-border);font-variant-numeric:tabular-nums}
-.liangxiang-market-chart-quotes span{display:block;color:var(--liangxiang-market-sub);font-size:11px;margin-bottom:3px}
-.liangxiang-market-chart-quotes b{font-weight:600;white-space:nowrap}
-.liangxiang-market-chart-quotes>div:last-child{text-align:right}
-.liangxiang-market-chart-readout>span:first-child{color:var(--liangxiang-market-ink);margin-right:10px}
-.liangxiang-market-stage-tabs .liangxiang-market-button-face{width:100%;height:44px;gap:7px;padding:6px}
-[data-liangxiang-market-dialog] .liangxiang-market-stage-tabs [aria-selected=true]>.liangxiang-market-button-face{background:linear-gradient(180deg,#536fdc,#3c58cb);border-color:#3451bc;color:#fff;box-shadow:inset 0 1px 0 #ffffff66}
-.liangxiang-market-stage{flex:none;height:144px}
-[data-liangxiang-market-dialog] .liangxiang-market-footer>button{padding:3px 6px;color:var(--liangxiang-market-sub)}
-.liangxiang-market-popover{position:absolute;z-index:6;left:0;bottom:42px;width:min(400px,100%);max-height:min(340px,calc(100dvh - 180px));overflow:auto;padding:13px 15px;background:var(--liangxiang-market-paper);border:1px solid var(--liangxiang-market-border);border-radius:12px;box-shadow:0 8px 26px #081d4633;color:var(--liangxiang-market-ink)}
-.liangxiang-market-popover-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:30px}
-.liangxiang-market-popover p{font-size:12px;line-height:1.7;margin:8px 0}
-[data-liangxiang-market-dialog] .liangxiang-market-popover-heading button{font-size:20px;padding:0 5px;min-height:28px}
-.liangxiang-market-receipt summary{white-space:nowrap}
-@keyframes liangxiang-market-greet{0%,100%{transform:rotate(0) scale(1)}28%{transform:rotate(-9deg) scale(1.06,.94)}64%{transform:rotate(7deg) scale(.98,1.05)}}
-@keyframes liangxiang-market-reply{0%{opacity:0;transform:translateY(3px)}18%,70%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-3px)}}
-
+[data-liangxiang-market-dialog] .liangxiang-market-chart-toolbar button{min-height:26px;padding:3px 6px;font-size:11px;color:var(--liangxiang-market-sub)}
+[data-liangxiang-market-dialog] button[data-selected=true]{background:var(--liangxiang-market-paper-2);color:var(--liangxiang-market-blue-text)}
+.liangxiang-market-chart-range{margin-left:auto}
+.liangxiang-market-chart-interval{width:88px;min-width:88px;flex:none;height:27px;border:1px solid var(--liangxiang-market-border);border-radius:7px;padding:3px 18px 3px 5px;background:var(--liangxiang-market-paper-2);color:var(--liangxiang-market-ink);font-size:11px!important;font-variant-numeric:tabular-nums}
+.liangxiang-market-chart-quotes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) 1.1fr;gap:12px;flex:none;min-height:43px;padding:4px 0 7px;border-bottom:1px solid var(--liangxiang-market-border);font-variant-numeric:tabular-nums}
+.liangxiang-market-chart-quotes span{display:block;margin-bottom:2px;font-size:11px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-chart-quotes b{font-size:12px;font-weight:600;white-space:nowrap}
+.liangxiang-market-chart-quote-time{text-align:right}
+.liangxiang-market-chart-scroll{flex:1;min-height:140px;overflow:hidden}
+.liangxiang-market-chart-scroll>svg{width:100%;height:100%;display:block}
+.liangxiang-market-chart-readout{flex:none;height:21px;min-width:0;padding:2px 0;font-size:11px;line-height:17px;color:var(--liangxiang-market-sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.liangxiang-market-chart-current{margin-right:9px;color:var(--liangxiang-market-ink)}
+.liangxiang-market-pond-legend{display:flex;align-items:center;gap:5px 10px;flex-wrap:wrap;flex:none;min-height:18px;margin:0;padding:0;font-size:11px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-pond-legend span{display:inline-flex;align-items:center;gap:4px}
+.liangxiang-market-pond-legend i{display:inline-block;width:6px;height:6px;flex:none;border-radius:50%}
+.liangxiang-market-provenance{margin-left:auto}
+.liangxiang-market-stage-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;flex:none;height:35px;margin-top:7px;padding:2px;background:var(--liangxiang-market-paper-2);border-radius:10px}
+[data-liangxiang-market-dialog] .liangxiang-market-stage-tabs button{padding:0;min-width:0;min-height:29px;border-radius:8px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-stage-tabs .liangxiang-market-button-face{display:flex;align-items:center;justify-content:center;gap:7px;height:29px;padding:3px 5px;white-space:nowrap}
+.liangxiang-market-stage-tabs strong{font-size:12px;font-weight:500}
+.liangxiang-market-stage-tabs small{font-size:11px}
+.liangxiang-market-batch-number{margin-right:4px;font-size:11px}
+[data-liangxiang-market-dialog] .liangxiang-market-stage-tabs [aria-selected=true]{background:var(--liangxiang-market-paper);color:var(--liangxiang-market-blue-text);box-shadow:0 1px 2px #081d461f,inset 0 -2px 0 color-mix(in srgb,var(--liangxiang-market-blue) 65%,transparent)}
+.liangxiang-market-stage{flex:none;height:110px}
+.liangxiang-market-batch{position:relative;height:110px;padding:8px 0 4px;min-width:0}
+.liangxiang-market-batch-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;height:22px;margin-bottom:6px;font-size:11px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-batch-meta p{min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.liangxiang-market-pool-info{position:relative;flex:none}
+.liangxiang-market-pool-info summary{list-style:none;white-space:nowrap;cursor:pointer}
+.liangxiang-market-pool-detail{position:absolute;z-index:6;right:0;bottom:22px;min-width:145px;padding:9px 12px;background:var(--liangxiang-market-paper);border:1px solid var(--liangxiang-market-border);border-radius:9px;box-shadow:0 4px 16px #081d4626;line-height:1.8}
+.liangxiang-market-order{display:grid;grid-template-columns:minmax(142px,1fr) minmax(128px,160px) 100px;gap:8px;align-items:center;height:37px}
+.liangxiang-market-direction{display:grid;grid-template-columns:1fr 1fr;gap:4px;max-width:220px;padding:2px;background:var(--liangxiang-market-paper-2);border-radius:9px}
+[data-liangxiang-market-dialog] .liangxiang-market-direction button{min-height:32px;min-width:0;padding:0;border-radius:7px;color:var(--liangxiang-market-sub);border:1px solid transparent}
+.liangxiang-market-direction .liangxiang-market-button-face{display:flex;justify-content:center;align-items:center;min-height:29px;padding:4px 8px;white-space:nowrap;transform:translateY(-1px)}
+[data-liangxiang-market-dialog] .liangxiang-market-direction [aria-pressed=true]{background:var(--liangxiang-market-paper);color:var(--liangxiang-market-blue-text);border-color:color-mix(in srgb,var(--liangxiang-market-blue) 35%,var(--liangxiang-market-border));box-shadow:0 2px 0 color-mix(in srgb,var(--liangxiang-market-blue) 25%,var(--liangxiang-market-border))}
+.liangxiang-market-amount{display:flex;align-items:center;gap:6px;height:34px;padding:0 9px;border:1px solid var(--liangxiang-market-border);border-radius:9px;background:var(--liangxiang-market-paper-2);font-size:11px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-amount>span{flex:none;white-space:nowrap}
+.liangxiang-market-amount input{width:100%;min-width:0;height:30px;padding:2px 0;border:0;background:transparent;color:var(--liangxiang-market-ink);font-size:13px!important;font-variant-numeric:tabular-nums;text-align:right;outline-offset:1px!important}
+[data-liangxiang-market-dialog] .liangxiang-market-primary{min-height:34px;padding:0;background:#304daf;color:#fff;border-radius:9px;box-shadow:0 2px 0 #263f93}
+[data-liangxiang-market-dialog] .liangxiang-market-primary:hover:not(:disabled){background:#3d59bd}
+.liangxiang-market-primary .liangxiang-market-button-face{display:flex;align-items:center;justify-content:center;min-height:34px;padding:5px 10px;border-radius:8px;border:1px solid #ffffff25;background:linear-gradient(180deg,#5270d8,#3c58bd);box-shadow:inset 0 1px 0 #ffffff30;transform:translateY(-2px);font-size:12px;white-space:nowrap}
+[data-liangxiang-market-dialog] button:active:not(:disabled)>.liangxiang-market-button-face{transform:translateY(0) scale(.98)}
+[data-animated=true] .liangxiang-market-button-face{transition:transform 180ms cubic-bezier(.2,.8,.3,1.3),background 120ms ease}
+[data-animated=true] .liangxiang-market-direction [aria-pressed=true]{transition:background 180ms ease,box-shadow 180ms ease}
+.liangxiang-market-ticket-footer{display:flex;align-items:center;gap:8px;height:29px;margin-top:3px;min-width:0}
+.liangxiang-market-position{display:flex;align-items:center;gap:7px;flex:1;flex-wrap:wrap;min-width:0;max-height:29px;overflow:auto;font-size:11px;color:var(--liangxiang-market-sub);line-height:14px}
+.liangxiang-market-position strong{font-size:11px;font-weight:500;color:var(--liangxiang-market-ink)}
+.liangxiang-market-position [data-mood]{color:var(--liangxiang-market-blue-text)}
+.liangxiang-market-position small{font-size:11px}
+.liangxiang-market-order-hint{margin:0;font-size:11px;color:var(--liangxiang-market-sub)}
+[data-liangxiang-market-dialog] .liangxiang-market-withdraw{flex:none;min-height:25px;padding:2px 5px;font-size:11px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-input-error:empty{display:none}
+.liangxiang-market-input-error{position:absolute;left:0;right:0;bottom:2px;padding:3px 7px;border-radius:6px;font-size:11px;background:var(--liangxiang-market-paper-2);color:var(--liangxiang-market-ink)}
+.liangxiang-market-footer{display:flex;align-items:center;gap:9px;position:sticky;bottom:-8px;z-index:5;flex:none;height:32px;margin:0;padding-top:3px;background:var(--liangxiang-market-paper);border-top:1px solid var(--liangxiang-market-border);font-size:11px;color:var(--liangxiang-market-sub)}
+[data-liangxiang-market-dialog] .liangxiang-market-footer>button{min-height:27px;padding:3px 5px;font-size:11px;color:var(--liangxiang-market-sub)}
+.liangxiang-market-connection{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
+.liangxiang-market-connection i{display:inline-block;width:5px;height:5px;margin-right:5px;border-radius:50%;background:var(--liangxiang-market-blue);vertical-align:middle}
+.liangxiang-market-popover{position:absolute;z-index:8;left:0;bottom:38px;width:min(390px,100%);max-height:min(330px,calc(100dvh - 170px));padding:12px 14px;overflow:auto;border:1px solid var(--liangxiang-market-border);border-radius:11px;background:var(--liangxiang-market-paper);color:var(--liangxiang-market-ink);box-shadow:0 7px 24px #081d4630}
+.liangxiang-market-popover-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:28px}
+[data-liangxiang-market-dialog] .liangxiang-market-popover-heading button{min-height:25px;padding:0 5px;font-size:19px}
+.liangxiang-market-popover p{margin:7px 0;font-size:12px;line-height:1.7}
+.liangxiang-market-receipt{padding:8px 0;border-bottom:1px solid var(--liangxiang-market-border);font-size:11px}
+.liangxiang-market-receipt small{font-size:11px;color:var(--liangxiang-market-sub)}
 ${MARKET_MOTION_CSS}
+${COMPANION_CSS}
+@media(max-width:760px){
+ .liangxiang-market-header{grid-template-columns:minmax(0,1fr) auto 28px 28px;height:98px;gap:3px 6px}
+ .liangxiang-market-header-copy{grid-column:1/-1}
+ .liangxiang-market-header-title{height:62px}
+}
 @media(max-width:580px){
-  [data-liangxiang-market-dialog]{padding:10px 11px 6px;border-radius:14px}
-  .liangxiang-market-header{flex-wrap:wrap;gap:5px;height:126px;align-content:center}
-  .liangxiang-market-header-copy{flex-basis:100%}
-  .liangxiang-market-header h2{font-size:16px}
-  .liangxiang-market-header-copy p{max-width:180px}
-  .liangxiang-market-wallet{gap:8px;margin-left:auto}
-  .liangxiang-market-wallet [data-liangxiang-market-available]{font-size:19px}
-  .liangxiang-market-order{flex-wrap:wrap;height:65px;gap:5px;align-content:center}
-  .liangxiang-market-direction{flex:1;min-width:130px}
-  .liangxiang-market-direction button{flex:1}
-  .liangxiang-market-amount{min-width:95px}
-  .liangxiang-market-order .liangxiang-market-primary{flex:1}
-  .liangxiang-market-position{height:34px;gap:4px 7px}
-  .liangxiang-market-position small{margin-left:0}
-  .liangxiang-market-footer{gap:6px}
-  .liangxiang-market-provenance{margin-left:0}
-  .liangxiang-market-header-fish{height:88px}
-  .liangxiang-market-header .liangxiang-market-close{margin-left:auto}
-  .liangxiang-market-status{height:30px}
-  .liangxiang-market-chart-toolbar{gap:3px}
-  [data-liangxiang-market-dialog] .liangxiang-market-chart-toolbar button{padding:3px 5px;min-height:27px}
-  .liangxiang-market-chart-toolbar .liangxiang-market-chart-zoom button{padding:2px 3px;min-width:23px}
-  .liangxiang-market-chart-quotes{gap:8px;grid-template-columns:repeat(4,minmax(0,1fr));min-height:45px}
-  .liangxiang-market-chart-quotes>div:last-child{display:none}
-  .liangxiang-market-chart-quotes b{font-size:12px}
-  .liangxiang-market-stage-tabs{height:49px;gap:6px;margin-top:6px}
-  .liangxiang-market-stage-tabs strong{font-size:11px}
-  [data-liangxiang-market-dialog] .liangxiang-market-stage-tabs button{padding:0;gap:2px}
-  .liangxiang-market-stage-tabs .liangxiang-market-button-face{height:46px;flex-direction:column;gap:2px;padding:3px}
-  .liangxiang-market-stage,.liangxiang-market-batch{height:172px}
-  .liangxiang-market-amount input{max-width:70px;height:32px}
-  .liangxiang-market-button-face{padding:5px 9px;min-height:30px}
-  [data-liangxiang-market-dialog] .liangxiang-market-primary .liangxiang-market-button-face{min-height:30px;padding:5px 12px;transform:translateY(-2px)}
-  .liangxiang-market-order-hint{margin-top:3px;height:30px}
-  .liangxiang-market-popover{bottom:40px;width:100%}
+ [data-liangxiang-market-dialog]{height:min(640px,calc(100dvh - 24px));padding:10px 12px 7px;border-radius:13px}
+ .liangxiang-market-header{grid-template-columns:minmax(0,1fr) auto 28px 28px;height:102px;gap:3px 6px}
+ .liangxiang-market-header-copy{grid-column:1/-1}
+ .liangxiang-market-header-caption{max-width:220px}
+ .liangxiang-market-header h2{font-size:17px}
+ .liangxiang-market-header-title{height:62px}
+ .liangxiang-market-wallet{gap:8px}
+ .liangxiang-market-wallet [data-liangxiang-market-available]{font-size:18px}
+ .liangxiang-market-chart{min-height:285px}
+ .liangxiang-market-chart-toolbar{display:grid;grid-template-columns:1fr auto;grid-template-rows:28px 29px;height:59px;gap:0 5px}
+ .liangxiang-market-chart-toolbar .liangxiang-market-chart-range{grid-column:1/-1;justify-content:flex-end;width:100%;margin:0}
+ .liangxiang-market-chart-quotes{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;min-height:42px}
+ .liangxiang-market-chart-quote-time{display:none}
+ .liangxiang-market-chart-quotes b{font-size:12px}
+ .liangxiang-market-stage-tabs{height:39px;margin-top:5px}
+ .liangxiang-market-stage-tabs .liangxiang-market-button-face{height:33px;gap:4px;padding:3px}
+ .liangxiang-market-stage-tabs strong,.liangxiang-market-stage-tabs small{font-size:11px}
+ .liangxiang-market-batch-number{margin-right:2px}
+ .liangxiang-market-stage,.liangxiang-market-batch{height:110px}
+ .liangxiang-market-order{grid-template-columns:minmax(128px,1fr) minmax(118px,140px) 91px;gap:6px}
+ .liangxiang-market-primary .liangxiang-market-button-face{padding:5px 6px}
+ .liangxiang-market-provenance{display:none}
+ .liangxiang-market-status{left:12px;right:12px}
+}
+@media(max-width:420px){
+ [data-liangxiang-market-dialog]{height:min(690px,calc(100dvh - 24px));padding:9px 10px 6px}
+ .liangxiang-market-header{height:132px}
+ .liangxiang-market-wallet{grid-column:1/-1}
+ .liangxiang-market-header .liangxiang-market-motion{grid-column:1/3;justify-self:start}
+ .liangxiang-market-stage-tabs .liangxiang-market-button-face{flex-direction:column;gap:0;line-height:13px}
+ .liangxiang-market-stage,.liangxiang-market-batch{height:146px}
+ .liangxiang-market-order{grid-template-columns:minmax(124px,1fr) minmax(105px,1fr);grid-template-rows:34px 34px;gap:5px;height:73px}
+ .liangxiang-market-order>.liangxiang-market-primary{grid-column:1/-1}
+ .liangxiang-market-amount{padding:0 6px;gap:4px}
+ .liangxiang-market-ticket-footer{height:31px;margin-top:3px}
+ .liangxiang-market-position{max-height:31px}
+ .liangxiang-market-chart-quotes b{font-size:11px}
+ .liangxiang-market-footer{gap:4px;font-size:11px}
+ [data-liangxiang-market-dialog] .liangxiang-market-footer>button{padding:3px 2px}
 }
 @media(prefers-reduced-motion:reduce){
-  [data-liangxiang-market-dialog] *,[data-liangxiang-market-dialog] *::before,[data-liangxiang-market-dialog] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
-}
-@media(max-height:680px),(max-width:580px) and (max-height:800px){
-  .liangxiang-market-chart{flex-shrink:0}
-}
-@media(max-width:380px){
-  .liangxiang-market-header{height:162px;align-content:space-between}
-  .liangxiang-market-wallet{flex-basis:100%;margin-left:0;justify-content:flex-start}
-  .liangxiang-market-direction{min-width:124px}
-  [data-liangxiang-market-dialog] .liangxiang-market-direction button{min-width:60px}
-  .liangxiang-market-amount input{max-width:62px}
+ [data-liangxiang-market-dialog] *,[data-liangxiang-market-dialog] *::before,[data-liangxiang-market-dialog] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }
 `

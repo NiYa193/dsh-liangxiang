@@ -14,27 +14,27 @@ export interface VolumeBubble {
   radius: number
 }
 
-/** Completed five-minute closes live at the bucket end; a forming close is never drawn in the future. */
-export function marketTideSegments(candles: readonly MarketCandle[], observedAt: number): TideSample[][] {
+/** Completed closes live at the real bucket end; a forming close is never drawn in the future. */
+export function marketTideSegments(candles: readonly MarketCandle[], observedAt: number, sourceIntervalMs: number = MARKET_CANDLE_INTERVAL_MS): TideSample[][] {
   const result: TideSample[][] = []
   let current: TideSample[] = [], previousAt: number | null = null
   const flush = (): void => { if (current.length) result.push(current); current = [] }
   for (const candle of candles) {
     if (candle.at > observedAt) break
     if (candle.close === null) { flush(); previousAt = null; continue }
-    if (previousAt !== null && candle.at !== previousAt + MARKET_CANDLE_INTERVAL_MS) flush()
-    current.push({ at: Math.min(candle.at + MARKET_CANDLE_INTERVAL_MS, observedAt), ratio: candle.close })
+    if (previousAt !== null && candle.at !== previousAt + sourceIntervalMs) flush()
+    current.push({ at: Math.min(candle.at + sourceIntervalMs, observedAt), ratio: candle.close })
     previousAt = candle.at
   }
   flush()
   return result
 }
 
-export function marketTideGaps(candles: readonly MarketCandle[]): TideGap[] {
+export function marketTideGaps(candles: readonly MarketCandle[], sourceIntervalMs: number = MARKET_CANDLE_INTERVAL_MS): TideGap[] {
   const gaps: TideGap[] = []
   for (let i = 0; i < candles.length; i++) {
     const candle = candles[i]!, previous = candles[i - 1]
-    if (previous && candle.at > previous.at + MARKET_CANDLE_INTERVAL_MS) gaps.push({ from: previous.at + MARKET_CANDLE_INTERVAL_MS, until: candle.at })
+    if (previous && candle.at > previous.at + sourceIntervalMs) gaps.push({ from: previous.at + sourceIntervalMs, until: candle.at })
   }
   return gaps
 }
@@ -83,15 +83,15 @@ export function marketTidePath(samples: readonly TideSample[], project: (sample:
 }
 
 /** At most 48 half-hour bubbles per day, sourced from accepted community volume only. */
-export function marketVolumeBubbles(candles: readonly MarketCandle[]): VolumeBubble[] {
-  const windowMs = 6 * MARKET_CANDLE_INTERVAL_MS
+export function marketVolumeBubbles(candles: readonly MarketCandle[], sourceIntervalMs: number = MARKET_CANDLE_INTERVAL_MS): VolumeBubble[] {
+  const windowMs = 30 * 60_000
   const groups = new Map<number, Omit<VolumeBubble, 'radius'>>()
   for (let i = 0; i < candles.length; i++) {
     const candle = candles[i]!
     if (candle.volume <= 0 || candle.close === null) continue
     const previous = candles[i - 1]
     let up: bigint | null = null, down: bigint | null = null
-    if (previous && previous.at + MARKET_CANDLE_INTERVAL_MS === candle.at) {
+    if (previous && previous.at + sourceIntervalMs === candle.at) {
       const u = BigInt(candle.up_votes) - BigInt(previous.up_votes), d = BigInt(candle.down_votes) - BigInt(previous.down_votes)
       if (u >= 0n && d >= 0n && u + d === BigInt(candle.volume)) { up = u; down = d }
     }

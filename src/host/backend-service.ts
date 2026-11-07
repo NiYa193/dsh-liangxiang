@@ -43,7 +43,7 @@ import type { LiangHostService, VoteOutcome } from './service.ts'
 import { UsageProjection, type UsageProjectionSink } from './usage-projection.ts'
 import type { DailyUsageRecord, SessionUsageWatermark } from './usage-ledger.ts'
 import { parseV1SnapshotResponse } from '../shared/backend-v1.ts'
-import type { MarketCandlesResponse, MarketHistoryResponse, MarketPositionRequest, MarketPositionResponse, MarketState, MarketStreamEvent, MarketWallet } from '../shared/market-v1.ts'
+import { MARKET_LEGACY_CANDLE_INTERVAL_MS, type MarketCandlesResponse, type MarketHistoryResponse, type MarketPositionRequest, type MarketPositionResponse, type MarketState, type MarketStreamEvent, type MarketWallet } from '../shared/market-v1.ts'
 import type { MarketCandlesQuery, MarketHistoryQuery } from './market-query.ts'
 
 const CLAIM_DEBOUNCE_MS = 1_000
@@ -614,12 +614,14 @@ export class BackendLiangService implements LiangHostService {
     const currentPoint = this.marketState?.current_point
     const newerPoint = currentPoint !== null && currentPoint !== undefined && currentPoint.case_id === state.current_point?.case_id
       && currentPoint.sequence > state.current_point.sequence ? currentPoint : state.current_point
-    const previousCandle = this.marketState?.market?.case_id === state.market?.case_id ? this.marketState?.current_candle : undefined
+    const incomingInterval = state.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS
+    const previousCandle = this.marketState?.market?.case_id === state.market?.case_id
+      && (this.marketState?.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) === incomingInterval ? this.marketState?.current_candle : undefined
     const incomingCandle = state.current_candle
     const candle = previousCandle !== undefined && (incomingCandle === undefined || previousCandle.at > incomingCandle.at
       || (previousCandle.at === incomingCandle.at && previousCandle.volume > incomingCandle.volume)) ? previousCandle : incomingCandle
     this.marketState = { ...state, current_point: newerPoint,
-      ...(candle === undefined ? {} : { current_candle: candle }),
+      ...(candle === undefined ? {} : { current_candle: candle, candle_interval_ms: incomingInterval }),
       wallet: wallet !== undefined && (holdWallet || wallet.version > state.wallet.version) ? wallet : state.wallet }
     if (!holdWallet) this.adoptWallet(this.marketState.wallet)
     this.bump()
@@ -674,7 +676,8 @@ export class BackendLiangService implements LiangHostService {
     if (event.market_state !== undefined) this.adoptMarketState(event.market_state)
     if (event.candle !== undefined && this.marketState !== null
       && this.marketState.market?.case_id === (response?.active_case.id ?? this.activeCase?.id)) {
-      this.marketState = { ...this.marketState, current_candle: event.candle }
+      this.marketState = { ...this.marketState, server_time: event.server_time, current_candle: event.candle,
+        candle_interval_ms: event.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS }
       this.bump()
     }
   }

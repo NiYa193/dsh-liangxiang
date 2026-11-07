@@ -81,7 +81,7 @@ import { DUMP_ARMED_CHARGE } from './vote-charge.ts'
 import { BADGE_SIZE, PANEL_GAP, PANEL_WIDTH, type PanelPlacement } from './badge-position.ts'
 import { duration, radius } from './tokens.ts'
 import { HeavenHearIcon } from './HeavenHearIcon.tsx'
-import { ArchiveDeskIcon, BarsGlyphIcon, HomepageIcon, ModeSwitchIcon, VersionSealIcon } from './UtilityIcons.tsx'
+import { ArchiveDeskIcon, BarsGlyphIcon, HomepageIcon, MarketMiniatureIcon, ModeSwitchIcon, VersionSealIcon } from './UtilityIcons.tsx'
 import { ThreeRealmsIncenseIcon, FivePhasePilgrimIcon } from './SocialStatIcons.tsx'
 import { LiangAvatar } from './LiangAvatar.tsx'
 import { LiangciIcon } from './LiangciIcon.tsx'
@@ -567,13 +567,14 @@ const PANEL_CSS = `
 }
 [data-liangxiang-utility-action] {
   min-width: 0;
-  min-height: 62px;
+  min-height: 48px;
+  height: 48px;
   display: grid;
-  grid-template-columns: 24px 1fr;
+  grid-template-columns: 20px minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-items: center;
-  column-gap: 7px;
-  padding: 8px;
+  column-gap: 6px;
+  padding: 6px;
   border: 1px solid ${color.border};
   border-radius: 9px;
   background: ${color.bgSubtle};
@@ -586,6 +587,53 @@ const PANEL_CSS = `
   grid-row: 1 / 3;
   color: ${color.ritualEmber};
 }
+[data-liangxiang-utility-action="reconcile"] { height: auto; }
+[data-liangxiang-utility-action] > strong,
+[data-liangxiang-utility-action] > span:not([data-liangxiang-version-label]) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-liangxiang-utility-market] {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 10px;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 9px;
+  width: 100%;
+  min-height: 58px;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, ${color.ritualGold} 46%, ${color.border});
+  border-radius: 10px;
+  background: linear-gradient(180deg, color-mix(in srgb, ${color.ritualGold} 8%, ${color.bgLayer}), ${color.bgSubtle});
+  box-shadow: inset 0 1px 0 color-mix(in srgb, ${color.ritualGold} 13%, transparent), 0 2px 0 color-mix(in srgb, ${color.ritualGold} 14%, ${color.border});
+  color: ${color.textPrimary};
+  font: 11px ${font.family};
+  text-align: left;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+[data-liangxiang-utility-market] > svg {
+  grid-row: 1 / 3;
+  color: ${color.ritualEmberText};
+}
+[data-liangxiang-utility-market] > strong { grid-column: 2; grid-row: 1; font-size: 12px; font-weight: 600; }
+[data-liangxiang-utility-market-caption] { grid-column: 2; grid-row: 2; color: ${color.textSecondary}; font-size: 10px; white-space: nowrap; }
+[data-liangxiang-utility-market-arrow] { grid-column: 3; grid-row: 1 / 3; color: ${color.ritualEmberText}; font-size: 20px; }
+[data-liangxiang-utility-market]:hover,
+[data-liangxiang-utility-market]:focus-visible {
+  border-color: ${color.ritualEmberText};
+  box-shadow: inset 0 1px 0 color-mix(in srgb, ${color.ritualGold} 20%, transparent), 0 3px 0 color-mix(in srgb, ${color.ritualGold} 22%, ${color.border});
+  transform: translateY(-1px);
+}
+[data-liangxiang-utility-market]:active { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08); }
+.liangxiang-utility-mini-candle { transform-box: fill-box; transform-origin: center; transition: transform 150ms ease; }
+[data-liangxiang-utility-market]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even) { transform: translateY(-1px); }
+[data-liangxiang-utility-market][data-motion="false"],
+[data-liangxiang-utility-market][data-motion="false"] .liangxiang-utility-mini-candle { transform: none; transition: none; }
 [data-liangxiang-version-label] {
   grid-column: 2;
   grid-row: 1 / 3;
@@ -1697,15 +1745,16 @@ export function Panel(props: PanelProps): ReactElement {
                   <strong style={{ fontSize: '12px', letterSpacing: '1px', color: color.textPrimary }}>{UTILITY_LABEL}</strong>
                   <span style={{ fontSize: '9px', color: color.textSecondary }}>一卷在手 · 模式分明</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '7px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                   <button
                     type="button"
                     data-liangxiang-utility-action="home"
+                    aria-label={`${UTILITY_HOME_LABEL} ${UTILITY_HOME_HINT}`}
                     onClick={onOpenHomepage}
                   >
                     <HomepageIcon />
                     <strong style={{ fontSize: '11px' }}>{UTILITY_HOME_LABEL}</strong>
-                    <span style={{ fontSize: '9px', color: color.textSecondary }}>{UTILITY_HOME_HINT}</span>
+                    <span style={{ fontSize: '10px', color: color.textSecondary }}>liang.today</span>
                   </button>
                   <div data-liangxiang-day-end-control="" style={{ position: 'relative', minWidth: 0 }}>
                     <button
@@ -1746,7 +1795,7 @@ export function Panel(props: PanelProps): ReactElement {
                   >
                     <ModeSwitchIcon online={targetMode === 'online'} />
                     <strong style={{ fontSize: '11px' }}>{modeChanging ? '切换中…' : modeLabel}</strong>
-                    <span style={{ fontSize: '9px', color: color.textSecondary }}>{modeHint}</span>
+                    <span style={{ fontSize: '10px', color: color.textSecondary }}>{targetMode === 'online' ? '加入社区玩法' : '本机独立玩法'}</span>
                   </button>
                   <button
                     type="button"
@@ -1761,9 +1810,10 @@ export function Panel(props: PanelProps): ReactElement {
                     </span>
                   </button>
                 </div>
-                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" onClick={onOpenMarket}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: '8px', padding: '7px 9px', borderRadius: '7px', border: `1px solid color-mix(in srgb, ${color.brand} 24%, ${color.border})`, background: `color-mix(in srgb, ${color.brand} 5%, ${color.bgLayer})`, color: color.brand, font: `11px ${font.family}`, cursor: 'pointer' }}>
-                  <span>≈ 香火交易</span><span style={{ fontSize: '9px' }}>三次定线 · 一起揭晓 ↗</span>
+                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" data-motion={!reducedMotion} onClick={onOpenMarket} aria-label="香火交易：走势与三次入场">
+                  <MarketMiniatureIcon />
+                  <strong>香火交易</strong><span data-liangxiang-utility-market-caption="">走势、仓位一处看</span>
+                  <span data-liangxiang-utility-market-arrow="" aria-hidden="true">›</span>
                 </button>}
                 {!onOpenMarket && <button
                   type="button"

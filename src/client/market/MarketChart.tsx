@@ -6,7 +6,7 @@ import { marketTideGaps, marketTidePath, marketTideSegments } from './tide-model
 import { marketDepthBands } from './pond-model.ts'
 import { createBusinessDateProvider } from '../../shared/business-date.ts'
 import { marketDayDomain, marketTimeWindow } from './time-window.ts'
-import { marketDisplayCandles, type MarketDisplayCandle } from './candle-view.ts'
+import { marketAutomaticInterval, marketDisplayCandles, marketViewportCandles, type MarketDisplayCandle } from './candle-view.ts'
 
 export const MARKET_WHALE_PATH = `/liangxiang/api/market/art.webp?v=${encodeURIComponent(PLUGIN_VERSION)}`
 const WIDTH = 760, HEIGHT = 272, LEFT = 12, RIGHT = 64, TOP = 24
@@ -22,19 +22,19 @@ const MODE_KEY = 'liangxiang.market.chart-mode.v1'
 interface ChartGeometry { width: number, bottom: number }
 interface ChartViewport { scope: string, from: number, until: number }
 const geometry = (width = WIDTH, bottom = HEIGHT - 58): ChartGeometry => ({ width, bottom })
-const midpoint = (candle: MarketCandle, observedAt: number): number => Math.min((candle.at + ('until' in candle ? (candle as MarketDisplayCandle).until : candle.at + MARKET_CANDLE_INTERVAL_MS)) / 2, observedAt)
+const midpoint = (candle: MarketCandle, observedAt: number, sourceIntervalMs: number = MARKET_CANDLE_INTERVAL_MS): number => Math.min((candle.at + ('until' in candle ? (candle as MarketDisplayCandle).until : candle.at + sourceIntervalMs)) / 2, observedAt)
 
-export const CandleLayer = memo(function CandleLayer({ candles, from, until, min, max, observedAt, layout = geometry() }: {
-  candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number, layout?: ChartGeometry,
+export const CandleLayer = memo(function CandleLayer({ candles, from, until, min, max, observedAt, layout = geometry(), sourceIntervalMs = MARKET_CANDLE_INTERVAL_MS }: {
+  candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number, layout?: ChartGeometry, sourceIntervalMs?: number,
 }): ReactElement {
   const plot = layout.width - LEFT - RIGHT
   const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * plot
   const y = (ratio: number): number => TOP + (max - ratio) / (max - min) * (layout.bottom - TOP)
   return <g>{candles.map(candle => {
     if (candle.open === null || candle.close === null || candle.high === null || candle.low === null) return null
-    const span = 'until' in candle ? (candle as MarketDisplayCandle).until - candle.at : MARKET_CANDLE_INTERVAL_MS
+    const span = 'until' in candle ? (candle as MarketDisplayCandle).until - candle.at : sourceIntervalMs
     const width = Math.max(1.5, Math.min(14, span * .68 / Math.max(1, until - from) * plot))
-    const cx = x(midpoint(candle, observedAt)), rising = candle.close >= candle.open
+    const cx = x(midpoint(candle, observedAt, sourceIntervalMs)), rising = candle.close >= candle.open
     const color = rising ? VERMILION : SLATE
     return <g key={candle.at} data-liangxiang-market-candle="" data-direction={rising ? 'up' : 'down'}>
       <line x1={cx} x2={cx} y1={y(candle.high)} y2={y(candle.low)} stroke={color} strokeWidth="1.2" />
@@ -43,10 +43,10 @@ export const CandleLayer = memo(function CandleLayer({ candles, from, until, min
   })}</g>
 })
 
-const TideLayer = memo(function TideLayer({ candles, from, until, min, max, observedAt, animated, layout }: {
-  candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number, animated: boolean, layout: ChartGeometry,
+const TideLayer = memo(function TideLayer({ candles, from, until, min, max, observedAt, animated, layout, sourceIntervalMs }: {
+  candles: MarketCandle[], from: number, until: number, min: number, max: number, observedAt: number, animated: boolean, layout: ChartGeometry, sourceIntervalMs: number,
 }): ReactElement {
-  const segments = useMemo(() => marketTideSegments(candles, observedAt), [candles, observedAt])
+  const segments = useMemo(() => marketTideSegments(candles, observedAt, sourceIntervalMs), [candles, observedAt, sourceIntervalMs])
   const x = (at: number): number => LEFT + (at - from) / Math.max(1, until - from) * (layout.width - LEFT - RIGHT)
   const y = (ratio: number): number => TOP + (max - ratio) / (max - min) * (layout.bottom - TOP)
   return <g>{segments.map((segment, index) => {
@@ -68,8 +68,8 @@ function initialMode(): 'tide' | 'candles' {
   try { return typeof window !== 'undefined' && window.localStorage.getItem(MODE_KEY) === 'tide' ? 'tide' : 'candles' } catch { return 'candles' }
 }
 
-export const MarketChart = memo(function MarketChart({ state, candles, animated, recent = false, selectedBatch, liangziPolicyId, onInteraction, onRecentChange }: {
-  state: MarketState, candles: MarketCandle[], animated: boolean, recent?: boolean, selectedBatch?: MarketBatchId, liangziPolicyId?: string, onInteraction?: () => void, onRecentChange?: (recent: boolean) => void,
+export const MarketChart = memo(function MarketChart({ state, candles, animated, recent = false, selectedBatch, liangziPolicyId, onInteraction, onRecentChange, candlesIntervalMs = MARKET_CANDLE_INTERVAL_MS }: {
+  state: MarketState, candles: MarketCandle[], animated: boolean, recent?: boolean, selectedBatch?: MarketBatchId, liangziPolicyId?: string, onInteraction?: (action?: 'chart' | 'range' | 'interval') => void, onRecentChange?: (recent: boolean) => void, candlesIntervalMs?: number,
 }): ReactElement {
   const [hover, setHover] = useState<number | null>(null)
   const [pinned, setPinned] = useState<number | null>(null)
@@ -77,9 +77,11 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const [special, setSpecial] = useState<string | null>(null)
   const [size, setSize] = useState({ width: WIDTH, height: HEIGHT })
   const [viewport, setViewport] = useState<ChartViewport | null>(null)
+  const [intervalChoice, setIntervalChoice] = useState('auto')
   const box = useRef<HTMLDivElement>(null)
   const drag = useRef<{ x: number, from: number, until: number, moved: boolean } | null>(null)
   const skipClick = useRef(false)
+  const wheel = useRef<((event: globalThis.WheelEvent) => void) | null>(null)
   useEffect(() => {
     const element = box.current
     if (!element) return
@@ -91,7 +93,9 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(element)
-    return () => observer.disconnect()
+    const onWheel = (event: globalThis.WheelEvent): void => wheel.current?.(event)
+    element.addEventListener('wheel', onWheel, { passive: false })
+    return () => { observer.disconnect(); element.removeEventListener('wheel', onWheel) }
   }, [])
   const market = state.market
   const timezone = market?.timezone ?? 'UTC'
@@ -107,11 +111,12 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     const at = from + (until - from) * index / 4
     return { at, label: at === day.until ? '24:00' : marketTime(at, timezone) }
   })
-  const interval = until - from <= 6 * 3_600_000 ? MARKET_CANDLE_INTERVAL_MS : size.width < 540 ? 1_800_000 : 900_000
-  const display = useMemo(() => marketDisplayCandles(candles.filter(c => c.at <= observedUntil), interval, day.from), [candles, observedUntil, interval, day.from])
-  const visible = useMemo(() => display.filter(c => c.until > from && c.at < until), [display, from, until])
-  const rawVisible = useMemo(() => candles.filter(c => c.at + MARKET_CANDLE_INTERVAL_MS > from && c.at < until && c.at <= observedUntil), [candles, from, until, observedUntil])
-  const gaps = useMemo(() => marketTideGaps(candles).filter(gap => gap.until > from && gap.from < observedUntil).map(gap => ({ from: Math.max(from, gap.from), until: Math.min(observedUntil, gap.until) })), [candles, from, observedUntil])
+  const automaticInterval = marketAutomaticInterval(until - from, size.width - LEFT - RIGHT, candlesIntervalMs)
+  const interval = intervalChoice === 'auto' ? automaticInterval : Math.max(candlesIntervalMs, Number(intervalChoice))
+  const display = useMemo(() => marketDisplayCandles(candles.filter(c => c.at <= observedUntil), interval, day.from, candlesIntervalMs), [candles, observedUntil, interval, day.from, candlesIntervalMs])
+  const visible = useMemo(() => marketViewportCandles(display, from, until, observedUntil), [display, from, until, observedUntil])
+  const rawVisible = useMemo(() => candles.filter(c => c.at + candlesIntervalMs > from && c.at < until && c.at <= observedUntil), [candles, from, until, observedUntil, candlesIntervalMs])
+  const gaps = useMemo(() => marketTideGaps(candles, candlesIntervalMs).filter(gap => gap.until > from && gap.from < observedUntil).map(gap => ({ from: Math.max(from, gap.from), until: Math.min(observedUntil, gap.until) })), [candles, from, observedUntil, candlesIntervalMs])
   const points = useMemo(() => [market?.close_point ?? state.current_point, ...(market?.batches.map(batch => batch.reference) ?? [])].filter(point => point && point.at >= from && point.at <= until), [market, state.current_point, from, until])
   const range = useMemo(() => chartRange(mode === 'tide' ? rawVisible : visible, points, mode === 'tide' ? 'close' : 'ohlc'), [rawVisible, visible, points, mode])
   const layout = geometry(size.width, size.height - 58)
@@ -142,6 +147,16 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     changeWindow(from + (until - from - span) / 2, span)
     onInteraction?.()
   }
+  const resetWindow = (): void => { setViewport(null); setPinned(null); setHover(null); setSpecial(null); onInteraction?.() }
+  wheel.current = event => {
+    if (Math.abs(event.deltaY) < .01 || !box.current) return
+    event.preventDefault()
+    const bounds = box.current.getBoundingClientRect()
+    const anchor = Math.max(0, Math.min(1, ((event.clientX - bounds.left) / bounds.width * size.width - LEFT) / plotWidth))
+    const span = (until - from) * Math.exp(Math.max(-80, Math.min(80, event.deltaY)) * .003)
+    changeWindow(from + ((until - from) - span) * anchor, span)
+    onInteraction?.()
+  }
   const hit = (event: PointerEvent<SVGSVGElement>): number | null => {
     const bounds = event.currentTarget.getBoundingClientRect()
     const at = from + ((event.clientX - bounds.left) / bounds.width * size.width - LEFT) / plotWidth * (until - from)
@@ -166,10 +181,11 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   }
   const key = (event: KeyboardEvent<SVGSVGElement>): void => {
     if (event.key === 'Escape' && pinned !== null) { event.preventDefault(); event.stopPropagation(); setPinned(null); setHover(null); setSpecial(null); return }
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', '+', '-', '='].includes(event.key)) return
+    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', '+', '-', '=', '0'].includes(event.key)) return
     event.preventDefault(); event.stopPropagation()
     if (event.key === '+' || event.key === '=') { zoom(.5); return }
     if (event.key === '-') { zoom(2); return }
+    if (event.key === '0') { resetWindow(); return }
     if (!visible.length) return
     const index = Math.max(0, visible.findIndex(c => c.at === (selectedAt ?? selected?.at)))
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? visible.length - 1 : Math.max(0, Math.min(visible.length - 1, index + (event.key === 'ArrowLeft' ? -1 : 1)))
@@ -183,7 +199,13 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     <div className="liangxiang-market-chart-toolbar">
       <div role="group" aria-label="走势画法"><button type="button" aria-pressed={mode === 'candles'} data-selected={mode === 'candles'} onClick={() => selectMode('candles')}>K 线</button><button type="button" aria-pressed={mode === 'tide'} data-selected={mode === 'tide'} onClick={() => selectMode('tide')}>潮汐</button></div>
       <div className="liangxiang-market-chart-zoom" role="group" aria-label="图表缩放"><button type="button" aria-label="缩小走势" disabled={until - from >= day.until - day.from} onClick={() => zoom(2)}>−</button><button type="button" aria-label="放大走势" disabled={until - from <= 1_800_000} onClick={() => zoom(.5)}>＋</button></div>
-      <div className="liangxiang-market-chart-range" role="group" aria-label="走势时间范围">{onRecentChange && <><button type="button" aria-pressed={!recent} data-selected={!recent} onClick={() => { setViewport(null); onRecentChange(false); onInteraction?.() }}>今日</button><button type="button" aria-pressed={recent} data-selected={recent} onClick={() => { setViewport(null); onRecentChange(true); onInteraction?.() }}>近4时</button></>}<span className="liangxiang-market-chart-interval" style={{ display: 'inline-block', minWidth: '48px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{interval / 60_000}分钟</span></div>
+      <div className="liangxiang-market-chart-range" role="group" aria-label="走势时间范围">{onRecentChange && <><button type="button" aria-pressed={!recent} data-selected={!recent} onClick={() => { setViewport(null); onRecentChange(false); onInteraction?.('range') }}>今日</button><button type="button" aria-pressed={recent} data-selected={recent} onClick={() => { setViewport(null); onRecentChange(true); onInteraction?.('range') }}>近4时</button></>}
+        <select className="liangxiang-market-chart-interval" aria-label="烛线间隔" value={intervalChoice === 'auto' ? 'auto' : String(interval)} style={{ width: '88px', minWidth: '88px', fontVariantNumeric: 'tabular-nums' }}
+          title={`自动随缩放变化；这段记录最细为${candlesIntervalMs / 60_000}分钟`} onChange={event => { setIntervalChoice(event.target.value); setPinned(null); setHover(null); setSpecial(null); onInteraction?.('interval') }}>
+          <option value="auto">自动·{automaticInterval / 60_000}分钟</option>
+          {[1, 5, 15, 30].map(minutes => <option key={minutes} value={minutes * 60_000} disabled={minutes * 60_000 < candlesIntervalMs}>{minutes}分钟</option>)}
+        </select>
+      </div>
     </div>
     <div className="liangxiang-market-chart-quotes" aria-label="所选行情开高低收">
       {(['open', 'high', 'low', 'close'] as const).map((key, i) => {
@@ -195,12 +217,13 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
       <div className="liangxiang-market-chart-quote-time"><span>{pinned === null ? '选中时刻' : '已固定'}</span><b>{selected ? marketTime(selected.at, timezone) : '--:--'}</b></div>
     </div>
     <div className="liangxiang-market-chart-scroll" ref={box}>
-      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" tabIndex={0} data-liangxiang-market-from={from} data-liangxiang-market-until={until} data-liangxiang-market-interval={interval} data-liangxiang-market-pinned={pinned !== null}
+      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" tabIndex={0} data-liangxiang-market-from={from} data-liangxiang-market-until={until} data-liangxiang-market-interval={interval} data-liangxiang-market-source-interval={candlesIntervalMs} data-liangxiang-market-pinned={pinned !== null}
         style={{ width: '100%', height: '100%', display: 'block', overflow: 'hidden', touchAction: 'pan-y' }}
-        aria-label={`今日梁位${mode === 'tide' ? '潮汐' : 'K线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方行情，加减号缩放，拖动平移，点击固定，Escape解除固定；缺口不连线。${readout}`}
+        aria-label={`今日梁位${mode === 'tide' ? '潮汐' : 'K线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方行情，加减号或滚轮缩放，拖动平移，0或双击复位，点击固定，Escape解除固定；缺口不连线。${readout}`}
         onPointerMove={move} onPointerDown={event => { if (event.button !== 0) return; skipClick.current = false; drag.current = { x: event.clientX, from, until, moved: false }; event.currentTarget.setPointerCapture(event.pointerId) }}
         onPointerUp={event => { if (drag.current?.moved) { skipClick.current = true; onInteraction?.() } drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
         onPointerCancel={() => { drag.current = null; skipClick.current = true }}
+        onDoubleClick={resetWindow}
         onClick={event => { if (skipClick.current) { skipClick.current = false; return } const at = hit(event as unknown as PointerEvent<SVGSVGElement>); if (at !== null) { setPinned(old => old === at ? null : at); setHover(at); onInteraction?.() } }}
         onPointerLeave={() => { if (!drag.current && pinned === null) { setHover(null); setSpecial(null) } }} onKeyDown={key}>
         <defs>
@@ -222,7 +245,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
           ].filter(phase => phase.until > from && phase.from < until).map(phase => <rect key={`${phase.kind}-${phase.from}`} data-liangxiang-market-phase={phase.kind} role="img" aria-label={`${phase.label}：${marketTime(phase.from, timezone)}—${phase.until === day.until ? '24:00' : marketTime(phase.until, timezone)}`} x={x(Math.max(from, phase.from))} y={TOP} width={Math.max(0, x(Math.min(until, phase.until)) - x(Math.max(from, phase.from)))} height={plotHeight} fill={phase.kind === 'locked' || phase.kind === 'closing' ? GOLD : INK} fillOpacity={phase.kind === 'locked' ? '.065' : phase.kind === 'open' ? '.035' : '.018'} />)}
           {futureFrom !== null && <g data-liangxiang-market-future="" role="img" aria-label="待打梁：未来时段，不绘制走势"><rect x={x(futureFrom)} y={TOP} width={Math.max(0, x(until) - x(futureFrom))} height={plotHeight} fill={PAPER} fillOpacity=".12" />{x(until) - x(futureFrom) >= 68 && <text x={(x(futureFrom) + x(until)) / 2} y={TOP + plotHeight / 2} fill={LIGHT_INK} fontSize="11" textAnchor="middle">待打梁</text>}</g>}
           {gaps.map(gap => <g key={gap.from} role="img" aria-label="此段未记录，走势不连线"><rect x={x(gap.from)} y={TOP} width={Math.max(0, x(gap.until) - x(gap.from))} height={plotHeight} fill="url(#liangxiang-market-gap-fill)" data-liangxiang-market-gap="" />{x(gap.until) - x(gap.from) >= 45 && <text x={(x(gap.from) + x(gap.until)) / 2} y={TOP + 18} textAnchor="middle" fill={LIGHT_INK} fontSize="11">未记录</text>}</g>)}
-          {mode === 'tide' ? <TideLayer candles={rawVisible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} animated={animated} layout={layout} /> : <CandleLayer candles={visible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} layout={layout} />}
+          {mode === 'tide' ? <TideLayer candles={rawVisible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} animated={animated} layout={layout} sourceIntervalMs={candlesIntervalMs} /> : <CandleLayer candles={visible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} layout={layout} sourceIntervalMs={candlesIntervalMs} />}
           {market?.batches.map(batch => {
             if (batch.reference_at < from || batch.reference_at > until) return null
             const reference = pointRatio(batch.reference), cx = x(batch.reference_at)

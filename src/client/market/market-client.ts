@@ -1,6 +1,7 @@
 import {
   parseMarketState, parseMarketCandlesResponse, parseMarketHistoryResponse, parseMarketPositionResponse,
-  type MarketState, type MarketCandle, type MarketReceipt, type MarketPositionRequest,
+  MARKET_CANDLES_DAY_MAX, MARKET_CANDLES_PAGE_MAX, MARKET_LEGACY_CANDLE_INTERVAL_MS,
+  type MarketState, type MarketCandle, type MarketCandleIntervalMs, type MarketReceipt, type MarketPositionRequest,
 } from '../../shared/market-v1.ts'
 import { boundedMarketCache, browserMarketStorage, emptyMarketCache, readMarketCache, writeMarketCache, writeMarketPending, type MarketCache, type MarketStorage } from './market-cache.ts'
 
@@ -17,6 +18,7 @@ export interface MarketView {
   state: MarketState | null
   status: 'loading' | 'live' | 'offline' | 'unsupported'
   candles: MarketCandle[]
+  candleIntervalMs?: MarketCandleIntervalMs
   receipts: MarketReceipt[]
   nextCursor: string | null
   pending: MarketPositionRequest | null
@@ -73,9 +75,9 @@ export function browserMarketTransport(): MarketTransport {
 }
 
 export function createMarketSession(transport: MarketTransport = browserMarketTransport(), storage: MarketStorage | null = browserMarketStorage()): MarketSession {
-  let view: MarketView = { state: null, status: 'loading', candles: [], receipts: [], nextCursor: null, pending: null, sending: false, historyLoading: false, error: null, chartError: null, scope: '' }
+  let view: MarketView = { state: null, status: 'loading', candles: [], candleIntervalMs: MARKET_LEGACY_CANDLE_INTERVAL_MS, receipts: [], nextCursor: null, pending: null, sending: false, historyLoading: false, error: null, chartError: null, scope: '' }
   let cache: MarketCache = emptyMarketCache('')
-  let disposed = false, source: { close(): void } | null = null, chartKey = '', chartLoading = false, lastCacheSave = 0
+  let disposed = false, source: { close(): void } | null = null, chartKey = '', chartLoading = false, chartQueued = false, lastCacheSave = 0
   const listeners = new Set<() => void>()
   const update = (patch: Partial<MarketView>): void => {
     if (disposed) return
@@ -87,30 +89,73 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
     cache = boundedMarketCache(cache)
     writeMarketCache(storage, cache); lastCacheSave = Date.now()
   }
-  const withCandle = (candles: MarketCandle[], candle: MarketCandle): MarketCandle[] => [...candles.filter(c => c.at !== candle.at), candle].sort((a, b) => a.at - b.at).slice(-288)
+  const withCandle = (candles: MarketCandle[], candle: MarketCandle): MarketCandle[] => {
+    const old = candles.find(c => c.at === candle.at)
+    if (old && (old.volume > candle.volume || old.up_votes + old.down_votes > candle.up_votes + candle.down_votes)) return candles
+    return [...candles.filter(c => c.at !== candle.at), candle].sort((a, b) => a.at - b.at).slice(-MARKET_CANDLES_DAY_MAX)
+  }
   const adoptScope = (scope: string): void => {
     if (!scope || scope === view.scope) return
     cache = readMarketCache(storage, scope)
-    update({ scope, receipts: cache.receipts, pending: cache.pending, candles: [], nextCursor: null })
+    update({ scope, receipts: cache.receipts, pending: cache.pending, candles: [], candleIntervalMs: MARKET_LEGACY_CANDLE_INTERVAL_MS, nextCursor: null })
     chartKey = ''
   }
   const loadCandles = async (): Promise<void> => {
     const market = view.state?.market
-    if (!market || chartLoading) return
+    if (!market) return
+    if (chartLoading) { chartQueued = true; return }
     chartLoading = true
+    const scope = view.scope
+    const current = (): boolean => !disposed && view.scope === scope && view.state?.market?.id === market.id
     try {
-      const sequenceAtRequest = view.state?.current_point?.sequence
-      const query = new URLSearchParams({ business_date: market.business_date, case_id: market.case_id, limit: '288' })
-      const response = await transport.request(`/candles?${query}`)
-      const data = parseMarketCandlesResponse(response.body)
-      if (disposed || view.state?.market?.case_id !== data.case_id) return
-      const live = view.state.current_candle
-      const candles = live && view.state.current_point?.sequence !== sequenceAtRequest ? withCandle(data.candles, live) : data.candles
-      cache.candles = [{ case_id: data.case_id, business_date: data.business_date, candles }, ...cache.candles.filter(day => day.case_id !== data.case_id)]
+      const cached = cache.candles.find(day => day.case_id === market.case_id)
+      const oldInterval = view.candleIntervalMs ?? MARKET_LEGACY_CANDLE_INTERVAL_MS
+      let base = cached?.complete && (cached.interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) === oldInterval ? cached.candles : []
+      // Only a complete HTTP traversal advances this cursor. Later SSE points
+      // may skip buckets during reconnect and must not move the repair window.
+      const confirmed = cached?.synced_through === undefined ? [] : base.filter(c => c.at <= cached.synced_through!)
+      let cursor = confirmed.length > 2 ? String(confirmed[confirmed.length - 3]!.at) : undefined
+      let rows: MarketCandle[] = [], interval: MarketCandleIntervalMs = oldInterval
+      const seen = new Set<string>()
+      let completed = false
+      for (let page = 0; page < Math.ceil(MARKET_CANDLES_DAY_MAX / MARKET_CANDLES_PAGE_MAX) + 1; page += 1) {
+        const query = new URLSearchParams({ business_date: market.business_date, case_id: market.case_id, limit: String(MARKET_CANDLES_PAGE_MAX) })
+        if (cursor !== undefined) query.set('cursor', cursor)
+        const response = await transport.request(`/candles?${query}`)
+        const data = parseMarketCandlesResponse(response.body)
+        if (!current()) return
+        if (response.scope && response.scope !== scope) throw new Error('candle identity changed')
+        if (data.case_id !== market.case_id || data.business_date !== market.business_date) throw new Error('candle case changed')
+        if (base.length > 0 && data.interval_ms !== oldInterval) {
+          base = []; rows = []; cursor = undefined; seen.clear(); continue
+        }
+        if (rows.length > 0 && interval !== data.interval_ms) throw new Error('candle grain changed during pagination')
+        interval = data.interval_ms
+        if (rows.length > 0 && data.candles.length > 0 && data.candles[0]!.at <= rows.at(-1)!.at) throw new Error('overlapping candle pages')
+        rows.push(...data.candles)
+        if (rows.length > MARKET_CANDLES_DAY_MAX) throw new Error('candle day exceeds bound')
+        if (data.next_cursor === null) { completed = true; break }
+        if (seen.has(data.next_cursor) || data.candles.length === 0) throw new Error('repeated candle cursor')
+        seen.add(data.next_cursor); cursor = data.next_cursor
+      }
+      if (!completed || !current()) throw new Error('incomplete candle history')
+      const merged = new Map(base.map(c => [c.at, c]))
+      const merge = (candle: MarketCandle): void => {
+        const old = merged.get(candle.at)
+        if (!old || (old.volume <= candle.volume && old.up_votes + old.down_votes <= candle.up_votes + candle.down_votes)) merged.set(candle.at, candle)
+      }
+      for (const row of rows) merge(row)
+      if ((view.candleIntervalMs ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) === interval) for (const observed of view.candles) merge(observed)
+      const live = view.state?.current_candle
+      if (live && (view.state?.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) === interval) merge(live)
+      const candles = [...merged.values()].sort((a, b) => a.at - b.at).slice(-MARKET_CANDLES_DAY_MAX)
+      const syncedThrough = rows.at(-1)?.at ?? (base.length > 0 ? cached?.synced_through : undefined)
+      cache.candles = [{ case_id: market.case_id, business_date: market.business_date, interval_ms: interval, complete: true,
+        ...(syncedThrough === undefined ? {} : { synced_through: syncedThrough }), candles }, ...cache.candles.filter(day => day.case_id !== market.case_id)]
       save()
-      update({ candles, chartError: null })
-    } catch { update({ chartError: '行情暂未更新，官方参考点仍有效。' }) }
-    finally { chartLoading = false }
+      update({ candles, candleIntervalMs: interval, chartError: null })
+    } catch { if (current()) update({ chartError: '行情暂未更新，官方参考点仍有效。' }) }
+    finally { chartLoading = false; if (chartQueued && !disposed) { chartQueued = false; void loadCandles() } }
   }
   const adopt = (state: MarketState, scope: string): void => {
     if (disposed) return
@@ -119,18 +164,23 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
     adoptScope(scope)
     const old = view.state
     const market = state.market
-    let candles = old?.market?.case_id !== market?.case_id ? [] : view.candles
+    const interval = state.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS
+    let candles = old?.market?.case_id !== market?.case_id || (view.candleIntervalMs ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) !== interval ? [] : view.candles
+    const cachedDay = market === null ? undefined : cache.candles.find(day => day.case_id === market.case_id)
+    if (candles.length === 0 && cachedDay && (cachedDay.interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) === interval) candles = cachedDay.candles
     if (state.current_candle) candles = withCandle(candles, state.current_candle)
-    update({ state, candles, status: 'live', error: view.pending ? '存在一笔未确认仓位，请核对原请求后再调整。' : null })
+    update({ state, candles, candleIntervalMs: interval, status: 'live', error: view.pending ? '存在一笔未确认仓位，请核对原请求后再调整。' : null })
     if (market) {
       if (state.current_candle) {
-        cache.candles = [{ case_id: market.case_id, business_date: market.business_date, candles }, ...cache.candles.filter(day => day.case_id !== market.case_id)]
+        const prior = cache.candles.find(day => day.case_id === market.case_id)
+        const sameInterval = (prior?.interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) === interval
+        cache.candles = [{ case_id: market.case_id, business_date: market.business_date, candles, interval_ms: interval,
+          complete: prior?.complete === true && sameInterval,
+          ...(sameInterval && prior?.synced_through !== undefined ? { synced_through: prior.synced_through } : {}) }, ...cache.candles.filter(day => day.case_id !== market.case_id)]
         save(false)
       }
-      const key = `${market.id}:${Math.floor(state.server_time / 300_000)}:${market.status}`
+      const key = `${market.id}:${interval}:${Math.floor(state.server_time / MARKET_LEGACY_CANDLE_INTERVAL_MS)}:${market.status}`
       if (chartKey !== key) {
-        const cached = cache.candles.find(day => day.case_id === market.case_id)
-        if (view.candles.length === 0 && cached) update({ candles: cached.candles })
         chartKey = key
         void loadCandles()
       }

@@ -1,12 +1,12 @@
 /** Server-owned cumulative wallet and three sealed pari-mutuel pools. */
 import { compareMarketRatios, distributeMarketPool, marketBusinessHour, validMarketReference } from '../domain/market.ts'
 import {
-  MARKET_CANDLE_INTERVAL_MS, MARKET_CANDLES_PAGE_MAX, MARKET_HISTORY_PAGE_DEFAULT,
+  MARKET_CANDLE_INTERVAL_MS, MARKET_LEGACY_CANDLE_INTERVAL_MS, MARKET_CANDLES_PAGE_MAX, MARKET_HISTORY_PAGE_DEFAULT,
   MARKET_HISTORY_PAGE_MAX, MARKET_RULE_VERSION,
   type DailyMarket, type MarketBatch, type MarketBatchId, type MarketCandlesResponse,
   type MarketHistoryResponse, type MarketPoint, type MarketPositionRequest,
   type MarketPositionResponse, type MarketReceipt, type MarketResult, type MarketSide,
-  type MarketState, type MarketWallet,
+  type MarketState, type MarketWallet, type MarketCandleIntervalMs,
 } from '../shared/market-v1.ts'
 import { businessDayEndsAt, createBusinessDateProvider } from '../shared/business-date.ts'
 import { WireError } from '../shared/wire.ts'
@@ -217,7 +217,7 @@ export class MarketLedger {
   state(installation: string, caseRow: CaseRow, now: number): MarketState {
     const market = this.marketForCase(caseRow.id)
     const candle = this.currentCandle(caseRow.id)
-    return { schema_version: 1, server_time: now, soft_trust: true, wallet: this.wallet(installation),
+    return { schema_version: 1, server_time: now, soft_trust: true, wallet: this.wallet(installation), candle_interval_ms: MARKET_CANDLE_INTERVAL_MS,
       market: market === undefined ? null : this.view(market, installation), current_point: this.point(caseRow.id, now),
       ...(candle === undefined ? {} : { current_candle: candle }) }
   }
@@ -264,18 +264,19 @@ export class MarketLedger {
       next_cursor: rows.length > limit ? String(page.at(-1)!.id) : null }
   }
 
-  candles(caseRow: CaseRow, cursor?: string, limit = MARKET_CANDLES_PAGE_MAX): MarketCandlesResponse {
+  candles(caseRow: CaseRow, cursor?: string, limit = MARKET_CANDLES_PAGE_MAX, interval: MarketCandleIntervalMs = MARKET_CANDLE_INTERVAL_MS): MarketCandlesResponse {
     this.pageLimit(limit, MARKET_CANDLES_PAGE_MAX)
     const after = cursor === undefined ? -1 : this.cursorNumber(cursor)
-    const rows = this.db.prepare(`SELECT at,open,high,low,close,up_votes,down_votes,volume FROM liang_market_candle
+    const table = interval === MARKET_LEGACY_CANDLE_INTERVAL_MS ? 'liang_market_candle' : 'liang_market_minute_candle'
+    const rows = this.db.prepare(`SELECT at,open,high,low,close,up_votes,down_votes,volume FROM ${table}
       WHERE case_id=? AND at>? ORDER BY at LIMIT ?`).all(caseRow.id, after, limit + 1) as unknown as MarketCandlesResponse['candles']
     const page = rows.slice(0, limit)
     return { schema_version: 1, case_id: caseRow.id, business_date: caseRow.business_date,
-      interval_ms: MARKET_CANDLE_INTERVAL_MS, candles: page, next_cursor: rows.length > limit ? String(page.at(-1)!.at) : null }
+      interval_ms: interval, candles: page, next_cursor: rows.length > limit ? String(page.at(-1)!.at) : null }
   }
 
   currentCandle(caseId: string): MarketCandlesResponse['candles'][number] | undefined {
-    return this.db.prepare(`SELECT at,open,high,low,close,up_votes,down_votes,volume FROM liang_market_candle
+    return this.db.prepare(`SELECT at,open,high,low,close,up_votes,down_votes,volume FROM liang_market_minute_candle
       WHERE case_id=? ORDER BY at DESC LIMIT 1`).get(caseId) as MarketCandlesResponse['candles'][number] | undefined
   }
 
@@ -289,12 +290,12 @@ export class MarketLedger {
     const values = [opening, ratio].filter((v): v is number => v !== null)
     const high = values.length === 0 ? null : Math.max(...values)
     const low = values.length === 0 ? null : Math.min(...values)
-    this.db.prepare(`INSERT INTO liang_market_candle(case_id,business_date,at,open,high,low,close,up_votes,down_votes,volume)
+    this.db.prepare(`INSERT INTO liang_market_minute_candle(case_id,business_date,at,open,high,low,close,up_votes,down_votes,volume)
       VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(case_id,at) DO UPDATE SET
-      open=COALESCE(liang_market_candle.open,excluded.open),
-      high=CASE WHEN liang_market_candle.high IS NULL THEN excluded.high WHEN excluded.high IS NULL THEN liang_market_candle.high ELSE MAX(liang_market_candle.high,excluded.high) END,
-      low=CASE WHEN liang_market_candle.low IS NULL THEN excluded.low WHEN excluded.low IS NULL THEN liang_market_candle.low ELSE MIN(liang_market_candle.low,excluded.low) END,
-      close=excluded.close,up_votes=excluded.up_votes,down_votes=excluded.down_votes,volume=liang_market_candle.volume+excluded.volume`)
+      open=COALESCE(liang_market_minute_candle.open,excluded.open),
+      high=CASE WHEN liang_market_minute_candle.high IS NULL THEN excluded.high WHEN excluded.high IS NULL THEN liang_market_minute_candle.high ELSE MAX(liang_market_minute_candle.high,excluded.high) END,
+      low=CASE WHEN liang_market_minute_candle.low IS NULL THEN excluded.low WHEN excluded.low IS NULL THEN liang_market_minute_candle.low ELSE MIN(liang_market_minute_candle.low,excluded.low) END,
+      close=excluded.close,up_votes=excluded.up_votes,down_votes=excluded.down_votes,volume=liang_market_minute_candle.volume+excluded.volume`)
       .run(caseRow.id, caseRow.business_date, at, opening, high, low, ratio, stats.up_votes, stats.down_votes, volume)
   }
 

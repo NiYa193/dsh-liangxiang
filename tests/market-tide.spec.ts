@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { MarketCandle } from '../src/shared/market-v1.ts'
+import { MARKET_CANDLE_INTERVAL_MS } from '../src/shared/market-v1.ts'
 import { chartRange } from '../src/client/market/chart-model.ts'
 import { marketBubbleLabel, marketTideGaps, marketTidePath, marketTideSegments, marketVolumeBubbles } from '../src/client/market/tide-model.ts'
 
-const STEP = 300_000
+const STEP = MARKET_CANDLE_INTERVAL_MS
 function candle(at: number, close: number | null = .5, up = 10, down = 10, volume = 0): MarketCandle {
   return { at, open: close, high: close, low: close, close, up_votes: up, down_votes: down, volume }
 }
@@ -56,6 +57,12 @@ describe('authoritative close-series geometry', () => {
     expect(marketTideSegments([candle(0, null, 0, 0)], STEP)).toEqual([])
     expect(marketVolumeBubbles([candle(0, null, 0, 0)])).toEqual([])
   })
+  it('uses each series true interval for continuity and keeps pre-opening samples', () => {
+    const raw = [candle(0, .4), candle(60_000, .5), candle(180_000, .6)]
+    expect(marketTideSegments(raw, 240_000, 60_000).map(segment => segment.length)).toEqual([2, 1])
+    expect(marketTideGaps(raw, 60_000)).toEqual([{ from: 120_000, until: 180_000 }])
+    expect(marketTideSegments([candle(0, .4), candle(300_000, .5)], 600_000, 300_000)).toHaveLength(1)
+  })
   it('does not flatten close geometry with unrendered intrabucket extremes', () => {
     const candles = [{ ...candle(0, .5), high: 1, low: 0 }]
     expect(chartRange(candles, [], 'ohlc')).toEqual({ min: 0, max: 1 })
@@ -87,9 +94,10 @@ describe('community-volume bubbles', () => {
     expect(inconsistent.up).toBeNull()
   })
   it('bounds a full day to 48 particles with a finite radius even after large dumps', () => {
-    const bubbles = marketVolumeBubbles(Array.from({ length: 288 }, (_, index) => candle(index * STEP, .5, (index + 1) * 250, (index + 1) * 250, 500)))
+    const count = 24 * 60 * 60_000 / STEP
+    const bubbles = marketVolumeBubbles(Array.from({ length: count }, (_, index) => candle(index * STEP, .5, (index + 1) * 250, (index + 1) * 250, 500)))
     expect(bubbles).toHaveLength(48)
     expect(bubbles.every(b => b.radius <= 14 && Number.isFinite(b.radius))).toBe(true)
-    expect(bubbles.reduce((total, b) => total + b.volume, 0n)).toBe(144_000n)
+    expect(bubbles.reduce((total, b) => total + b.volume, 0n)).toBe(BigInt(count * 500))
   })
 })

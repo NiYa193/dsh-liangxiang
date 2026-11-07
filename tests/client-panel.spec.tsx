@@ -69,6 +69,7 @@ function renderPanel(
     onReconcileConfirm?: () => void
     onReconcileCancel?: () => void
     onShowVersion?: () => void
+    onOpenMarket?: () => void
     onInsufficientVote?: (voteType: 'up' | 'down') => void
     onVoteClick?: (voteType: 'up' | 'down') => void
     welcomeVisible?: boolean
@@ -121,6 +122,7 @@ function renderPanel(
       onModeConfirm={() => undefined}
       onModeCancel={() => undefined}
       onShowVersion={extra.onShowVersion ?? (() => undefined)}
+      {...(extra.onOpenMarket === undefined ? {} : { onOpenMarket: extra.onOpenMarket })}
       onReconcileAsk={extra.onReconcileAsk ?? (() => undefined)}
       onReconcileConfirm={extra.onReconcileConfirm ?? (() => undefined)}
       onReconcileCancel={extra.onReconcileCancel ?? (() => undefined)}
@@ -1034,6 +1036,23 @@ describe('region 4: social stats', () => {
 })
 
 describe('梁相案牍', () => {
+  it('opens one clearly named market action while keeping its miniature decorative', () => {
+    let opened = 0
+    const tree = renderPanel(onlineState(), '', { utilityOpen: true, reducedMotion: true, onOpenMarket: () => { opened++ } })
+    const market = findByAttr(tree, 'data-liangxiang-utility-market')[0]
+    expect(market?.props['aria-label']).toBe('香火交易：走势与三次入场')
+    expect(market?.props['data-motion']).toBe(false)
+    expect(market && textContent([market])).toContain('香火交易')
+    expect(findByAttr(tree, 'data-liangxiang-utility-action', 'bars')).toHaveLength(0)
+    const icon = findByAttr(tree, 'data-liangxiang-utility-icon', 'market')[0]
+    expect(icon?.props['aria-hidden']).toBe('true')
+    expect(icon?.props.focusable).toBe('false')
+    expect(findByAttr(tree, 'data-liangxiang-utility-action')).toHaveLength(5)
+    const onClick = market?.props.onClick as (() => void) | undefined
+    onClick?.()
+    expect(opened).toBe(1)
+  })
+
   it('sits on the social row, not a fifth region or third vote', () => {
     const tree = renderPanel(demoState())
     const regions = findByAttr(tree, 'data-liangxiang-region')

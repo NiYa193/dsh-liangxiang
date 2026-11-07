@@ -23,7 +23,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
-import { parseMarketPositionRequest, type MarketStreamEvent } from '../shared/market-v1.ts'
+import { MARKET_CANDLE_INTERVAL_MS, parseMarketCandleInterval, parseMarketPositionRequest, type MarketStreamEvent } from '../shared/market-v1.ts'
 import { legacyLiangziView, legacyLiangziHistory } from './liangzi-compat.ts'
 import { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 import { formatLiangPosition } from '../domain/index.ts'
@@ -229,7 +229,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
           const event: MarketStreamEvent = { schema_version: 1, epoch, revision: stream.revision + 1, server_time: snapshot.server_time }
           if (stream.global !== global) {
             event.snapshot = snapshot
-            if (candle !== undefined) event.candle = candle
+            if (candle !== undefined) { event.candle = candle; event.candle_interval_ms = MARKET_CANDLE_INTERVAL_MS }
           }
           if (stream.personal !== personal) event.market_state = service.marketStateForStream(stream.installation, snapshot.server_time)
           if (event.snapshot !== undefined || event.market_state !== undefined) {
@@ -672,7 +672,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
     }
     if (path === `${BACKEND_API_PREFIX}/market/history` || path === `${BACKEND_API_PREFIX}/market/candles`) {
       try {
-        const allowed = path.endsWith('/history') ? ['cursor', 'limit'] : ['cursor', 'limit', 'business_date', 'case_id']
+        const allowed = path.endsWith('/history') ? ['cursor', 'limit'] : ['cursor', 'limit', 'business_date', 'case_id', 'interval_ms']
         for (const key of url.searchParams.keys()) {
           if (!allowed.includes(key) || url.searchParams.getAll(key).length !== 1) throw new WireError('query', 'unknown or repeated market query parameter')
         }
@@ -680,11 +680,13 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         if (limitRaw !== null && !/^\d{1,3}$/.test(limitRaw)) throw new WireError('limit', 'expected an integer page limit')
         const cursor = url.searchParams.get('cursor') ?? undefined
         const limit = limitRaw === null ? undefined : Number(limitRaw)
+        if (url.searchParams.has('interval_ms') && !/^(60000|300000)$/.test(url.searchParams.get('interval_ms')!)) throw new WireError('interval_ms', 'unsupported candle interval')
         if (path.endsWith('/history')) writeJson(res, 200, service.marketHistory(installationId, cursor, limit))
         else writeJson(res, 200, service.marketCandles({
           ...(cursor === undefined ? {} : { cursor }), ...(limit === undefined ? {} : { limit }),
           ...(url.searchParams.has('case_id') ? { caseId: url.searchParams.get('case_id')! } : {}),
           ...(url.searchParams.has('business_date') ? { businessDate: url.searchParams.get('business_date')! } : {}),
+          ...(url.searchParams.has('interval_ms') ? { interval_ms: parseMarketCandleInterval(Number(url.searchParams.get('interval_ms'))) } : {}),
         }))
       } catch (error) { writeValidationError(res, error) }
       return

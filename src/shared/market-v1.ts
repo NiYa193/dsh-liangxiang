@@ -1,7 +1,11 @@
 /** Community game contract. The Linux ledger is authoritative; usage remains soft trust. */
 export const MARKET_RULE_VERSION = 'liangxiang-market-v1' as const
 export const MARKET_SCHEMA_VERSION = 1 as const
-export const MARKET_CANDLE_INTERVAL_MS = 300_000
+export const MARKET_CANDLE_INTERVAL_MS = 60_000
+export const MARKET_LEGACY_CANDLE_INTERVAL_MS = 300_000
+export type MarketCandleIntervalMs = typeof MARKET_CANDLE_INTERVAL_MS | typeof MARKET_LEGACY_CANDLE_INTERVAL_MS
+/** A DST business day may contain 25 hours; pages remain bounded separately. */
+export const MARKET_CANDLES_DAY_MAX = 1_500
 export const MARKET_CANDLES_PAGE_MAX = 288
 export const MARKET_HISTORY_PAGE_DEFAULT = 20
 export const MARKET_HISTORY_PAGE_MAX = 50
@@ -72,6 +76,7 @@ export interface MarketState {
   market: DailyMarket | null
   current_point: MarketPoint | null
   current_candle?: MarketCandle
+  candle_interval_ms?: MarketCandleIntervalMs
 }
 
 /** Set the whole position, not a delta. Zero amount cancels before the cutoff. */
@@ -105,7 +110,7 @@ export interface MarketCandlesResponse {
   schema_version: typeof MARKET_SCHEMA_VERSION
   case_id: string
   business_date: string
-  interval_ms: typeof MARKET_CANDLE_INTERVAL_MS
+  interval_ms: MarketCandleIntervalMs
   candles: MarketCandle[]
   next_cursor: string | null
 }
@@ -148,6 +153,7 @@ export interface MarketStreamEvent {
   snapshot?: unknown
   market_state?: MarketState
   candle?: MarketCandle
+  candle_interval_ms?: MarketCandleIntervalMs
 }
 
 function object(value: unknown, name: string): Record<string, unknown> {
@@ -239,7 +245,9 @@ export function parseMarketState(value: unknown): MarketState {
   }
   return { schema_version: MARKET_SCHEMA_VERSION, server_time: integer(v.server_time, 'server time'), soft_trust: true,
     wallet: parseMarketWallet(v.wallet), market, current_point: nullablePoint(v.current_point),
-    ...(v.current_candle === undefined ? {} : { current_candle: parseMarketCandle(v.current_candle) }) }
+    ...(v.current_candle === undefined ? {} : { current_candle: parseMarketCandle(v.current_candle) }),
+    ...(v.current_candle === undefined && v.candle_interval_ms === undefined ? {} : {
+      candle_interval_ms: parseMarketCandleInterval(v.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) }) }
 }
 
 export function parseMarketPositionRequest(value: unknown): MarketPositionRequest {
@@ -277,12 +285,18 @@ export function parseMarketCandle(value: unknown): MarketCandle {
 
 export function parseMarketCandlesResponse(value: unknown): MarketCandlesResponse {
   const v = object(value, 'candles')
-  if (v.schema_version !== 1 || v.interval_ms !== MARKET_CANDLE_INTERVAL_MS || !Array.isArray(v.candles)
+  const interval = parseMarketCandleInterval(v.interval_ms)
+  if (v.schema_version !== 1 || !Array.isArray(v.candles)
     || v.candles.length > MARKET_CANDLES_PAGE_MAX) throw new Error('invalid candles page')
   const candles = v.candles.map(parseMarketCandle)
   if (candles.some((c, i) => i > 0 && c.at <= candles[i - 1]!.at)) throw new Error('unordered candles')
   return { schema_version: 1, case_id: text(v.case_id, 'candle case'), business_date: text(v.business_date, 'candle date'),
-    interval_ms: MARKET_CANDLE_INTERVAL_MS, candles, next_cursor: v.next_cursor === null ? null : text(v.next_cursor, 'candle cursor') }
+    interval_ms: interval, candles, next_cursor: v.next_cursor === null ? null : text(v.next_cursor, 'candle cursor') }
+}
+
+export function parseMarketCandleInterval(value: unknown): MarketCandleIntervalMs {
+  if (value !== MARKET_CANDLE_INTERVAL_MS && value !== MARKET_LEGACY_CANDLE_INTERVAL_MS) throw new Error('invalid candle interval')
+  return value
 }
 
 export function parseMarketHistoryResponse(value: unknown): MarketHistoryResponse {
@@ -315,5 +329,6 @@ export function parseMarketStreamEvent(value: unknown): MarketStreamEvent {
   return { schema_version: 1, epoch: text(v.epoch, 'stream epoch'), revision: integer(v.revision, 'stream revision'),
     server_time: integer(v.server_time, 'stream time'), ...(v.snapshot === undefined ? {} : { snapshot: v.snapshot }),
     ...(v.market_state === undefined ? {} : { market_state: parseMarketState(v.market_state) }),
-    ...(v.candle === undefined ? {} : { candle: parseMarketCandle(v.candle) }) }
+    ...(v.candle === undefined ? {} : { candle: parseMarketCandle(v.candle),
+      candle_interval_ms: parseMarketCandleInterval(v.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS) }) }
 }

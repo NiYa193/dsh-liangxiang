@@ -101,6 +101,7 @@ describe('market HTTP authority and cloud stream', () => {
     const h = await setup(true)
     const a = h.enroll('private-stream-device-a', 5)
     const b = h.enroll('private-stream-device-b', 20)
+    h.service.tick()
     const streamA = await firstEvent(h.base, a)
     const streamB = await firstEvent(h.base, b)
     expect(streamA.event.market_state!.wallet.available_incense).toBe(15)
@@ -108,6 +109,8 @@ describe('market HTTP authority and cloud stream', () => {
     expect(JSON.stringify(streamA.event)).not.toContain(b.installationId)
     expect(JSON.stringify(streamA.event)).not.toContain(b.privateKeyPem)
     expect(streamA.event.snapshot).toBeDefined()
+    expect(streamA.event.candle_interval_ms).toBe(60_000)
+    expect(streamA.event.market_state?.candle_interval_ms).toBe(60_000)
     expect(streamA.event.epoch).toBe(streamB.event.epoch)
     streamA.cancel(); streamB.cancel()
   })
@@ -116,12 +119,16 @@ describe('market HTTP authority and cloud stream', () => {
     const h = await setup()
     const id = 'bounded-market-reader'
     for (const path of ['/v1/market/candles?limit=289', '/v1/market/history?limit=51',
-      '/v1/market/history?limit=1&limit=2', '/v1/market/candles?cursor=bad']) {
+      '/v1/market/history?limit=1&limit=2', '/v1/market/candles?cursor=bad',
+      '/v1/market/candles?interval_ms=1000', '/v1/market/candles?interval_ms=6e4']) {
       expect((await fetch(`${h.base}${path}`, { headers: headers(id) })).status).toBe(400)
     }
     const candles = await fetch(`${h.base}/v1/market/candles`, { headers: headers(id) })
     expect(candles.status).toBe(200)
-    const payload = await candles.json() as { candles: unknown[] }
+    const payload = await candles.json() as { candles: unknown[], interval_ms: number }
     expect(payload.candles.length).toBeLessThanOrEqual(288)
+    expect(payload.interval_ms).toBe(60_000)
+    const legacy = await fetch(`${h.base}/v1/market/candles?interval_ms=300000`, { headers: headers(id) })
+    expect((await legacy.json() as { interval_ms: number }).interval_ms).toBe(300_000)
   })
 })

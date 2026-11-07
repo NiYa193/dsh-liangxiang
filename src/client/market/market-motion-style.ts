@@ -11,10 +11,10 @@ export const MARKET_MOTION_CSS = `
 .liangxiang-market-water-motion[data-motion=true] .liangxiang-market-water-back{animation:liangxiang-market-water-drift 8s ease-in-out infinite}
 .liangxiang-market-water-motion[data-motion=true] .liangxiang-market-water-glint{animation:liangxiang-market-water-drift 6.5s ease-in-out infinite reverse}
 .liangxiang-market-water-motion[data-motion=true] .liangxiang-market-water-specks{animation:liangxiang-market-water-specks 7s ease-in-out infinite}
-@keyframes liangxiang-market-breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.012,1.018)}}
-@keyframes liangxiang-market-tail{0%,100%{transform:rotate(-3deg)}50%{transform:rotate(7deg)}}
-@keyframes liangxiang-market-hair{0%,100%{transform:rotate(1deg)}50%{transform:rotate(-4deg)}}
-@keyframes liangxiang-market-ripple{0%,100%{transform:scaleX(.9);opacity:.55}50%{transform:scaleX(1.12);opacity:1}}
+@keyframes liangxiang-market-breathe{0%,100%{transform:scale(1,1)}50%{transform:scale(1.025,1.03)}}
+@keyframes liangxiang-market-tail{0%,100%{transform:rotate(-6deg)}50%{transform:rotate(16deg)}}
+@keyframes liangxiang-market-hair{0%,100%{transform:rotate(3deg)}50%{transform:rotate(-7deg)}}
+@keyframes liangxiang-market-ripple{0%,100%{transform:scaleX(.84);opacity:.5}50%{transform:scaleX(1.2);opacity:1}}
 @keyframes liangxiang-market-dive-bubble{0%{transform:translateY(4px);opacity:.2}25%{opacity:.9}100%{transform:translate(3px,-20px);opacity:0}}
 @keyframes liangxiang-market-water-drift{0%,100%{transform:translateX(-9px);opacity:.5}50%{transform:translateX(9px);opacity:1}}
 @keyframes liangxiang-market-water-specks{0%,100%{transform:translateY(2px);opacity:.28}50%{transform:translateY(-4px);opacity:.52}}

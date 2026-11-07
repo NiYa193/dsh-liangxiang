@@ -32,13 +32,16 @@ export function startBackend(env: Record<string, string | undefined> = process.e
   })
 
   service.ensureActiveCase()
+  // Sampling must cross every real minute even when public snapshots are
+  // configured much slower. tick() still applies the configured publication
+  // threshold and inserts at most one shared row for each quiet minute.
   const cadence = setInterval(() => {
     try {
       service.tick()
     } catch (error) {
       console.warn(`[liangxiang-backend] snapshot cadence failed: ${error instanceof Error ? error.message : String(error)}`)
     }
-  }, config.snapshotRefreshSeconds * 1000)
+  }, Math.min(config.snapshotRefreshSeconds * 1000, 1_000))
   cadence.unref?.()
 
   api.server.listen(config.port, config.host, () => {

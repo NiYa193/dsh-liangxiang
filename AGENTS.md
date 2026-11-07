@@ -25,12 +25,15 @@ rollover. No client cache or chart is a ledger. Usage remains soft trust.
 The existing four-region panel and original Liangzi effects remain intact.
 One compact `香火交易` entry sits below the utility drawer's 2×2 tiles and
 opens the unified chart/trading view; do not add a second `梁位走势` entry or
-restore the retired window from old browser preferences. Keep official five-minute
-candles distinct from the retained Host-local observation API. The whale stays
+restore the retired window from old browser preferences. Keep official minute candles distinct from the retained Host-local observation API.
+Legacy five-minute records retain their true grain and are never subdivided. The whale stays
 beside the title, outside the plot; stage backgrounds are subtle, future time
 reads `待打梁`, and the footer reads `24:00后一起揭晓`. Time controls retain
-their geometry across interval changes. Receipts and rules open overlays from
-permanent buttons; batch, status and wallet updates never resize the window.
+their geometry across interval changes; their native selector supports automatic
+and explicit grain down to genuine one-minute data. Record the active case all
+business day, including before trading opens; phase shading never hides prices. The normal window and order ticket stay compact. The header whale may use
+state-specific decorative speech and local motion, never ledger claims.
+Receipts and rules open overlays from permanent buttons; batch, status and wallet updates never resize the window.
 Its blue whale-girl artwork is a market
 decoration, never a replacement central Liangzi or a new business namespace.
 Market animation/static preference is local and respects reduced motion.

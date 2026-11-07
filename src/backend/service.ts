@@ -80,7 +80,7 @@ import {
 import { WireError } from '../shared/wire.ts'
 import { historyArchiveToV1, type V1HistoryResponse } from '../shared/history-v1.ts'
 import { MarketLedger } from './market-ledger.ts'
-import type { MarketCandlesResponse, MarketHistoryResponse, MarketPositionRequest, MarketPositionResponse, MarketState } from '../shared/market-v1.ts'
+import { MARKET_CANDLE_INTERVAL_MS, parseMarketCandleInterval, type MarketCandleIntervalMs, type MarketCandlesResponse, type MarketHistoryResponse, type MarketPositionRequest, type MarketPositionResponse, type MarketState } from '../shared/market-v1.ts'
 
 /** Thrown when a concurrent duplicate wins the idempotency race. */
 class DuplicateRequestSignal extends Error {}
@@ -723,7 +723,7 @@ export class LiangxiangBackendService {
     return this.marketLedger.history(installationId, cursor, limit)
   }
 
-  marketCandles(input: { caseId?: string, businessDate?: string, cursor?: string, limit?: number } = {}): MarketCandlesResponse {
+  marketCandles(input: { caseId?: string, businessDate?: string, cursor?: string, limit?: number, interval_ms?: MarketCandleIntervalMs } = {}): MarketCandlesResponse {
     if (input.businessDate !== undefined && !isBusinessDate(input.businessDate)) throw new WireError('business_date', 'expected a valid business date')
     const active = this.ensureActiveCase()
     const caseRow = input.caseId !== undefined ? this.store.caseById(input.caseId)
@@ -731,7 +731,7 @@ export class LiangxiangBackendService {
     if (caseRow === undefined || (input.businessDate !== undefined && caseRow.business_date !== input.businessDate)) {
       throw new WireError('case_id', 'market candle case not found')
     }
-    return this.marketLedger.candles(caseRow, input.cursor, input.limit)
+    return this.marketLedger.candles(caseRow, input.cursor, input.limit, parseMarketCandleInterval(input.interval_ms ?? MARKET_CANDLE_INTERVAL_MS))
   }
 
   marketStreamVersion(installationId: string): string {
@@ -1086,9 +1086,10 @@ export class LiangxiangBackendService {
   tick(now = this.clock.now()): void {
     const caseRow = this.ensureActiveCase(now)
     this.publishedSnapshot(caseRow, now)
-    // One insert per five-minute bucket; existing quiet buckets need no writes.
-    const at = Math.floor(now / 300_000) * 300_000
-    if (this.store.database.prepare('SELECT 1 FROM liang_market_candle WHERE case_id=? AND at=?').get(caseRow.id, at) === undefined) {
+    // One shared insert per minute, including before market opening and after
+    // position cutoffs. Quiet subscriber reads never cause a per-client write.
+    const at = Math.floor(now / MARKET_CANDLE_INTERVAL_MS) * MARKET_CANDLE_INTERVAL_MS
+    if (this.store.database.prepare('SELECT 1 FROM liang_market_minute_candle WHERE case_id=? AND at=?').get(caseRow.id, at) === undefined) {
       this.marketLedger.recordCandle(caseRow, now)
     }
   }

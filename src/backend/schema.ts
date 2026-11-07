@@ -1,5 +1,5 @@
 /**
- * SQLite schema (v13) for the Liangxiang backend.
+ * SQLite schema (v14) for the Liangxiang backend.
  *
  * Design notes that matter for the frozen invariants:
  *
@@ -30,7 +30,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { VOTE_COUNT_MAX } from '../domain/index.ts'
 
-export const BACKEND_SCHEMA_USER_VERSION = 13
+export const BACKEND_SCHEMA_USER_VERSION = 14
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS daily_liang_case (
@@ -348,6 +348,18 @@ CREATE TABLE IF NOT EXISTS liang_market_candle (
 CREATE INDEX IF NOT EXISTS ix_market_candle_date ON liang_market_candle(business_date,at);
 `
 
+/** Keep historical five-minute candles intact; a finer series starts on upgrade. */
+const DDL_V14_MINUTE_CANDLES = `
+CREATE TABLE IF NOT EXISTS liang_market_minute_candle (
+  case_id TEXT NOT NULL, business_date TEXT NOT NULL, at INTEGER NOT NULL,
+  open REAL, high REAL, low REAL, close REAL,
+  up_votes INTEGER NOT NULL, down_votes INTEGER NOT NULL,
+  volume INTEGER NOT NULL CHECK (volume >= 0),
+  PRIMARY KEY(case_id,at)
+);
+CREATE INDEX IF NOT EXISTS ix_market_minute_candle_date ON liang_market_minute_candle(business_date,at);
+`
+
 function tableColumns(db: DatabaseSync, table: string): string[] {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>)
     .map((row) => row.name)
@@ -432,6 +444,7 @@ export function migrate(db: DatabaseSync): void {
       // never replace this migration default with a future current policy.
       db.exec("ALTER TABLE liang_market ADD COLUMN rule_version TEXT NOT NULL DEFAULT 'liangxiang-market-v1'")
     }
+    if (current < 14) db.exec(DDL_V14_MINUTE_CANDLES)
     if (current !== BACKEND_SCHEMA_USER_VERSION) {
       db.exec(`PRAGMA user_version = ${BACKEND_SCHEMA_USER_VERSION}`)
     }

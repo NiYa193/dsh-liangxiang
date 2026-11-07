@@ -156,6 +156,10 @@ describe('cumulative wallet Host authority', () => {
     expect(service.cachedMarketState()?.current_point?.sequence).toBe(snapshot.global_snapshot.sequence)
     expect(service.getWireState().personal.wallet?.version).toBe(WALLET.version)
     expect(service.cachedMarketState()?.current_candle).toEqual(candle)
+    stream.onEvent({ schema_version: 1, epoch: 'backend-a', revision: 3, server_time: at + 60_000,
+      candle: { ...candle, at: candle.at + 60_000, volume: 0 }, candle_interval_ms: 60_000 })
+    expect(service.cachedMarketState()?.server_time).toBe(at + 60_000)
+    expect(service.cachedMarketState()?.candle_interval_ms).toBe(60_000)
   })
 
   it('retains old-backend normal voting cadence when events are unsupported', async () => {
@@ -165,6 +169,20 @@ describe('cumulative wallet Host authority', () => {
     await pause()
     expect(requests.filter(request => request.path.endsWith('/snapshot'))).toHaveLength(1)
     expect(service.getWireState().authorityAvailable).toBe(true)
+  })
+
+  it('does not retain a larger five-minute candle after the server switches to real minute data', async () => {
+    const { service, handlers, initial } = await hostHarness()
+    const stream = handlers[0]!, time = Math.floor(initial.server_time / 300_000) * 300_000
+    const old = { at: time, open: .5, high: .6, low: .4, close: .5, up_votes: 50, down_votes: 50, volume: 100 }
+    stream.onEvent({ schema_version: 1, epoch: 'minute-upgrade', revision: 1, server_time: initial.server_time,
+      market_state: { ...initial, current_candle: old, candle_interval_ms: 300_000 } })
+    const minute = { ...old, up_votes: 1, down_votes: 1, volume: 2 }
+    stream.onEvent({ schema_version: 1, epoch: 'minute-upgrade', revision: 2, server_time: initial.server_time + 1,
+      market_state: { ...initial, current_candle: minute, candle_interval_ms: 60_000 } })
+    expect(service.cachedMarketState()?.current_candle).toEqual(minute)
+    expect(service.cachedMarketState()?.candle_interval_ms).toBe(60_000)
+    expect(service.getWireState().personal.wallet).toEqual(WALLET)
   })
 
   it('never shares an in-flight private market read with a replacement identity', async () => {
