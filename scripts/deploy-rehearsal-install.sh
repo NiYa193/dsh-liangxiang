@@ -69,12 +69,47 @@ if (Object.keys(actual).length !== Object.keys(expected).length || Object.entrie
 }
 VALIDATE
 
+# Read-only SQLite connections can create WAL/SHM sidecars. Normalize every
+# dedicated file through its descriptor, so root audits cannot block the
+# unprivileged service or follow a substituted symlink outside this database.
+normalize_rehearsal_sqlite_permissions() {
+  local rehearsal_uid rehearsal_gid
+  rehearsal_uid="$(id -u liangxiang)"
+  rehearsal_gid="$(id -g liangxiang)"
+  node --input-type=module - "$DB_PATH" "$rehearsal_uid" "$rehearsal_gid" <<'SQLITE_PERMISSIONS'
+import { constants, openSync, fstatSync, fchownSync, fchmodSync, closeSync } from 'node:fs'
+const uid = Number(process.argv[3]), gid = Number(process.argv[4])
+if (!Number.isSafeInteger(uid) || !Number.isSafeInteger(gid) || uid < 0 || gid < 0) throw new Error('invalid rehearsal service identity')
+for (const path of [process.argv[2], `${process.argv[2]}-wal`, `${process.argv[2]}-shm`]) {
+  let fd
+  try {
+    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+    const state = fstatSync(fd)
+    if (!state.isFile() || state.nlink !== 1) throw new Error('refusing rehearsal: unsafe SQLite file')
+    fchownSync(fd, uid, gid)
+    fchmodSync(fd, 0o600)
+  } catch (error) { if (error.code !== 'ENOENT') throw error }
+  finally { if (fd !== undefined) closeSync(fd) }
+}
+SQLITE_PERMISSIONS
+}
+
+cleanup_rehearsal_install() {
+  local status=$?
+  trap - EXIT
+  normalize_rehearsal_sqlite_permissions || status=1
+  if [[ "$status" -ne 0 ]]; then systemctl stop "$SERVICE" >/dev/null 2>&1 || true; fi
+  return "$status"
+}
+
 install -d -o root -g liangxiang -m 0750 "$PREFIX"
 install -d -o liangxiang -g liangxiang -m 0700 "$DATA_DIR"
 install -d -o root -g root -m 0700 "$BACKUP_DIR"
 # Only the dedicated test service can be interrupted. The normal 4180 backend
 # and every proxy/SSH configuration remain outside this lifecycle.
 if systemctl is-active --quiet "$SERVICE"; then systemctl stop "$SERVICE"; fi
+trap cleanup_rehearsal_install EXIT
+normalize_rehearsal_sqlite_permissions
 if [[ -f "$DB_PATH" ]]; then
   BACKUP_PATH="$BACKUP_DIR/rehearsal-${STAMP//:/-}-pre-${GIT_SHA}-$$.sqlite"
   node --input-type=module - "$DB_PATH" "$BACKUP_PATH" <<'BACKUP'
@@ -108,7 +143,14 @@ try {
     if (copy.prepare('PRAGMA quick_check').all().some(row => Object.values(row)[0] !== 'ok') || copy.prepare('PRAGMA foreign_key_check').all().length !== 0) throw new Error('rehearsal seed failed integrity checks')
   } finally { copy.close() }
   linkSync(temporary, target) // Fails atomically if any competing writer created it.
-} finally { source?.close(); unlinkSync(temporary) }
+} finally {
+  source?.close()
+  // These names belong only to this process's closed temporary copy. Never
+  // unlink the dedicated database WAL, which may contain committed data.
+  for (const path of [`${temporary}-wal`, `${temporary}-shm`, temporary]) {
+    try { unlinkSync(path) } catch (error) { if (error.code !== 'ENOENT') throw error }
+  }
+}
 SEED
 fi
 BEFORE_STATE="$(node --input-type=module - "$DB_PATH" "$SEED_MODE" <<'BEFORE'
@@ -123,6 +165,7 @@ else {
 }
 BEFORE
 )"
+normalize_rehearsal_sqlite_permissions
 rsync -a --delete --exclude node_modules --exclude VERSION "$STAGE"/ "$PREFIX"/
 chown -R root:liangxiang "$PREFIX"
 chmod 0750 "$PREFIX"
@@ -144,10 +187,9 @@ try {
 CLOCK
 chown liangxiang:liangxiang "$CLOCK_PATH"
 chmod 0600 "$CLOCK_PATH"
-if [[ -f "$DB_PATH" ]]; then chown liangxiang:liangxiang "$DB_PATH"; chmod 0600 "$DB_PATH"; fi
+normalize_rehearsal_sqlite_permissions
 restorecon -RF "$PREFIX" "$DATA_DIR" "$ENV_FILE" "$UNIT_FILE" "$BACKUP_DIR"
 systemctl daemon-reload
-trap 'systemctl stop "$SERVICE" >/dev/null 2>&1 || true' EXIT
 systemctl enable "$SERVICE" >/dev/null
 systemctl restart "$SERVICE"
 for _ in $(seq 1 30); do
@@ -170,6 +212,6 @@ try {
   console.log(`rehearsal database verified: schema ${evidence.before.schema ?? 'new'} -> ${after.schema}, quick_check=ok`)
 } finally { db.close() }
 EVIDENCE
+normalize_rehearsal_sqlite_permissions
 printf '%s %s %s\n' "$SERVER_BUILD" "$GIT_SHA" "$STAMP" > "$PREFIX/VERSION"
-trap - EXIT
 echo "OK: rehearsal installed with its own database, service and business clock."

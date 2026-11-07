@@ -63,6 +63,26 @@ describe('decorative header companion', () => {
       expect(html).toContain('咕噜')
     }
   })
+  it('keeps the idle face outside every continuously scaled or rotated layer while tail, hair and water retain motion', () => {
+    for (const mood of ['ahead', 'behind', 'waiting'] as const) {
+      const html = renderToStaticMarkup(<MarketFishCompanion mood={mood} animated reaction={null} />)
+      const marker = html.indexOf('data-liangxiang-market-steady-face=')
+      expect(marker).toBeGreaterThan(0)
+      const ancestors: string[] = []
+      for (const [tag] of html.slice(0, marker).matchAll(/<\/?g\b[^>]*>/g)) {
+        if (tag.startsWith('</')) ancestors.pop()
+        else ancestors.push(tag)
+      }
+      expect(ancestors.join('')).not.toMatch(/class="liangxiang-market-(?:companion-sway|whale-breath|whale-tail|whale-hair)"/)
+      expect(html.match(/<g mask="url\(#[^"]+-occlusion\)"/g)).toHaveLength(2)
+      expect(html).toContain('class="liangxiang-market-companion-sway"')
+      expect(html).toContain('class="liangxiang-market-whale-tail"')
+      expect(html).toContain('class="liangxiang-market-whale-hair"')
+      if (mood !== 'waiting') expect(html).toContain('<ellipse class="liangxiang-market-whale-breath"')
+    }
+    expect(COMPANION_CSS).toContain('animation:liangxiang-market-fish-swim')
+    for (const name of ['breathe', 'tail', 'hair', 'ripple', 'dive-bubble']) expect(MARKET_MOTION_CSS).toContain(`animation:liangxiang-market-${name}`)
+  })
   it('preserves the supplied authoritative report and its line break without deriving balances or truncating copy', () => {
     const text = 'P1 · 11:00封盘，12:00定线\n多池 120 炷 · 空池 80 炷'
     const html = renderToStaticMarkup(<MarketFishCompanion mood="behind" animated={false} reaction={{ id: 1, action: 'report', text }} />)

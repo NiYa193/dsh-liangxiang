@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, existsSync, readdirSync, realpathSync, rmSync, symlinkSync, linkSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, existsSync, readdirSync, realpathSync, rmSync, symlinkSync, linkSync, statSync, chmodSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -88,7 +88,7 @@ function fixture() {
   const prelude = `
 set -euo pipefail
 hostname(){ printf '%s\\n' service-standby-test; }
-id(){ printf '1000\\n'; }
+id(){ case "$1" in -g) printf '${process.getgid?.() ?? 0}\\n';; *) printf '${process.getuid?.() ?? 0}\\n';; esac; }
 sha256sum(){ ${shellQuote(process.execPath)} -e 'const f=require("node:fs"),c=require("node:crypto");console.log(c.createHash("sha256").update(f.readFileSync(process.argv[1])).digest("hex")+"  "+process.argv[1])' "$1"; }
 chown(){ :; }
 restorecon(){ :; }
@@ -99,6 +99,10 @@ systemctl(){
   if [[ "$1" == restart ]]; then
     ${shellQuote(process.execPath)} --input-type=module - ${shellQuote(paths.db)} <<'START_DB'
 import { DatabaseSync } from 'node:sqlite'
+import { existsSync, statSync } from 'node:fs'
+for (const path of [process.argv[2], process.argv[2] + '-wal', process.argv[2] + '-shm']) {
+  if (existsSync(path) && (statSync(path).mode & 0o777) !== 0o600) throw new Error('SQLite service files are not writable with private service permissions')
+}
 const db = new DatabaseSync(process.argv[2]); db.exec('PRAGMA user_version=14'); db.close()
 START_DB
   fi
@@ -259,4 +263,52 @@ test('rehearsal uploads a frozen HEAD even if another app edits the checkout dur
     assert.equal(readFileSync(join(collected, 'src/shared/index.ts'), 'utf8'), committedSource)
     assert.match(readFileSync(join(directory, 'src/shared/index.ts'), 'utf8'), /edited after archive/)
   } finally { rmSync(directory, { recursive: true, force: true }) }
+})
+
+
+test('retrying a WAL rehearsal repairs all service files without deleting committed WAL frames', shellOnly, () => {
+  const f = fixture()
+  let writer
+  try {
+    f.createDb(f.paths.db, 77, 10)
+    writer = new DatabaseSync(f.paths.db)
+    writer.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; UPDATE assets SET amount=88')
+    const wal = `${f.paths.db}-wal`, shm = `${f.paths.db}-shm`, originalWalInode = statSync(wal).ino
+    chmodSync(wal, 0o400); chmodSync(shm, 0o400)
+    const result = f.run('fresh')
+    assert.equal(result.status, 0, result.stderr)
+    const db = new DatabaseSync(f.paths.db, { readOnly: true })
+    assert.equal(db.prepare('SELECT amount FROM assets').get().amount, 88); db.close()
+    assert.equal(statSync(wal).ino, originalWalInode, 'existing WAL is retained rather than deleted and recreated')
+    for (const path of [f.paths.db, wal, shm]) {
+      const state = statSync(path)
+      assert.equal(state.mode & 0o777, 0o600)
+      assert.equal(state.uid, process.getuid())
+      assert.equal(state.gid, process.getgid())
+    }
+  } finally { writer?.close(); f.cleanup() }
+})
+
+test('a live WAL source is copied consistently and its temporary audit sidecars are removed', shellOnly, () => {
+  const f = fixture()
+  let source
+  try {
+    source = new DatabaseSync(f.paths.ordinaryDb)
+    source.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; UPDATE assets SET amount=1234')
+    const originalDbHash = hash(f.paths.ordinaryDb), originalWalHash = hash(`${f.paths.ordinaryDb}-wal`)
+    const result = f.run('standby-copy')
+    assert.equal(result.status, 0, result.stderr)
+    const target = new DatabaseSync(f.paths.db, { readOnly: true })
+    assert.equal(target.prepare('SELECT amount FROM assets').get().amount, 1234); target.close()
+    assert.equal(hash(f.paths.ordinaryDb), originalDbHash)
+    assert.equal(hash(`${f.paths.ordinaryDb}-wal`), originalWalHash, 'source WAL was not checkpointed or changed')
+    assert.deepEqual(readdirSync(f.paths.data).filter(name => name.includes('.incoming-')), [])
+    for (const path of [f.paths.db, `${f.paths.db}-wal`, `${f.paths.db}-shm`]) {
+      if (!existsSync(path)) continue
+      const state = statSync(path)
+      assert.equal(state.mode & 0o777, 0o600)
+      assert.equal(state.uid, process.getuid())
+      assert.equal(state.gid, process.getgid())
+    }
+  } finally { source?.close(); f.cleanup() }
 })

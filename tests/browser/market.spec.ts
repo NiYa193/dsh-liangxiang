@@ -123,7 +123,7 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
     expect(groups).toHaveLength(2)
     for (const group of groups) expect(group.width).toBeCloseTo(64, 0)
     expect(groups[0]!.right).toBeCloseTo(groups[1]!.right, 0)
-    expect(groups[1]!.top - groups[0]!.bottom).toBeCloseTo(6, 0)
+    expect(groups[1]!.top - groups[0]!.bottom).toBeCloseTo(10, 0)
     for (const group of groups) expect(group.bottom - group.top).toBeCloseTo(28, 0)
     const title = (await dialog.locator('.liangxiang-market-header h2').boundingBox())!
     expect(title.y).toBeCloseTo(groups[0]!.top, 0)
@@ -248,6 +248,24 @@ test('motion uses distinct local gestures without replaying ordinary frames, hid
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'true')
   await expect(toggle).toContainText('大肥鱼')
+  const face = dialog.locator('[data-liangxiang-market-steady-face]')
+  await expect(face).toHaveCount(1)
+  expect(await face.evaluate(element => {
+    for (let node: Element | null = element; node && !node.hasAttribute('data-liangxiang-market-dialog'); node = node.parentElement) {
+      if (node.getAnimations().some(animation => animation.effect?.getTiming().iterations === Infinity)) return false
+    }
+    return true
+  })).toBe(true)
+  const frameTiming = await page.evaluate(async () => {
+    const times: number[] = []
+    await new Promise<void>(resolve => {
+      const sample = (at: number): void => { times.push(at); if (times.length < 61) requestAnimationFrame(sample); else resolve() }
+      requestAnimationFrame(sample)
+    })
+    const spans = times.slice(1).map((at, i) => at - times[i]!).sort((a, b) => a - b)
+    return { samples: spans.length, median_ms: spans[Math.floor(spans.length * .5)], p95_ms: spans[Math.floor(spans.length * .95)], gaps_over_50ms: spans.filter(span => span > 50).length }
+  })
+  await testInfo.attach('market-frame-timing', { body: JSON.stringify(frameTiming), contentType: 'application/json' })
   await dialog.getByRole('button', { name: '潮汐', exact: true }).click()
   const companion = dialog.locator('.liangxiang-market-companion')
   const speech = companion.locator('.liangxiang-market-companion-speech')
