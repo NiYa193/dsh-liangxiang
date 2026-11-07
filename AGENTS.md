@@ -17,8 +17,11 @@ remain date-scoped. `remaining_incense` means wallet **available** incense,
 excluding frozen orders; today's used incense may exceed today's earned amount.
 Legacy/offline daily accounting stays isolated and never funds community trades.
 
-Three independently funded batches lock at 11:00/17:00/20:00, fix raw-count
-reference points at 12:00/18:00/21:00 and share the old case's midnight close.
+New v2 markets accept positions at 09:00–11:00 / 12:00–16:00 / 17:00–21:00,
+lock at 11:00/16:00/21:00, fix raw-count reference points at 12:00/17:00/22:00
+and share the old case's midnight close. Existing v1 markets retain all stored
+deadlines (11:00/17:00/20:00 locks, 12:00/18:00/21:00 references) and their
+original rule version through restart, settlement and receipts.
 Server transactions own freezing, idempotency, integer pool allocation and
 rollover. No client cache or chart is a ledger. Usage remains soft trust.
 
@@ -27,16 +30,19 @@ One compact `香火交易` entry sits below the utility drawer's 2×2 tiles and
 opens the unified chart/trading view; do not add a second `梁位走势` entry or
 restore the retired window from old browser preferences. Keep official minute candles distinct from the retained Host-local observation API.
 Legacy five-minute records retain their true grain and are never subdivided. The whale stays
-beside the title, outside the plot; stage backgrounds are subtle, future time
-reads `待打梁`, and the footer reads `24:00后一起揭晓`. Time controls retain
-their geometry across interval changes; their native selector supports automatic
-and explicit grain down to genuine one-minute data. Record the active case all
-business day, including before trading opens; phase shading never hides prices. The normal window and order ticket stay compact. The header whale may use
-state-specific decorative speech and local motion, never ledger claims.
+in the header between the title/wallet and window controls, outside the plot; stage backgrounds are subtle, future time
+reads `待打梁`, and the footer reads `24:00后一起揭晓`. One fixed-width time-window control shows the actual zoomed span and resets to today.
+Zoom steps through 24/12/6/3/1 hours and 30 minutes; candle grain is automatic,
+never a separate interval selector, and cannot exceed the real source resolution. Record the active case all
+business day, including before trading opens; phase shading never hides prices. The normal window and order ticket stay compact. The header whale uses action-specific local motion and readable speech. It reports the selected batch's actual cutoff and pool once per minute, below operation/error priority; clicking it reports on demand.
+Do not restore a permanent countdown, sticky pool popup or duplicate position-caption row.
+Confirm and withdraw share one compact order row. The title is `梁股 · 香火市场`.
 Receipts and rules open overlays from permanent buttons; batch, status and wallet updates never resize the window.
 Its blue whale-girl artwork is a market
 decoration, never a replacement central Liangzi or a new business namespace.
 Market animation/static preference is local and respects reduced motion.
+Market surfaces inherit DSH's explicit color scheme. Verify an OS-light / DSH-dark
+combination as well as ordinary light/dark themes; static mode stops every local CSS transition and WAAPI action.
 Do not read another implementation until the independent implementation has
 been completed and recorded in a commit; comparisons must be documented.
 

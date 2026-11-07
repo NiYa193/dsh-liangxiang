@@ -2,23 +2,24 @@ import { useEffect, useRef, useState, type ReactElement } from 'react'
 import { MarketWhaleFigure } from './MarketWhaleFigure.tsx'
 import { MARKET_WHALE_PATH } from './MarketChart.tsx'
 import type { PositionMood } from './chart-model.ts'
-import { fishResponse, type FishAction } from './fish-feedback.ts'
+import { createFishFeedback, expireFishFeedback, fishResponse, receiveFishFeedback, type FishReaction } from './fish-feedback.ts'
+import { fishMotion, marketCss, marketClass } from './market-motion-style.ts'
 
-export type { FishAction } from './fish-feedback.ts'
-export interface FishReaction { id: number, action: FishAction }
 
-export const COMPANION_CSS = `
-.liangxiang-market-companion{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:5px;width:174px;min-width:140px;height:64px;flex:0 1 174px;pointer-events:none}
-.liangxiang-market-companion>svg{display:block;width:72px;height:60px;overflow:visible}
-.liangxiang-market-companion-speech{font-size:11px;line-height:1.45;color:var(--liangxiang-market-blue-text);display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;max-height:32px;overflow-wrap:anywhere}
-.liangxiang-market-companion-actor{transform-box:fill-box;transform-origin:50% 65%}
-.liangxiang-market-companion-sway{transform-box:fill-box;transform-origin:50% 65%}
-.liangxiang-market-companion[data-motion=true] .liangxiang-market-companion-sway{animation:liangxiang-market-fish-swim 4.2s ease-in-out infinite}
-.liangxiang-market-companion[data-pose=dive][data-motion=true] .liangxiang-market-companion-sway{animation-duration:3.2s}
+export type { FishAction, FishReaction } from './fish-feedback.ts'
+
+export const COMPANION_CSS = marketCss(`
+.~companion{display:grid;grid-template-columns:72px minmax(0,1fr);align-items:center;gap:5px;width:260px;min-width:0;height:72px;flex:0 1 260px;pointer-events:none}
+.~companion>svg{display:block;width:72px;height:60px;overflow:visible}
+.~companion-speech{display:block;min-width:0;padding:4px 0;font-size:11px;line-height:1.45;color:var(--liangxiang-market-blue-text);white-space:pre-line;overflow-wrap:anywhere;text-align:left}
+.~companion-actor{transform-box:fill-box;transform-origin:50% 65%}
+.~companion-sway{transform-box:fill-box;transform-origin:50% 65%}
+.~companion[data-motion=true] .~companion-sway{animation:liangxiang-market-fish-swim 4.2s ease-in-out infinite}
+.~companion[data-pose=dive][data-motion=true] .~companion-sway{animation-duration:3.2s}
 @keyframes liangxiang-market-fish-swim{0%,100%{transform:translateX(-2px) rotate(-1deg)}50%{transform:translateX(3px) rotate(2deg)}}
-.liangxiang-market-companion[data-motion=false] *{animation:none!important;transition:none!important}
-@media(prefers-reduced-motion:reduce){.liangxiang-market-companion *{animation:none!important;transition:none!important}}
-`
+.~companion[data-motion=false] *{animation:none!important;transition:none!important}
+@media(prefers-reduced-motion:reduce){.~companion *{animation:none!important;transition:none!important}}
+`)
 
 /** The header fish never supplies financial state, announces live speech or sends data. */
 export function MarketFishCompanion({ mood, animated, visible = true, reaction }: {
@@ -27,10 +28,11 @@ export function MarketFishCompanion({ mood, animated, visible = true, reaction }
   const [available, setAvailable] = useState(() => typeof document === 'undefined'
     || (!document.hidden && !window.matchMedia('(prefers-reduced-motion: reduce)').matches))
   const [idleVariant, setIdleVariant] = useState(0)
-  const [active, setActive] = useState<FishReaction | null>(() => reaction)
-  const lastId = useRef<number | null>(reaction?.id ?? null)
+  const [feedback, setFeedback] = useState(() => createFishFeedback(reaction))
+  const active = feedback.active
   const lastPlayedId = useRef<number | null>(null)
   const actor = useRef<SVGGElement>(null)
+  const accent = useRef<SVGGElement>(null)
   const running = animated && visible && available
   const underwater = mood === 'behind' || mood === 'lost'
   useEffect(() => {
@@ -42,41 +44,47 @@ export function MarketFishCompanion({ mood, animated, visible = true, reaction }
     return () => { document.removeEventListener('visibilitychange', change); media.removeEventListener('change', change) }
   }, [])
   useEffect(() => {
-    if (reaction && reaction.id !== lastId.current) {
-      lastId.current = reaction.id
-      setActive(reaction)
-    }
+    if (reaction) setFeedback(current => receiveFishFeedback(current, reaction, Date.now()))
   }, [reaction])
   useEffect(() => {
     if (!active) return
-    const id = active.id
-    const timer = setTimeout(() => setActive(current => current?.id === id ? null : current), 4_000)
+    const timer = setTimeout(() => setFeedback(current => expireFishFeedback(current, Date.now())), Math.max(0, feedback.until - Date.now()))
     return () => clearTimeout(timer)
-  }, [active?.id])
+  }, [active?.id, feedback.until])
   useEffect(() => {
     if (!running || active) return
-    const timer = setInterval(() => setIdleVariant(value => value + 1), 18_000)
-    return () => clearInterval(timer)
-  }, [running, active !== null])
+    const timer = setTimeout(() => setIdleVariant(value => value + 1 + Math.floor(Math.random() * 3)), 32_000 + Math.floor(Math.random() * 14_000))
+    return () => clearTimeout(timer)
+  }, [running, active !== null, idleVariant])
   useEffect(() => {
     if (!active || active.id === lastPlayedId.current) return
     // Consume hidden/static actions too; resuming motion must not replay an old gesture.
     lastPlayedId.current = active.id
     if (!running || !actor.current?.animate) return
-    const side = active.action === 'short' ? 1 : active.action === 'long' ? -1 : active.id % 2 === 0 ? 1 : -1
-    const frames = active.action === 'error'
-      ? [{ transform: 'translateX(0)' }, { transform: 'translateX(-4px)' }, { transform: 'translateX(4px)' }, { transform: 'translateX(0)' }]
-      : [{ transform: 'translate(0,0) rotate(0deg) scale(1)' }, { transform: `translate(${4 * side}px,-3px) rotate(${8 * side}deg) scale(1.06,.96)` }, { transform: `translate(${-2 * side}px,1px) rotate(${-5 * side}deg) scale(.98,1.03)` }, { transform: 'translate(0,0) rotate(0deg) scale(1)' }]
-    const animation = actor.current.animate(frames, { duration: 650, easing: 'ease-in-out' })
-    return () => animation.cancel()
+    const motion = fishMotion(active.action)
+    if (!motion) return
+    const animations = [actor.current.animate(motion.frames, { duration: motion.duration, easing: 'ease-in-out' })]
+    // Accents share the consumed action's lifecycle; CSS must not replay them on resume.
+    if (motion.accent === 'bubbles') accent.current?.querySelectorAll('circle').forEach((circle, index) => {
+      animations.push(circle.animate([{ transform: 'translate(0,6px) scale(.5)', opacity: 0 }, { opacity: .8, offset: .25 }, { transform: 'translate(2px,-10px) scale(1.1)', opacity: 0 }], { duration: 950, delay: index * 110, easing: 'ease-out' }))
+    })
+    else if (motion.accent === 'stamp' && accent.current?.animate) animations.push(accent.current.animate([
+      { transform: 'translateY(-4px) scale(.3)', opacity: 0 }, { transform: 'translateY(2px) scale(1.15)', opacity: 1, offset: .4 }, { transform: 'scale(.95)', opacity: .95, offset: .65 }, { transform: 'scale(1)', opacity: 0 },
+    ], { duration: 1_200, easing: 'ease-out' }))
+    return () => animations.forEach(animation => animation.cancel())
   }, [active?.id, running])
-  const quote = fishResponse(mood, active?.action ?? 'idle', active?.id ?? idleVariant)
-  return <div className="liangxiang-market-companion" aria-hidden="true" data-motion={running} data-pose={underwater ? 'dive' : 'surface'} data-reaction-id={active?.id ?? ''}>
+  const quote = active?.text ?? fishResponse(mood, active?.action ?? 'idle', active?.id ?? idleVariant)
+  const activeAccent = active ? fishMotion(active.action)?.accent : 'none'
+  return <div className={marketClass('companion')} aria-hidden="true" data-motion={running} data-pose={underwater ? 'dive' : 'surface'} data-reaction-id={active?.id ?? ''} data-fish-gesture={active?.action ?? 'idle'}>
     <svg viewBox="0 0 80 72" data-liangxiang-market-main-whale="">
-      <g ref={actor} className="liangxiang-market-companion-actor"><g className="liangxiang-market-companion-sway">
+      <g ref={actor} className={marketClass('companion-actor')}><g className={marketClass('companion-sway')}>
         <MarketWhaleFigure x={5} y={underwater ? 12 : -1} width={66} height={68} waterY={mood === 'waiting' ? 72 : 40} mood={mood} animated={running} src={MARKET_WHALE_PATH} />
       </g></g>
+      <g ref={accent} key={active?.id ?? 'idle'} className={marketClass('companion-accent')} data-accent={activeAccent} fill="none" stroke="var(--liangxiang-market-blue-text)" strokeWidth="1.6">
+        {activeAccent === 'bubbles' && <><circle cx="65" cy="47" r="2.4" /><circle cx="70" cy="39" r="3" /><circle cx="65" cy="31" r="1.8" /></>}
+        {activeAccent === 'stamp' && <><circle cx="65" cy="17" r="8" fill="var(--liangxiang-market-paper)" /><path d="m61 17 3 3 5-6" strokeLinecap="round" strokeLinejoin="round" /></>}
+      </g>
     </svg>
-    <span className="liangxiang-market-companion-speech" title={quote} data-fish-action={active?.action ?? 'idle'}>{quote}</span>
+    <span className={marketClass('companion-speech')} title={quote} data-fish-action={active?.action ?? 'idle'}>{quote}</span>
   </div>
 }

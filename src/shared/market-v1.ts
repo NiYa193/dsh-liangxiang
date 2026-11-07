@@ -1,5 +1,6 @@
 /** Community game contract. The Linux ledger is authoritative; usage remains soft trust. */
-export const MARKET_RULE_VERSION = 'liangxiang-market-v1' as const
+import { isMarketRuleVersion, type MarketRuleVersion } from '../domain/market.ts'
+export { MARKET_RULE_VERSION, MARKET_LEGACY_RULE_VERSION, MARKET_BATCH_HOURS, type MarketRuleVersion } from '../domain/market.ts'
 export const MARKET_SCHEMA_VERSION = 1 as const
 export const MARKET_CANDLE_INTERVAL_MS = 60_000
 export const MARKET_LEGACY_CANDLE_INTERVAL_MS = 300_000
@@ -60,7 +61,7 @@ export interface DailyMarket {
   case_id: string
   business_date: string
   timezone: string
-  rule_version: typeof MARKET_RULE_VERSION
+  rule_version: MarketRuleVersion
   opens_at: number
   closes_at: number
   status: 'open' | 'closed' | 'cancelled'
@@ -232,11 +233,11 @@ export function parseMarketState(value: unknown): MarketState {
   let market: DailyMarket | null = null
   if (v.market !== null) {
     const m = object(v.market, 'daily market')
-    if (m.rule_version !== MARKET_RULE_VERSION || !Array.isArray(m.batches) || m.batches.length !== 3) throw new Error('invalid market policy')
+    if (!isMarketRuleVersion(m.rule_version) || !Array.isArray(m.batches) || m.batches.length !== 3) throw new Error('invalid market policy')
     const batches = m.batches.map(parseBatch)
     if (new Set(batches.map(b => b.batch)).size !== 3) throw new Error('duplicate market batch')
     market = { id: text(m.id, 'market id'), case_id: text(m.case_id, 'market case'), business_date: text(m.business_date, 'business date'),
-      timezone: text(m.timezone, 'business timezone'), rule_version: MARKET_RULE_VERSION,
+      timezone: text(m.timezone, 'business timezone'), rule_version: m.rule_version,
       opens_at: integer(m.opens_at, 'market open'), closes_at: integer(m.closes_at, 'market close'),
       status: choice(m.status, ['open', 'closed', 'cancelled'], 'market status'), batches, close_point: nullablePoint(m.close_point) }
     if (market.closes_at <= market.opens_at || batches.some(b => b.opens_at >= b.locks_at || b.locks_at >= b.reference_at

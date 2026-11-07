@@ -8,7 +8,7 @@ import { MarketLedger } from '../src/backend/market-ledger.ts'
 import { openBackendStore } from '../src/backend/store.ts'
 import { BACKEND_SCHEMA_USER_VERSION, migrate } from '../src/backend/schema.ts'
 import { BackendConfigError, resolveBackendConfig } from '../src/backend/config.ts'
-import { MARKET_RULE_VERSION, parseMarketHistoryResponse, parseMarketState, type MarketPositionRequest } from '../src/shared/market-v1.ts'
+import { MARKET_RULE_VERSION, MARKET_LEGACY_RULE_VERSION, parseMarketHistoryResponse, parseMarketState, type MarketPositionRequest } from '../src/shared/market-v1.ts'
 import { createBackendFixture, createMutableClock, type BackendFixture } from './helpers/backend.ts'
 
 const A = 'market-wallet-a'
@@ -193,7 +193,7 @@ describe('three daily sealed pools', () => {
         expect(position(f, owners[n]!, side, amount, `grouped-${batch}-${n}`, batch).accepted).toBe(true)
       }
     }
-    f.clock.set(at(21)); f.service.tick()
+    f.clock.set(at(22)); f.service.tick()
     point(f, 'up', 10, 'grouped-final-up')
     f.clock.set(at(0, 0, 17)); f.service.tick()
     const expected = [
@@ -285,7 +285,7 @@ describe('wallet v11 migration and durable restart', () => {
       migrate(db)
       migrate(db)
       expect(db.prepare('PRAGMA user_version').get()).toMatchObject({ user_version: BACKEND_SCHEMA_USER_VERSION })
-      expect(db.prepare('SELECT rule_version FROM liang_market').get()).toMatchObject({ rule_version: MARKET_RULE_VERSION })
+      expect(db.prepare('SELECT rule_version FROM liang_market').get()).toMatchObject({ rule_version: MARKET_LEGACY_RULE_VERSION })
       expect(db.prepare('SELECT * FROM incense_wallet').get()).toEqual(before)
     } finally { db.close() }
   })

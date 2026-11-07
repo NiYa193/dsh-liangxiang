@@ -1,8 +1,9 @@
 import { createRequire } from 'node:module'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
-import { MarketFishCompanion } from '../src/client/market/MarketFishCompanion.tsx'
-import { fishResponse, type FishAction } from '../src/client/market/fish-feedback.ts'
+import { COMPANION_CSS, MarketFishCompanion } from '../src/client/market/MarketFishCompanion.tsx'
+import { createFishFeedback, expireFishFeedback, fishResponse, receiveFishFeedback, type FishAction } from '../src/client/market/fish-feedback.ts'
+import { fishMotion, MARKET_MOTION_CSS } from '../src/client/market/market-motion-style.ts'
 import type { PositionMood } from '../src/client/market/chart-model.ts'
 
 const { renderToStaticMarkup } = createRequire(import.meta.url)('react-dom/server') as { renderToStaticMarkup(element: ReactElement): string }
@@ -14,7 +15,7 @@ describe('decorative header companion', () => {
     expect(fishResponse('behind', 'long')).toMatch(/^咕噜，/)
     expect(fishResponse('ahead', 'submit')).toBe('等账本点头～')
     expect(fishResponse('ahead', 'confirmed')).toContain('账本点头')
-    const actions: FishAction[] = ['idle', 'draft', 'submit', 'confirmed', 'withdraw', 'long', 'short', 'batch1', 'batch2', 'batch3', 'chart', 'range', 'history', 'rules', 'motion', 'interval', 'error']
+    const actions: FishAction[] = ['idle', 'submit', 'confirmed', 'withdraw', 'long', 'short', 'batch1', 'batch2', 'batch3', 'history', 'rules', 'motion', 'error', 'zoom-in', 'zoom-out', 'mode-candles', 'mode-tide', 'pan', 'inspect', 'reset', 'fullscreen', 'restore', 'amount', 'report', 'periodic']
     const moods: PositionMood[] = ['ahead', 'behind', 'waiting', 'even', 'won', 'lost', 'returned']
     for (const mood of moods) for (const action of actions) for (let variant = 0; variant < 8; variant++) {
       const text = fishResponse(mood, action, variant)
@@ -23,7 +24,7 @@ describe('decorative header companion', () => {
       expect(text).not.toMatch(/保证|必赚|稳赚|已到账|收益到账/)
     }
   })
-  it('keeps the existing artwork and two-line speech as decoration outside the focus sequence', () => {
+  it('keeps the existing artwork and full speech as decoration outside the focus sequence', () => {
     const html = renderToStaticMarkup(<MarketFishCompanion mood="ahead" animated reaction={{ id: 1, action: 'submit' }} />)
     expect(html).toContain('aria-hidden="true"')
     expect(html).toContain('data-liangxiang-market-main-whale')
@@ -33,6 +34,10 @@ describe('decorative header companion', () => {
     expect(html).not.toContain('aria-live')
     expect(html).not.toContain('tabindex')
     expect(html).not.toContain('<button')
+    for (const css of [COMPANION_CSS, MARKET_MOTION_CSS]) {
+      expect(css).toContain('.liangxiang-market-companion')
+      expect(css).not.toContain('.~')
+    }
   })
   it('retains an underwater pose when static or hidden and never enables decorative loops then', () => {
     for (const props of [{ animated: false }, { animated: true, visible: false }]) {
@@ -41,6 +46,82 @@ describe('decorative header companion', () => {
       expect(html).toContain('data-motion="false"')
       expect(html).toContain('data-liangxiang-market-water-occlusion="dive"')
       expect(html).toContain('咕噜')
+    }
+  })
+  it('preserves the supplied authoritative report and its line break without deriving balances or truncating copy', () => {
+    const text = 'P1 · 11:00封盘，12:00定线\n多池 120 炷 · 空池 80 炷'
+    const html = renderToStaticMarkup(<MarketFishCompanion mood="behind" animated={false} reaction={{ id: 1, action: 'report', text }} />)
+    expect(html).toContain(text)
+    expect(html).toContain('data-fish-action="report"')
+    expect(html).toContain('data-motion="false"')
+    expect(html).not.toContain('line-clamp')
+    expect(html).not.toContain('aria-live')
+  })
+  it('keeps a continuous zoom gesture to one readable response without extending its lifetime', () => {
+    let state = createFishFeedback({ id: 1, action: 'zoom-in' }, 0)
+    for (let id = 2; id <= 12; id++) state = receiveFishFeedback(state, { id, action: id % 2 ? 'zoom-out' : 'zoom-in' }, (id - 1) * 500)
+    expect(state.until).toBe(4_000)
+    expect(state.active).toBeNull()
+    state = receiveFishFeedback(state, { id: 13, action: 'zoom-out' }, 7_000)
+    expect(state.active?.id).toBe(13)
+    expect(state.until).toBe(11_000)
+    state = receiveFishFeedback(state, { id: 14, action: 'history' }, 7_100)
+    expect(state.active?.action).toBe('history')
+  })
+  it('lets readers finish the zoom line after a brief pause, while a deliberate report responds immediately', () => {
+    let state = createFishFeedback({ id: 1, action: 'zoom-in' }, 0)
+    state = receiveFishFeedback(state, { id: 2, action: 'zoom-out' }, 1_500)
+    expect(state.active?.id).toBe(1)
+    expect(state.until).toBe(4_000)
+    state = receiveFishFeedback(state, { id: 3, action: 'error', text: '原单待核对' }, 1_600)
+    state = receiveFishFeedback(state, { id: 4, action: 'report', text: 'P1 多池120炷\n空池80炷' }, 1_700)
+    expect(state.active?.action).toBe('report')
+    expect(state.active?.text).toContain('\n')
+  })
+  it('answers deliberate opposite zoom buttons while combining passive wheel samples', () => {
+    let state = createFishFeedback({ id: 1, action: 'zoom-in' }, 0)
+    state = receiveFishFeedback(state, { id: 2, action: 'zoom-out', deliberate: true }, 200)
+    expect(state.active?.action).toBe('zoom-out')
+    expect(state.until).toBe(4_200)
+    state = receiveFishFeedback(state, { id: 3, action: 'zoom-in' }, 300)
+    expect(state.active?.id).toBe(3)
+    state = receiveFishFeedback(state, { id: 4, action: 'zoom-out' }, 400)
+    expect(state.active?.id).toBe(3)
+  })
+  it('drops low-priority periodic reports during operations or errors and never queues them for later', () => {
+    let state = createFishFeedback({ id: 1, action: 'submit' }, 0)
+    state = receiveFishFeedback(state, { id: 2, action: 'periodic', text: 'P1 还有十分钟封盘' }, 1_000)
+    expect(state.active?.action).toBe('submit')
+    state = receiveFishFeedback(state, { id: 3, action: 'error', text: '原单待核对' }, 1_100)
+    state = receiveFishFeedback(state, { id: 4, action: 'periodic', text: 'P1 还有九分钟封盘' }, 2_000)
+    expect(state.active?.action).toBe('error')
+    state = expireFishFeedback(state, 5_100)
+    expect(state.active).toBeNull()
+    state = receiveFishFeedback(state, { id: 4, action: 'periodic', text: '旧报告不得重放' }, 5_200)
+    expect(state.active).toBeNull()
+    state = receiveFishFeedback(state, { id: 5, action: 'report', text: 'P1 多池120炷\n空池80炷' }, 5_300)
+    expect(state.active?.action).toBe('report')
+  })
+  it('gives longer factual reports reading time while accepting the next different button immediately', () => {
+    const text = 'P1参考线已确定；当前已确认做多十炷，若此刻收盘预计返还十五炷。\n结果以午夜服务器结算回执为准。'
+    let state = createFishFeedback({ id: 1, action: 'report', text }, 0)
+    expect(state.until).toBeGreaterThan(4_000)
+    state = receiveFishFeedback(state, { id: 2, action: 'rules' }, 100)
+    expect(state.active?.action).toBe('rules')
+    expect(state.until).toBe(4_100)
+  })
+  it('assigns distinct acting directions instead of replaying one generic swim', () => {
+    const actions: FishAction[] = ['long', 'short', 'confirmed', 'withdraw', 'batch1', 'batch2', 'batch3', 'zoom-in', 'zoom-out', 'mode-candles', 'mode-tide', 'history', 'rules', 'motion', 'fullscreen', 'restore', 'amount', 'report', 'error']
+    const motions = actions.map(action => fishMotion(action)!)
+    expect(new Set(motions.map(motion => JSON.stringify(motion.frames))).size).toBe(actions.length)
+    expect(fishMotion('short')?.accent).toBe('bubbles')
+    expect(fishMotion('confirmed')?.accent).toBe('stamp')
+    expect(fishMotion('idle')).toBeNull()
+    expect(fishMotion('long')?.frames[1]?.transform).toContain('translate(0px,-6px)')
+    expect(fishMotion('short')?.frames[1]?.transform).toContain('translate(2px,6px)')
+    for (const motion of motions) {
+      expect(motion.frames[0]).toEqual(motion.frames.at(-1))
+      expect(motion.duration).toBeLessThanOrEqual(1_200)
     }
   })
 })

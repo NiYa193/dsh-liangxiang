@@ -47,7 +47,7 @@ async function openChart(page: Page) {
   await panel.locator('[data-liangxiang-utility-trigger]').click()
   await expect(panel.locator('[data-liangxiang-utility-action="bars"]')).toHaveCount(0)
   await panel.locator('[data-liangxiang-utility-market]').click()
-  const dialog = page.getByRole('dialog', { name: '香火交易', exact: true })
+  const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
   await expect(dialog).toBeVisible()
   const chart = dialog.locator('[data-liangxiang-market-chart-mode]')
   await expect(chart).toHaveAttribute('data-liangxiang-market-chart-mode', 'candles')
@@ -99,7 +99,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   }
 
   const toolbar = chart.locator('.liangxiang-market-chart-toolbar')
-  const controls = toolbar.locator('button,.liangxiang-market-chart-interval')
+  const controls = toolbar.locator('button')
   const controlBounds = await controls.evaluateAll(nodes => nodes.map(node => {
     const { x, y, width, height } = node.getBoundingClientRect()
     return { x, y, width, height }
@@ -114,34 +114,44 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
       expect(Math.abs(next[i]![key] - controlBounds[i]![key])).toBeLessThanOrEqual(1)
     }
   }
-  await toolbar.getByRole('button', { name: '近4时', exact: true }).click()
-  const interval = toolbar.getByRole('combobox', { name: '烛线间隔' })
-  await expect(interval.locator('option:checked')).toHaveText('自动·5分钟')
-  await expectStableControls()
-  await toolbar.getByRole('button', { name: '今日', exact: true }).click()
-  await expect(interval.locator('option:checked')).toHaveText(/^自动·(15|30)分钟$/)
-  await expectStableControls()
+  const range = toolbar.getByRole('button', { name: /复位走势时间范围$/ })
+  await expect(range).toHaveText('今日 ↺')
+  await expect(toolbar.getByRole('combobox')).toHaveCount(0)
+  await expect(toolbar.getByRole('button', { name: '近4时', exact: true })).toHaveCount(0)
   // The minute source is fetched in bounded pages; finer display never splits
   // a five-minute bar into invented prices.
   await expect(svg).toHaveAttribute('data-liangxiang-market-source-interval', String(MINUTE))
-  await interval.selectOption(String(MINUTE))
-  await expect(svg).toHaveAttribute('data-liangxiang-market-interval', String(MINUTE))
   const eightTick = (await chart.locator('.liangxiang-market-time-tick text').filter({ hasText: /^08:00$/ }).boundingBox())!
   const beforeOpenChart = (await svg.boundingBox())!
   await page.mouse.move(eightTick.x + eightTick.width / 2 + 1, beforeOpenChart.y + 50)
   await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('08:')
-  await interval.selectOption('auto')
-  await toolbar.getByRole('button', { name: '近4时', exact: true }).click()
-  await chart.getByRole('button', { name: '放大走势', exact: true }).click()
-  await chart.getByRole('button', { name: '放大走势', exact: true }).click()
-  await expect(interval.locator('option:checked')).toHaveText('自动·1分钟')
+  for (const [hours, label] of [[12, '近12时'], [6, '近6时'], [3, '近3时'], [1, '近1时'], [.5, '近30分']] as const) {
+    await chart.getByRole('button', { name: '放大走势', exact: true }).click()
+    await expect(range).toHaveText(`${label} ↺`)
+    const actual = Number(await svg.getAttribute('data-liangxiang-market-until')) - Number(await svg.getAttribute('data-liangxiang-market-from'))
+    expect(actual).toBe(hours * HOUR)
+    await expectStableControls()
+  }
   await expect(svg).toHaveAttribute('data-liangxiang-market-interval', String(MINUTE))
-  await toolbar.getByRole('button', { name: '今日', exact: true }).click()
+  await expect(chart.getByRole('button', { name: '放大走势', exact: true })).toBeDisabled()
+  await range.click()
+  await expect(range).toHaveText('今日 ↺')
+  await expect(svg).toHaveAttribute('data-liangxiang-market-from', String(DAY))
+  await expect(svg).toHaveAttribute('data-liangxiang-market-until', String(DAY + 24 * HOUR))
+  await expectStableControls()
   await expect(chart.locator('[data-liangxiang-market-phase="before"]')).toHaveCount(1)
   await expect(chart.locator('[data-liangxiang-market-phase="open"]')).toHaveCount(3)
   await expect(chart.locator('[data-liangxiang-market-phase="locked"]')).toHaveCount(3)
   await expect(chart.locator('[data-liangxiang-market-phase="closing"]')).toHaveCount(1)
   await expect(chart.locator('[data-liangxiang-market-future]')).toContainText('待打梁')
+  const wicks = chart.locator('[data-liangxiang-market-wick]')
+  expect(await wicks.count()).toBeGreaterThan(0)
+  expect(await wicks.evaluateAll(nodes => nodes.every(node =>
+    Number(node.getAttribute('y2')) > Number(node.getAttribute('y1'))
+      && Number(node.getAttribute('stroke-width')) >= 1.5
+      && node.getAttribute('vector-effect') === 'non-scaling-stroke'))).toBe(true)
+  await expect(chart.locator('figcaption')).toHaveCount(1)
+  await expect(chart.locator('figcaption')).not.toContainText('量带高度看总量')
 
   const quoteBounds = []
   for (const key of ['open', 'high', 'low', 'close']) {
@@ -199,20 +209,20 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
       await expect.poll(() => chart.locator('svg[data-liangxiang-market-from]').evaluate(element => element.getBoundingClientRect().width)).toBeLessThan(320)
       const edgeChecks = await dialog.evaluate(element => {
         const bounds = element.getBoundingClientRect()
-        return [...element.querySelectorAll<HTMLElement>('.liangxiang-market-header button,.liangxiang-market-wallet,.liangxiang-market-header-caption,.liangxiang-market-chart-toolbar button,.liangxiang-market-chart-interval,[data-liangxiang-market-quote],[data-liangxiang-market-main-whale]')].map(node => {
+        return [...element.querySelectorAll<HTMLElement>('.liangxiang-market-window-controls button,.liangxiang-market-wallet,.liangxiang-market-header-copy,.liangxiang-market-chart-toolbar button,[data-liangxiang-market-quote],[data-liangxiang-market-main-whale]')].map(node => {
           const rect = node.getBoundingClientRect()
           return { label: node.getAttribute('aria-label') ?? node.textContent ?? node.tagName, fits: rect.left >= bounds.left && rect.right <= bounds.right + 1 }
         })
       })
       expect(edgeChecks.filter(check => !check.fits)).toEqual([])
       const fish = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
-      const caption = (await dialog.locator('.liangxiang-market-header-caption').boundingBox())!
+      const caption = (await dialog.locator('.liangxiang-market-header-copy').boundingBox())!
       const speech = (await dialog.locator('.liangxiang-market-companion-speech').boundingBox())!
       expect(fish.x >= caption.x + caption.width || caption.x >= fish.x + fish.width
         || fish.y >= caption.y + caption.height || caption.y >= fish.y + fish.height).toBe(true)
       expect(fish.x >= speech.x + speech.width || speech.x >= fish.x + fish.width
         || fish.y >= speech.y + speech.height || speech.y >= fish.y + fish.height).toBe(true)
-      const controls = await dialog.locator('.liangxiang-market-header button,.liangxiang-market-wallet').evaluateAll(nodes => nodes.map(node => {
+      const controls = await dialog.locator('.liangxiang-market-window-controls button,.liangxiang-market-wallet,.liangxiang-market-header-copy').evaluateAll(nodes => nodes.map(node => {
         const { x, y, width, height } = node.getBoundingClientRect()
         return { x, y, width, height }
       }))
@@ -246,12 +256,14 @@ test('legacy five-minute history remains five-minute data and cannot offer inven
   await page.route('**/liangxiang/api/market', route => route.fulfill({ json: legacy, headers: { 'x-liangxiang-cache-scope': 'browser-chart-scope' } }))
   await page.route('**/liangxiang/api/market/candles?*', route => route.fulfill({ json: candlePage(route.request().url(), chartCandles(300_000), 300_000) }))
   const { chart } = await openChart(page)
-  const interval = chart.getByRole('combobox', { name: '烛线间隔' }), svg = chart.locator('svg[data-liangxiang-market-from]')
+  const svg = chart.locator('svg[data-liangxiang-market-from]')
   await expect(svg).toHaveAttribute('data-liangxiang-market-source-interval', '300000')
-  await expect(interval.locator('option[value="60000"]')).toBeDisabled()
-  await interval.selectOption('300000')
+  for (let index = 0; index < 4; index++) await chart.getByRole('button', { name: '放大走势', exact: true }).click()
   await expect(svg).toHaveAttribute('data-liangxiang-market-interval', '300000')
-  await expect(chart.locator('[data-liangxiang-market-candle]')).toHaveCount(chartCandles(300_000).length)
+  await expect(chart.getByRole('button', { name: /复位走势时间范围$/ })).toHaveText('近1时 ↺')
+  await expect(chart.locator('[data-liangxiang-market-candle]')).toHaveCount(6)
+  expect(await chart.locator('[data-liangxiang-market-candle]').evaluateAll(nodes => nodes.map(node => Number(node.getAttribute('data-liangxiang-market-candle-x'))))
+    .then(xs => new Set(xs).size === xs.length)).toBe(true)
 })
 
 test('unified chart and wallet have no WCAG A/AA axe violations', async ({ page }) => {

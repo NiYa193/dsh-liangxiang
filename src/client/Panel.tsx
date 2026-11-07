@@ -386,33 +386,34 @@ function placementStyle(placement: PanelPlacement): CSSProperties {
 }
 
 /** Panel-scoped CSS that inline styles cannot express (focus ring, keyframes). */
+// Expand selector prefixes once; the resulting CSS is byte-for-byte unchanged.
 const PANEL_CSS = `
-[data-liangxiang-panel] { --liangxiang-ember-readable: color-mix(in srgb, var(--liangxiang-ember, #c95f38) 64%, var(--dsw-alias-label-primary, #1c2130)); }
-[data-liangxiang-panel] {
+[data-~panel] { --liangxiang-ember-readable: color-mix(in srgb, var(--liangxiang-ember, #c95f38) 64%, var(--dsw-alias-label-primary, #1c2130)); }
+[data-~panel] {
   animation: liangxiang-panel-enter 110ms cubic-bezier(.2,.8,.2,1) both;
 }
-[data-liangxiang-panel] button:focus-visible {
+[data-~panel] button:focus-visible {
   outline: 2px solid ${color.brand};
   outline-offset: 2px;
 }
-[data-liangxiang-panel] button[disabled] {
+[data-~panel] button[disabled] {
   opacity: 0.55;
   cursor: not-allowed;
 }
-[data-liangxiang-panel] button[aria-disabled="true"]:not([disabled]) {
+[data-~panel] button[aria-disabled="true"]:not([disabled]) {
   opacity: 0.72;
   cursor: pointer;
 }
-[data-liangxiang-vote]:hover:not([disabled]) {
+[data-~vote]:hover:not([disabled]) {
   transform: translateY(-1px);
   filter: brightness(1.04);
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
 }
-[data-liangxiang-vote]:active:not([disabled]) {
+[data-~vote]:active:not([disabled]) {
   transform: translateY(1px) scale(0.985);
   box-shadow: 0 2px 7px rgba(0, 0, 0, 0.14);
 }
-[data-liangxiang-vote][data-charging] {
+[data-~vote][data-charging] {
   --charge: 0;
   z-index: 1;
   color: #fffdf3 !important;
@@ -423,10 +424,10 @@ const PANEL_CSS = `
     inset 0 0 calc(12px + (var(--charge) * 18px)) color-mix(in srgb, #fff6c8 calc(var(--charge) * 55%), transparent);
   animation: liangxiang-vote-quake calc(130ms - (var(--charge) * 80ms)) linear infinite;
 }
-[data-liangxiang-vote][data-charging][data-armed] {
+[data-~vote][data-charging][data-armed] {
   animation-duration: 55ms;
 }
-[data-liangxiang-vote="down"][data-charging] {
+[data-~vote="down"][data-charging] {
   color: #f4fbff !important;
   background: linear-gradient(135deg, ${color.ritualCool}, color-mix(in srgb, ${color.ritualCool} 46%, #182232)) !important;
   border-color: color-mix(in srgb, ${color.ritualCool} 82%, #b7dcff) !important;
@@ -436,7 +437,7 @@ const PANEL_CSS = `
     0 0 calc(22px + (var(--charge) * 36px)) color-mix(in srgb, #3d6aa8 calc(var(--charge) * 72%), transparent),
     inset 0 0 calc(12px + (var(--charge) * 18px)) color-mix(in srgb, #d4efff calc(var(--charge) * 42%), transparent);
 }
-[data-liangxiang-vote-fill] {
+[data-~vote-fill] {
   position: absolute;
   left: 0;
   right: 0;
@@ -447,10 +448,10 @@ const PANEL_CSS = `
   opacity: calc(0.25 + (var(--charge) * 0.7));
   mix-blend-mode: screen;
 }
-[data-liangxiang-vote="down"] [data-liangxiang-vote-fill] {
+[data-~vote="down"] [data-~vote-fill] {
   background: linear-gradient(180deg, rgba(245, 252, 255, 0.96) 0%, rgba(120, 190, 255, 0.82) 55%, rgba(40, 70, 160, 0.7) 100%);
 }
-[data-liangxiang-vote-bolt] {
+[data-~vote-bolt] {
   position: absolute;
   top: -28%;
   width: 18px;
@@ -463,30 +464,30 @@ const PANEL_CSS = `
   filter: drop-shadow(0 0 6px #fff4b8);
   animation: liangxiang-vote-bolt calc(160ms - (var(--charge) * 90ms)) steps(2, end) infinite;
 }
-[data-liangxiang-vote="down"] [data-liangxiang-vote-bolt] {
+[data-~vote="down"] [data-~vote-bolt] {
   background: linear-gradient(180deg, #ffffff 0%, #d7f0ff 38%, #7ec8ff 70%, transparent 100%);
   filter: drop-shadow(0 0 6px #c8ecff);
 }
-[data-liangxiang-vote-bolt="a"] { left: 18%; }
-[data-liangxiang-vote-bolt="b"] { right: 16%; transform: scaleX(-1); animation-delay: 40ms; }
-[data-liangxiang-vote-label] {
+[data-~vote-bolt="a"] { left: 18%; }
+[data-~vote-bolt="b"] { right: 16%; transform: scaleX(-1); animation-delay: 40ms; }
+[data-~vote-label] {
   position: relative;
   z-index: 1;
 }
-[data-liangxiang-broadcast-dismiss]:hover,
-[data-liangxiang-broadcast-dismiss]:focus-visible {
+[data-~broadcast-dismiss]:hover,
+[data-~broadcast-dismiss]:focus-visible {
   color: ${color.textPrimary} !important;
   opacity: 1 !important;
   background: color-mix(in srgb, ${color.ritualEmber} 10%, ${color.bgSubtle}) !important;
   border-color: color-mix(in srgb, ${color.ritualEmber} 40%, ${color.border}) !important;
 }
-[data-liangxiang-broadcast-viewport]:hover [data-liangxiang-broadcast-track][data-scrolling] {
+[data-~broadcast-viewport]:hover [data-~broadcast-track][data-scrolling] {
   animation-play-state: paused;
 }
-[data-liangxiang-region="vote"][data-dump-burst] {
+[data-~region="vote"][data-dump-burst] {
   animation: liangxiang-dump-row 420ms ease-out;
 }
-[data-liangxiang-region="vote"][data-dump-burst]::after {
+[data-~region="vote"][data-dump-burst]::after {
   content: "";
   position: absolute;
   inset: -18px -8px;
@@ -497,7 +498,7 @@ const PANEL_CSS = `
   mix-blend-mode: screen;
   animation: liangxiang-dump-sheet 420ms ease-out both;
 }
-[data-liangxiang-region="vote"][data-dump-burst="down"]::after {
+[data-~region="vote"][data-dump-burst="down"]::after {
   background:
     linear-gradient(100deg, transparent 30%, rgba(230, 246, 255, 0.9) 48%, rgba(110, 180, 255, 0.55) 50%, rgba(230, 246, 255, 0.9) 52%, transparent 70%),
     radial-gradient(ellipse at 50% 50%, rgba(180, 220, 255, 0.55), transparent 62%);
@@ -535,7 +536,7 @@ const PANEL_CSS = `
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
 }
-[data-liangxiang-ritual] {
+[data-~ritual] {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -555,17 +556,17 @@ const PANEL_CSS = `
   transform: translateY(0);
   transition: color 60ms ease, background-color 60ms ease, box-shadow 60ms ease, transform 60ms ease;
 }
-[data-liangxiang-ritual]:hover:not(:disabled),
-[data-liangxiang-ritual]:focus-visible {
+[data-~ritual]:hover:not(:disabled),
+[data-~ritual]:focus-visible {
   color: ${color.textPrimary};
   background: ${color.bgLayer};
   box-shadow: inset 0 0 0 1px ${color.brand}, 0 4px 10px rgba(0, 0, 0, 0.12);
   transform: translateY(-1px);
 }
-[data-liangxiang-utility-drawer] {
+[data-~utility-drawer] {
   animation: liangxiang-panel-enter 120ms cubic-bezier(.2,.8,.2,1) both;
 }
-[data-liangxiang-utility-action] {
+[data-~utility-action] {
   min-width: 0;
   min-height: 48px;
   height: 48px;
@@ -583,19 +584,19 @@ const PANEL_CSS = `
   text-align: left;
   cursor: pointer;
 }
-[data-liangxiang-utility-action] > svg {
+[data-~utility-action] > svg {
   grid-row: 1 / 3;
   color: ${color.ritualEmber};
 }
-[data-liangxiang-utility-action="reconcile"] { height: auto; }
-[data-liangxiang-utility-action] > strong,
-[data-liangxiang-utility-action] > span:not([data-liangxiang-version-label]) {
+[data-~utility-action="reconcile"] { height: auto; }
+[data-~utility-action] > strong,
+[data-~utility-action] > span:not([data-~version-label]) {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-[data-liangxiang-utility-market] {
+[data-~utility-market] {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) 10px;
   grid-template-rows: auto auto;
@@ -616,25 +617,25 @@ const PANEL_CSS = `
   cursor: pointer;
   transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
-[data-liangxiang-utility-market] > svg {
+[data-~utility-market] > svg {
   grid-row: 1 / 3;
   color: ${color.ritualEmberText};
 }
-[data-liangxiang-utility-market] > strong { grid-column: 2; grid-row: 1; font-size: 12px; font-weight: 600; }
-[data-liangxiang-utility-market-caption] { grid-column: 2; grid-row: 2; color: ${color.textSecondary}; font-size: 10px; white-space: nowrap; }
-[data-liangxiang-utility-market-arrow] { grid-column: 3; grid-row: 1 / 3; color: ${color.ritualEmberText}; font-size: 20px; }
-[data-liangxiang-utility-market]:hover,
-[data-liangxiang-utility-market]:focus-visible {
+[data-~utility-market] > strong { grid-column: 2; grid-row: 1; font-size: 12px; font-weight: 600; }
+[data-~utility-market-caption] { grid-column: 2; grid-row: 2; color: ${color.textSecondary}; font-size: 10px; white-space: nowrap; }
+[data-~utility-market-arrow] { grid-column: 3; grid-row: 1 / 3; color: ${color.ritualEmberText}; font-size: 20px; }
+[data-~utility-market]:hover,
+[data-~utility-market]:focus-visible {
   border-color: ${color.ritualEmberText};
   box-shadow: inset 0 1px 0 color-mix(in srgb, ${color.ritualGold} 20%, transparent), 0 3px 0 color-mix(in srgb, ${color.ritualGold} 22%, ${color.border});
   transform: translateY(-1px);
 }
-[data-liangxiang-utility-market]:active { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08); }
+[data-~utility-market]:active { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08); }
 .liangxiang-utility-mini-candle { transform-box: fill-box; transform-origin: center; transition: transform 150ms ease; }
-[data-liangxiang-utility-market]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even) { transform: translateY(-1px); }
-[data-liangxiang-utility-market][data-motion="false"],
-[data-liangxiang-utility-market][data-motion="false"] .liangxiang-utility-mini-candle { transform: none; transition: none; }
-[data-liangxiang-version-label] {
+[data-~utility-market]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even) { transform: translateY(-1px); }
+[data-~utility-market][data-motion="false"],
+[data-~utility-market][data-motion="false"] .liangxiang-utility-mini-candle { transform: none; transition: none; }
+[data-~version-label] {
   grid-column: 2;
   grid-row: 1 / 3;
   display: flex;
@@ -647,23 +648,23 @@ const PANEL_CSS = `
   line-height: 1.3;
   white-space: nowrap;
 }
-[data-liangxiang-version-label] strong {
+[data-~version-label] strong {
   font-size: 11px;
 }
-[data-liangxiang-version-label] > span {
+[data-~version-label] > span {
   font-size: 10px;
   color: ${color.textSecondary};
 }
-[data-liangxiang-utility-action]:hover:not(:disabled),
-[data-liangxiang-utility-action]:focus-visible {
+[data-~utility-action]:hover:not(:disabled),
+[data-~utility-action]:focus-visible {
   border-color: ${color.brand};
   background: color-mix(in srgb, ${color.brand} 5%, ${color.bgLayer});
 }
-[data-liangxiang-utility-action="day-end"][aria-pressed="true"] {
+[data-~utility-action="day-end"][aria-pressed="true"] {
   border-color: color-mix(in srgb, ${color.ritualGold} 55%, ${color.border});
   background: color-mix(in srgb, ${color.ritualGold} 9%, ${color.bgLayer});
 }
-[data-liangxiang-day-end-hint] {
+[data-~day-end-hint] {
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);
@@ -687,16 +688,16 @@ const PANEL_CSS = `
   pointer-events: none;
   transition: opacity 60ms ease, transform 60ms ease;
 }
-[data-liangxiang-day-end-control]:hover [data-liangxiang-day-end-hint],
-[data-liangxiang-utility-action="day-end"]:focus-visible + [data-liangxiang-day-end-hint] {
+[data-~day-end-control]:hover [data-~day-end-hint],
+[data-~utility-action="day-end"]:focus-visible + [data-~day-end-hint] {
   visibility: visible;
   opacity: 1;
   transform: translateY(0);
 }
-[data-liangxiang-day-end-summary] {
+[data-~day-end-summary] {
   display: block;
 }
-[data-liangxiang-day-end-direction] {
+[data-~day-end-direction] {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -707,11 +708,11 @@ const PANEL_CSS = `
   color: ${color.textSecondary};
   white-space: nowrap;
 }
-[data-liangxiang-day-end-direction] strong {
+[data-~day-end-direction] strong {
   color: ${color.ritualEmberText};
   font-weight: 600;
 }
-[data-liangxiang-ritual] [data-liangxiang-hint] {
+[data-~ritual] [data-~hint] {
   position: absolute;
   right: 0;
   bottom: calc(100% + 6px);
@@ -732,16 +733,16 @@ const PANEL_CSS = `
   transition: opacity 40ms ease, transform 40ms ease;
   transition-delay: 0s;
 }
-[data-liangxiang-ritual]:hover:not(:disabled) [data-liangxiang-hint],
-[data-liangxiang-ritual]:focus-visible [data-liangxiang-hint] {
+[data-~ritual]:hover:not(:disabled) [data-~hint],
+[data-~ritual]:focus-visible [data-~hint] {
   opacity: 1;
   transform: translateY(0);
 }
-[data-liangxiang-personal="next-incense"] {
+[data-~personal="next-incense"] {
   cursor: help;
   outline: none;
 }
-[data-liangxiang-personal="next-incense"] [data-liangxiang-weight-hint] {
+[data-~personal="next-incense"] [data-~weight-hint] {
   position: absolute;
   right: 0;
   top: calc(100% - 8px);
@@ -763,12 +764,12 @@ const PANEL_CSS = `
   pointer-events: none;
   transition: opacity 40ms ease, transform 40ms ease;
 }
-[data-liangxiang-personal="next-incense"]:hover [data-liangxiang-weight-hint],
-[data-liangxiang-personal="next-incense"]:focus-within [data-liangxiang-weight-hint] {
+[data-~personal="next-incense"]:hover [data-~weight-hint],
+[data-~personal="next-incense"]:focus-within [data-~weight-hint] {
   opacity: 1;
   transform: translateY(0);
 }
-[data-liangxiang-stat] [data-liangxiang-stat-hint] {
+[data-~stat] [data-~stat-hint] {
   position: absolute;
   left: 0;
   bottom: calc(100% + 8px);
@@ -785,8 +786,8 @@ const PANEL_CSS = `
   pointer-events: none;
   transition: opacity 40ms ease, transform 40ms ease;
 }
-[data-liangxiang-stat]:hover [data-liangxiang-stat-hint],
-[data-liangxiang-stat]:focus-within [data-liangxiang-stat-hint] {
+[data-~stat]:hover [data-~stat-hint],
+[data-~stat]:focus-within [data-~stat-hint] {
   opacity: 1;
   transform: translateY(0);
 }
@@ -795,17 +796,17 @@ const PANEL_CSS = `
   35% { filter: drop-shadow(0 0 16px color-mix(in srgb, ${color.ritualGold} 88%, transparent)) drop-shadow(0 0 28px color-mix(in srgb, ${color.ritualEmber} 55%, transparent)); transform: scale(1.08); }
   100% { filter: none; transform: scale(1); }
 }
-[data-liangxiang-avatar][data-crossing] {
+[data-~avatar][data-crossing] {
   animation: liangxiang-state-cross ${duration.crossMs}ms ease-out 1;
 }
-[data-liangxiang-stat-hint] strong {
+[data-~stat-hint] strong {
   display: block;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.2px;
   margin-bottom: 6px;
 }
-[data-liangxiang-stat-hint] dl {
+[data-~stat-hint] dl {
   margin: 0;
   display: grid;
   grid-template-columns: auto 1fr;
@@ -814,12 +815,12 @@ const PANEL_CSS = `
   font-size: 11px;
   line-height: 1.35;
 }
-[data-liangxiang-stat-hint] dt {
+[data-~stat-hint] dt {
   margin: 0;
   color: ${color.textTertiary};
   font-weight: 500;
 }
-[data-liangxiang-stat-hint] dd {
+[data-~stat-hint] dd {
   margin: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -827,23 +828,23 @@ const PANEL_CSS = `
   font-weight: 600;
   color: ${color.textPrimary};
 }
-[data-liangxiang-stat-mine] {
+[data-~stat-mine] {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, ${color.border} 80%, transparent);
 }
-[data-liangxiang-weight-hint] table {
+[data-~weight-hint] table {
   border-collapse: collapse;
   width: 100%;
 }
-[data-liangxiang-weight-hint] th,
-[data-liangxiang-weight-hint] td {
+[data-~weight-hint] th,
+[data-~weight-hint] td {
   padding: 2px 4px;
   text-align: left;
   font-weight: 500;
   white-space: nowrap;
 }
-[data-liangxiang-weight-hint] td {
+[data-~weight-hint] td {
   text-align: right;
 }
 @keyframes liangxiang-condense {
@@ -853,16 +854,16 @@ const PANEL_CSS = `
   100% { opacity: 0; transform: translate(-50%, -16px) scale(0.9); }
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-liangxiang-panel],
-  [data-liangxiang-panel] * {
+  [data-~panel],
+  [data-~panel] * {
     animation: none !important;
     transition: none !important;
   }
 }
 @media (prefers-color-scheme: dark) {
-  [data-liangxiang-panel] { --liangxiang-ember-readable: #cf9a85; }
+  [data-~panel] { --liangxiang-ember-readable: #cf9a85; }
 }
-`
+`.replaceAll('[data-~', '[data-liangxiang-')
 
 const visuallyHidden: CSSProperties = {
   position: 'absolute',

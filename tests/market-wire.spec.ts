@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MARKET_CACHE_MAX_BYTES, MARKET_CANDLE_INTERVAL_MS, MARKET_RULE_VERSION,
+  MARKET_CACHE_MAX_BYTES, MARKET_CANDLE_INTERVAL_MS, MARKET_RULE_VERSION, MARKET_LEGACY_RULE_VERSION, MARKET_BATCH_HOURS,
   parseMarketCandlesResponse, parseMarketHistoryResponse, parseMarketPositionRequest,
   parseMarketState, parseMarketWallet, type MarketState,
 } from '../src/shared/market-v1.ts'
@@ -15,8 +15,8 @@ function state(): MarketState {
       id: 'market-example', case_id: 'case-example', business_date: '2026-01-01', timezone: 'UTC', rule_version: MARKET_RULE_VERSION,
       opens_at: start + 9 * 3600000, closes_at: start + 24 * 3600000, status: 'open', close_point: null,
       batches: ([1, 2, 3] as const).map((batch, i) => ({
-        batch, opens_at: start + [9, 12, 18][i]! * 3600000,
-        locks_at: start + [11, 17, 20][i]! * 3600000, reference_at: start + [12, 18, 21][i]! * 3600000,
+        batch, opens_at: start + MARKET_BATCH_HOURS[i]![0] * 3600000,
+        locks_at: start + MARKET_BATCH_HOURS[i]![1] * 3600000, reference_at: start + MARKET_BATCH_HOURS[i]![2] * 3600000,
         status: batch === 1 ? 'open' : 'pending', reference: null, long_incense: batch === 1 ? 20 : 0,
         short_incense: 0, position: batch === 1 ? { side: 'long', amount: 20, submitted_at: start + 10 * 3600000, payout: null } : null,
         result: null,
@@ -26,6 +26,21 @@ function state(): MarketState {
 }
 
 describe('market wire authority and transfer boundaries', () => {
+  it('keeps each supported recorded rule instead of relabelling old markets with the current rule', () => {
+    expect(parseMarketState(state()).market!.rule_version).toBe('liangxiang-market-v2')
+    const legacy = state()
+    legacy.market!.rule_version = MARKET_LEGACY_RULE_VERSION
+    const day = Date.UTC(2026, 0, 1)
+    const hours = [[9, 11, 12], [12, 17, 18], [18, 20, 21]] as const
+    legacy.market!.batches = legacy.market!.batches.map((batch, i) => ({ ...batch,
+      opens_at: day + hours[i]![0] * 3_600_000, locks_at: day + hours[i]![1] * 3_600_000,
+      reference_at: day + hours[i]![2] * 3_600_000 }))
+    const parsed = parseMarketState(legacy).market!
+    expect(parsed.rule_version).toBe(MARKET_LEGACY_RULE_VERSION)
+    expect(parsed.batches.map(batch => batch.reference_at)).toEqual([12, 18, 21].map(hour => day + hour * 3_600_000))
+    expect(() => parseMarketState({ ...state(), market: { ...state().market, rule_version: 'liangxiang-market-future' } })).toThrow('policy')
+  })
+
   it('keeps available and frozen separate without deriving either from today usage', () => {
     const parsed = parseMarketState(state())
     expect(parsed.wallet).toMatchObject({ available_incense: 80, frozen_incense: 20, total_incense: 100 })

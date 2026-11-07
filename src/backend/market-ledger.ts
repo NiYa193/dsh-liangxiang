@@ -1,5 +1,5 @@
 /** Server-owned cumulative wallet and three sealed pari-mutuel pools. */
-import { compareMarketRatios, distributeMarketPool, marketBusinessHour, validMarketReference } from '../domain/market.ts'
+import { MARKET_BATCH_HOURS, isMarketRuleVersion, compareMarketRatios, distributeMarketPool, marketBusinessHour, validMarketReference, type MarketRuleVersion } from '../domain/market.ts'
 import {
   MARKET_CANDLE_INTERVAL_MS, MARKET_LEGACY_CANDLE_INTERVAL_MS, MARKET_CANDLES_PAGE_MAX, MARKET_HISTORY_PAGE_DEFAULT,
   MARKET_HISTORY_PAGE_MAX, MARKET_RULE_VERSION,
@@ -28,8 +28,9 @@ export class MarketLedger {
   }
 
   assertSupportedOpenMarkets(): void {
-    const unknown = this.db.prepare("SELECT rule_version FROM liang_market WHERE status='open' AND rule_version<>? LIMIT 1")
-      .get(MARKET_RULE_VERSION) as { rule_version: string } | undefined
+    const rules = this.db.prepare("SELECT DISTINCT rule_version FROM liang_market WHERE status='open'")
+      .all() as Array<{ rule_version: string }>
+    const unknown = rules.find(row => !isMarketRuleVersion(row.rule_version))
     if (unknown !== undefined) throw new BackendConfigError(`unsupported open market rule ${unknown.rule_version}; use a backend supporting the recorded policy`)
   }
 
@@ -136,7 +137,7 @@ export class MarketLedger {
     const id = `market-${caseRow.id}`
     this.db.prepare(`INSERT INTO liang_market(id,case_id,business_date,timezone,opens_at,closes_at,status,created_at,rule_version)
       VALUES (?,?,?,?,?,?,'open',?,?)`).run(id, caseRow.id, date, this.timezone, opens, closes, now, MARKET_RULE_VERSION)
-    const hours = [[9, 11, 12], [12, 17, 18], [18, 20, 21]] as const
+    const hours = MARKET_BATCH_HOURS
     for (let i = 0; i < hours.length; i += 1) {
       const [open, lock, reference] = hours[i]!
       // Installing after a cutoff must not invent a historical reference.
@@ -388,8 +389,8 @@ export class MarketLedger {
     const stats = this.store.statsFor(caseId)
     return { case_id: caseId, at, up_votes: stats?.up_votes ?? 0, down_votes: stats?.down_votes ?? 0, sequence: stats?.version ?? 0 }
   }
-  private assertRule(rule: string): asserts rule is typeof MARKET_RULE_VERSION {
-    if (rule !== MARKET_RULE_VERSION) throw new WireError('market.rule_version', 'unsupported recorded market rule; funds remain unchanged')
+  private assertRule(rule: string): asserts rule is MarketRuleVersion {
+    if (!isMarketRuleVersion(rule)) throw new WireError('market.rule_version', 'unsupported recorded market rule; funds remain unchanged')
   }
   private walletRow(id: string): WalletRow | undefined { return this.db.prepare('SELECT * FROM incense_wallet WHERE installation_id=?').get(id) as unknown as WalletRow | undefined }
   private cursor(id: string, date: string): CursorRow | undefined { return this.db.prepare('SELECT * FROM incense_wallet_cursor WHERE installation_id=? AND business_date=?').get(id, date) as CursorRow | undefined }

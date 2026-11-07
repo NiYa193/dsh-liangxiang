@@ -50,6 +50,23 @@ export function marketAutomaticInterval(span: number, plotWidth: number, sourceI
   return Math.max(sourceIntervalMs, preferred)
 }
 
+/** Discrete zoom stops describe the actual viewport, including DST business days. */
+export function marketZoomSpan(span: number, direction: 'in' | 'out', daySpan: number): number {
+  const minute = 60_000
+  const stops = [daySpan, 12 * 60 * minute, 6 * 60 * minute, 3 * 60 * minute, 60 * minute, 30 * minute]
+    .filter((stop, index, all) => stop <= daySpan && all.indexOf(stop) === index)
+  return direction === 'in' ? stops.find(stop => stop < span - 1) ?? stops[stops.length - 1]!
+    : [...stops].reverse().find(stop => stop > span + 1) ?? daySpan
+}
+
+/** The range badge is a duration, never the candle grain or a stale preset. */
+export function marketViewportLabel(span: number, daySpan: number): string {
+  if (span === daySpan) return '今日'
+  const totalSeconds = Math.max(1, Math.round(span / 1000))
+  const hours = Math.floor(totalSeconds / 3600), minutes = Math.floor(totalSeconds % 3600 / 60), seconds = totalSeconds % 60
+  return `近${hours ? `${hours}时` : ''}${minutes ? `${minutes}分` : ''}${seconds ? `${seconds}秒` : ''}`
+}
+
 /** Candles and volume marks are drawn at the same observed midpoint. */
 export function marketViewportCandles(candles: readonly MarketDisplayCandle[], from: number, until: number, observedAt: number): MarketDisplayCandle[] {
   return candles.filter(candle => {

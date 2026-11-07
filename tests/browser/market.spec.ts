@@ -13,17 +13,17 @@ declare global {
 
 const DAY = Date.UTC(2026, 10, 6), HOUR = 3_600_000, MINUTE = 60_000
 function fixture(): MarketState {
-  const schedule = [[9, 11, 12], [12, 17, 18], [18, 20, 21]] as const
-  return { schema_version: 1, soft_trust: true, server_time: DAY + 10 * HOUR, candle_interval_ms: MINUTE,
+  const schedule = [[9, 11, 12], [12, 16, 17], [17, 21, 22]] as const
+  return { schema_version: 1, soft_trust: true, server_time: DAY + 13 * HOUR, candle_interval_ms: MINUTE,
     wallet: { available_incense: 90, frozen_incense: 10, total_incense: 100, token_remainder: 12_000, token_per_incense: 50_000, version: 1 },
-    current_point: { case_id: 'case-market-browser', at: DAY + 10 * HOUR, up_votes: 55, down_votes: 45, sequence: 1 },
-    market: { id: 'market-browser', case_id: 'case-market-browser', business_date: '2026-11-06', timezone: 'UTC', rule_version: 'liangxiang-market-v1', opens_at: DAY + 9 * HOUR, closes_at: DAY + 24 * HOUR, status: 'open', close_point: null,
-      batches: schedule.map(([open, lock, reference], index) => ({ batch: (index + 1) as 1 | 2 | 3, opens_at: DAY + open * HOUR, locks_at: DAY + lock * HOUR, reference_at: DAY + reference * HOUR, status: index === 0 ? 'open' : 'pending', reference: null, long_incense: index === 0 ? 30 : 0, short_incense: index === 0 ? 20 : 0, position: index === 0 ? { side: 'long', amount: 10, submitted_at: DAY + 9 * HOUR, payout: null } : null, result: null })) }
+    current_point: { case_id: 'case-market-browser', at: DAY + 13 * HOUR, up_votes: 55, down_votes: 45, sequence: 1 },
+    market: { id: 'market-browser', case_id: 'case-market-browser', business_date: '2026-11-06', timezone: 'UTC', rule_version: 'liangxiang-market-v2', opens_at: DAY + 9 * HOUR, closes_at: DAY + 24 * HOUR, status: 'open', close_point: null,
+      batches: schedule.map(([open, lock, reference], index) => ({ batch: (index + 1) as 1 | 2 | 3, opens_at: DAY + open * HOUR, locks_at: DAY + lock * HOUR, reference_at: DAY + reference * HOUR, status: index === 0 ? 'live' : index === 1 ? 'open' : 'pending', reference: index === 0 ? { case_id: 'case-market-browser', at: DAY + 12 * HOUR, up_votes: 50, down_votes: 50, sequence: 1 } : null, long_incense: index === 1 ? 30 : 0, short_incense: index === 1 ? 20 : 0, position: index === 1 ? { side: 'long', amount: 10, submitted_at: DAY + 12 * HOUR, payout: null } : null, result: null })) }
   }
 }
 
 function candles(): MarketCandle[] {
-  return Array.from({ length: 600 }, (_, index) => {
+  return Array.from({ length: 780 }, (_, index) => {
     const open = .49 + Math.sin(index / 40) * .035, close = .49 + Math.sin((index + 1) / 40) * .035
     return { at: DAY + index * MINUTE, open, close, high: Math.max(open, close) + .004, low: Math.min(open, close) - .004, up_votes: 50 + index, down_votes: 50 + index, volume: 2 }
   })
@@ -83,7 +83,7 @@ async function openMarket(page: Parameters<typeof openPanel>[0]) {
   const panel = await openPanel(page)
   await panel.locator('[data-liangxiang-utility-trigger]').click()
   await panel.locator('[data-liangxiang-utility-market]').click()
-  const dialog = page.getByRole('dialog', { name: '香火交易', exact: true })
+  const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   return dialog
@@ -93,6 +93,10 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   const artwork = page.waitForResponse(response => new URL(response.url()).pathname === '/liangxiang/api/market/art.webp')
   const dialog = await openMarket(page)
   await expect(dialog).toBeFocused()
+  await expect(dialog.locator('.liangxiang-market-header')).not.toContainText(/本地演示|三批投入|午夜共同收盘/)
+  await expect(dialog.getByRole('combobox', { name: '烛线间隔' })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: '近4时', exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('group', { name: '走势时间范围' }).getByRole('button')).toHaveCount(1)
   await expect(dialog.locator('[data-liangxiang-market-main-whale]')).toHaveCount(1)
   const fishBounds = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
   const headerBounds = (await dialog.locator('.liangxiang-market-header').boundingBox())!
@@ -116,51 +120,89 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   await expect.poll(() => page.evaluate(() => window.__liangxiangMarketStreamsClosed)).toBe(1)
 })
 
-test('whole-position changes freeze only the difference and short whale state follows the correct direction', async ({ page }) => {
-  const dialog = await openMarket(page), first = dialog.locator('[data-liangxiang-market-batch="1"]')
-  await first.getByRole('button', { name: '↘ 做空' }).click()
-  await first.getByRole('spinbutton', { name: 'P1 总投入香火' }).fill('20')
-  await first.getByRole('button', { name: '确认调整' }).click()
-  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
-  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
-  const live = fixture()
-  live.server_time = DAY + 13 * HOUR
-  live.current_point = { ...live.current_point!, at: live.server_time }
-  live.market!.batches[0] = { ...live.market!.batches[0]!, status: 'live', reference: { ...live.current_point!, at: DAY + 12 * HOUR, up_votes: 50, down_votes: 50 }, position: { side: 'short', amount: 20, submitted_at: DAY + 10 * HOUR, payout: null }, long_incense: 20, short_incense: 40 }
-  live.market!.batches[1] = { ...live.market!.batches[1]!, status: 'open' }
-  live.wallet = { ...live.wallet, available_incense: 80, frozen_incense: 20 }
-  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), live)
-  await expect(first).toContainText('暂时落后')
-  await expect(first.locator('[data-mood="behind"]')).toBeVisible()
-  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), { ...live, server_time: live.server_time + 1, current_point: { ...live.current_point!, up_votes: 45, down_votes: 55, sequence: 2 } })
-  await expect(first).toContainText('当前占优')
-  await expect(first).toContainText('预计返还 30 炷')
-  await expect(first.locator('[data-mood="ahead"]')).toBeVisible()
-  await expect(first.getByRole('spinbutton')).toBeDisabled()
+test('market follows the DSH appearance choice when it overrides the operating system theme', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' })
+  expect(await page.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches)).toBe(false)
+  let positionRequests = 0
+  page.on('request', request => { if (new URL(request.url()).pathname === '/liangxiang/api/market/position') positionRequests++ })
+  const chooseAppearance = async (dark: boolean): Promise<void> => {
+    await page.getByRole('button', { name: 'Account menu', exact: true }).click()
+    await page.getByRole('menuitem', { name: /^(Settings|设置)/ }).click()
+    const settings = page.getByRole('dialog', { name: /^(Settings|设置)$/ })
+    await settings.getByRole('button', { name: dark ? /^(Dark|深色)$/ : /^(Light|浅色)$/ }).click()
+    await settings.getByRole('button', { name: /^(Close|关闭)$/ }).click()
+    await expect(page.locator('html')).toHaveCSS('color-scheme', dark ? 'dark' : 'light')
+  }
+  for (const dark of [true, false]) {
+    await chooseAppearance(dark)
+    const dialog = await openMarket(page)
+    await expect(dialog).toHaveCSS('color-scheme', dark ? 'dark' : 'light')
+    const channels = await dialog.evaluate(element => (getComputedStyle(element).backgroundColor.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number))
+    expect(channels).toHaveLength(3)
+    // Check the actual resolved paint as well as the inherited color-scheme:
+    // a locally declared `light dark` used to leave this window white under Dark.
+    if (dark) expect(Math.max(...channels)).toBeLessThan(100)
+    else expect(Math.min(...channels)).toBeGreaterThan(200)
+    await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+    await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+    await page.keyboard.press('Escape')
+    await expect(dialog).toBeHidden()
+  }
+  expect(positionRequests).toBe(0)
 })
 
-test('motion choice animates local whale parts and water, while static mode keeps distinct poses', async ({ page }, testInfo) => {
+test('whole-position changes freeze only the difference and a short position follows the confirmed direction', async ({ page }) => {
+  const dialog = await openMarket(page), ticket = dialog.locator('[data-liangxiang-market-batch="2"]')
+  const intents: MarketPositionRequest[] = []
+  page.on('request', request => { if (new URL(request.url()).pathname === '/liangxiang/api/market/position') intents.push(request.postDataJSON() as MarketPositionRequest) })
+  await ticket.getByRole('button', { name: '↘ 做空' }).click()
+  await ticket.getByRole('spinbutton', { name: 'P2 总投入香火' }).fill('20')
+  await ticket.getByRole('button', { name: '确认调整' }).click()
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
+  expect(intents).toHaveLength(1)
+  expect(intents[0]).toMatchObject({ batch: 2, side: 'short', amount: 20 })
+  await expect(dialog.locator('.liangxiang-market-companion-speech')).toContainText('已确认空20炷')
+  const live = fixture()
+  live.server_time = DAY + 18 * HOUR
+  live.current_point = { ...live.current_point!, at: live.server_time }
+  live.market!.batches[1] = { ...live.market!.batches[1]!, status: 'live', reference: { ...live.current_point!, at: DAY + 17 * HOUR, up_votes: 50, down_votes: 50 }, position: { side: 'short', amount: 20, submitted_at: DAY + 13 * HOUR, payout: null }, long_incense: 20, short_incense: 40 }
+  live.market!.batches[2] = { ...live.market!.batches[2]!, status: 'open' }
+  live.wallet = { ...live.wallet, available_incense: 80, frozen_incense: 20, version: 2 }
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), live)
+  const companion = dialog.locator('.liangxiang-market-companion')
+  await expect(companion).toHaveAttribute('data-pose', 'dive')
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), { ...live, server_time: live.server_time + 1, current_point: { ...live.current_point!, up_votes: 45, down_votes: 55, sequence: 2 } })
+  await expect(companion).toHaveAttribute('data-pose', 'surface')
+  await expect(ticket.getByRole('spinbutton')).toBeDisabled()
+  await expect(ticket.getByRole('button', { name: '撤回', exact: true })).toBeDisabled()
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
+})
+
+test('motion uses distinct local gestures without replaying ordinary frames, hidden actions or a wheel burst', async ({ page }, testInfo) => {
   const dialog = await openMarket(page), toggle = dialog.getByRole('switch', { name: '交易动画' })
   await expect(dialog).toHaveAttribute('data-animated', 'false')
-  await expect(toggle).toContainText('大鱼干')
+  await expect(toggle).toContainText('鱼干')
   await expect(toggle).toHaveAttribute('title', /系统.*减少动态/)
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'true')
-  await expect(toggle).toContainText('大肥鱼')
+  await expect(toggle).toContainText('动态')
   await dialog.getByRole('button', { name: '潮汐', exact: true }).click()
   const companion = dialog.locator('.liangxiang-market-companion')
   const speech = companion.locator('.liangxiang-market-companion-speech')
   const actor = companion.locator('.liangxiang-market-companion-actor')
+  await expect(speech).toHaveAttribute('data-fish-action', 'mode-tide')
   await expect(companion).toHaveAttribute('data-motion', 'true')
   const actorNode = await actor.elementHandle()
-  // Count real one-shot motion starts while retaining the normal WAAPI call.
-  // A routine Host frame must not replace the actor or play an action twice.
+  // Observe the actual one-shot WAAPI keyframes without replacing their execution.
   await actor.evaluate(element => {
     const animate = element.animate.bind(element)
     element.setAttribute('data-test-action-plays', '0')
     element.animate = (frames, options) => {
       element.setAttribute('data-test-action-plays', String(Number(element.getAttribute('data-test-action-plays')) + 1))
+      element.setAttribute('data-test-action-frames', JSON.stringify(frames))
       return animate(frames, options)
     }
   })
@@ -168,6 +210,7 @@ test('motion choice animates local whale parts and water, while static mode keep
   await expect(speech).toHaveAttribute('data-fish-action', 'short')
   await expect(speech).not.toBeEmpty()
   await expect(actor).toHaveAttribute('data-test-action-plays', '1')
+  const shortFrames = await actor.getAttribute('data-test-action-frames')
   const reaction = await companion.getAttribute('data-reaction-id')
   const point = dialog.locator('[data-liangxiang-market-current-point]'), initialX = await point.getAttribute('cx')
   const ordinaryFrame = fixture()
@@ -178,7 +221,6 @@ test('motion choice animates local whale parts and water, while static mode keep
   expect(await actorNode!.evaluate(element => element.isConnected)).toBe(true)
   await expect(companion).toHaveAttribute('data-reaction-id', reaction!)
   await expect(actor).toHaveAttribute('data-test-action-plays', '1')
-  // Returning to a tab resumes idle loops, never its already-consumed action.
   const setHidden = async (hidden: boolean): Promise<void> => {
     await page.evaluate(value => {
       Object.defineProperty(document, 'hidden', { configurable: true, value })
@@ -195,7 +237,6 @@ test('motion choice animates local whale parts and water, while static mode keep
     await settleMotion()
     await expect(companion).toHaveAttribute('data-reaction-id', reaction!)
     await expect(actor).toHaveAttribute('data-test-action-plays', '1')
-    // An action received while hidden still keeps its speech, without catch-up motion.
     await setHidden(true)
     await dialog.getByRole('button', { name: '↗ 做多', exact: true }).click()
     await expect(speech).toHaveAttribute('data-fish-action', 'long')
@@ -205,7 +246,6 @@ test('motion choice animates local whale parts and water, while static mode keep
   } finally {
     await page.evaluate(() => { Reflect.deleteProperty(document, 'hidden'); document.dispatchEvent(new Event('visibilitychange')) })
   }
-  // System-static actions are likewise consumed rather than queued for replay.
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await expect(companion).toHaveAttribute('data-motion', 'false')
   await dialog.getByRole('button', { name: '↘ 做空', exact: true }).click()
@@ -214,21 +254,45 @@ test('motion choice animates local whale parts and water, while static mode keep
   await expect(companion).toHaveAttribute('data-motion', 'true')
   await settleMotion()
   await expect(actor).toHaveAttribute('data-test-action-plays', '1')
+  // Changing a direction is a draft; neither wallet nor confirmed water pose changes.
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
-  // Direction is only a draft: the confirmed position and water pose stay put.
-  await expect(dialog.locator('.liangxiang-market-position').filter({ visible: true })).toContainText('多 10 炷')
   await expect(companion).toHaveAttribute('data-pose', 'surface')
   await dialog.getByRole('button', { name: '↗ 做多', exact: true }).click()
   await expect(speech).toHaveAttribute('data-fish-action', 'long')
   await expect(actor).toHaveAttribute('data-test-action-plays', '2')
+  expect(await actor.getAttribute('data-test-action-frames')).not.toBe(shortFrames)
+  await dialog.getByRole('tab', { name: /P1/ }).click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'batch1')
   await dialog.getByRole('tab', { name: /P2/ }).click()
   await expect(speech).toHaveAttribute('data-fish-action', 'batch2')
-  await dialog.getByRole('tab', { name: /P1/ }).click()
+  const svg = dialog.locator('.liangxiang-market-chart-scroll > svg')
+  await dialog.getByRole('button', { name: '放大走势', exact: true }).click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'zoom-in')
+  await dialog.getByRole('button', { name: '缩小走势', exact: true }).click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'zoom-out')
+  const initialFrom = await svg.getAttribute('data-liangxiang-market-from')
+  const initialUntil = await svg.getAttribute('data-liangxiang-market-until')
+  await svg.hover()
+  await page.mouse.wheel(0, -120)
+  await expect(speech).toHaveAttribute('data-fish-action', 'zoom-in')
+  const wheelReaction = await companion.getAttribute('data-reaction-id')
+  const wheelText = await speech.textContent()
+  const wheelPlays = await actor.getAttribute('data-test-action-plays')
+  for (let i = 0; i < 4; i++) await page.mouse.wheel(0, -25)
+  await expect(companion).toHaveAttribute('data-reaction-id', wheelReaction!)
+  await expect(speech).toHaveText(wheelText!)
+  await expect(actor).toHaveAttribute('data-test-action-plays', wheelPlays!)
+  expect(Number(await svg.getAttribute('data-liangxiang-market-until')) - Number(await svg.getAttribute('data-liangxiang-market-from'))).toBeLessThan(Number(initialUntil) - Number(initialFrom))
+  await dialog.getByRole('button', { name: /复位走势时间范围/ }).click()
+  await expect(dialog.getByRole('button', { name: '缩小走势', exact: true })).toBeDisabled()
+  await dialog.getByRole('button', { name: 'K 线', exact: true }).click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'mode-candles')
   const live = fixture()
-  live.server_time = DAY + 13 * HOUR
+  live.server_time = DAY + 18 * HOUR
   live.current_point = { ...live.current_point!, at: live.server_time }
-  live.market!.batches[0] = { ...live.market!.batches[0]!, status: 'live', reference: { ...live.current_point!, at: DAY + 12 * HOUR, up_votes: 50, down_votes: 50 } }
+  live.market!.batches[1] = { ...live.market!.batches[1]!, status: 'live', reference: { ...live.current_point!, at: DAY + 17 * HOUR, up_votes: 50, down_votes: 50 } }
+  live.market!.batches[2] = { ...live.market!.batches[2]!, status: 'open' }
   await page.evaluate(state => window.__liangxiangMarketFrame?.(state), live)
   const figure = dialog.locator('[data-liangxiang-market-whale-figure]')
   await expect(figure).toHaveAttribute('data-pose', 'surface')
@@ -237,20 +301,20 @@ test('motion choice animates local whale parts and water, while static mode keep
   const tail = parts.first(), initial = await tail.evaluate(element => getComputedStyle(element).transform)
   await expect.poll(() => tail.evaluate(element => getComputedStyle(element).transform)).not.toBe(initial)
   expect(await figure.evaluate(element => getComputedStyle(element).animationName)).toBe('none')
+  await dialog.getByRole('button', { name: '潮汐', exact: true }).click()
   const water = dialog.locator('.liangxiang-market-water-motion .liangxiang-market-water-back').first()
   await expect.poll(() => water.evaluate(element => element.getAnimations().some(animation => animation.playState === 'running'))).toBe(true)
   await dialog.screenshot({ path: testInfo.outputPath('market-surface-motion.png') })
   await toggle.click()
   await expect(dialog).toHaveAttribute('data-animated', 'false')
-  await expect(toggle).toContainText('大鱼干')
+  await expect(toggle).toContainText('鱼干')
   await expect(companion).toHaveAttribute('data-motion', 'false')
-  const fish = dialog.locator('.liangxiang-market-current-whale').first()
-  expect(await fish.evaluate(element => getComputedStyle(element).transitionDuration)).toBe('0s')
-  expect(await dialog.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0)
-  await dialog.getByRole('combobox', { name: '烛线间隔' }).selectOption('60000')
-  await expect(speech).toHaveAttribute('data-fish-action', 'interval')
-  await expect(speech).not.toBeEmpty()
-  expect(await dialog.evaluate(element => element.getAnimations({ subtree: true }).length)).toBe(0)
+  // React consumes/cancels the previous WAAPI gesture in a passive effect after
+  // rendering its static attributes; allow that cleanup, never a lasting loop.
+  await expect.poll(() => dialog.evaluate(element => element.getAnimations({ subtree: true }).length), { timeout: 500, intervals: [0, 16, 32, 64] }).toBe(0)
+  await dialog.getByRole('button', { name: 'K 线', exact: true }).click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'mode-candles')
+  await expect.poll(() => dialog.evaluate(element => element.getAnimations({ subtree: true }).length), { timeout: 500, intervals: [0, 16, 32, 64] }).toBe(0)
   await page.evaluate(state => window.__liangxiangMarketFrame?.(state), { ...live, server_time: live.server_time + 1, current_point: { ...live.current_point!, up_votes: 45, down_votes: 55, sequence: 2 } })
   await expect(figure).toHaveAttribute('data-pose', 'dive')
   await expect(figure.locator('[data-liangxiang-market-water-occlusion]')).toHaveAttribute('data-liangxiang-market-water-occlusion', 'dive')
@@ -269,7 +333,7 @@ test('motion choice animates local whale parts and water, while static mode keep
   expect(bytes.hasWallet).toBe(false)
 })
 
-test('compact ticket keeps related controls together and preserves a draft between stages without spending', async ({ page }, testInfo) => {
+test('compact order keeps withdrawal in the order bar, clamps excessive input and preserves stage drafts', async ({ page }, testInfo) => {
   const dialog = await openMarket(page)
   const initialBounds = (await dialog.boundingBox())!
   const chart = dialog.locator('[data-liangxiang-market-chart-mode]')
@@ -281,40 +345,55 @@ test('compact ticket keeps related controls together and preserves a draft betwe
     expect(Math.abs(chartBounds.height - initialChartBounds.height)).toBeLessThanOrEqual(1)
     expect(Math.abs(chartBounds.y - initialChartBounds.y)).toBeLessThanOrEqual(1)
   }
-  const amount = dialog.getByRole('spinbutton', { name: 'P1 总投入香火' })
-  const ticket = dialog.locator('[data-liangxiang-market-batch="1"]')
-  const amountLabel = ticket.locator('.liangxiang-market-amount > span').first()
-  const expectUnwrappedAmountLabel = async (): Promise<void> => {
-    expect(await amountLabel.evaluate(element => {
-      const range = document.createRange()
-      range.selectNodeContents(element)
-      return range.getClientRects().length
-    })).toBe(1)
-  }
-  await expectUnwrappedAmountLabel()
-  if (testInfo.project.name === 'chromium-desktop') {
-    const viewport = page.viewportSize()!
-    try {
-      await page.setViewportSize({ width: 662, height: 820 })
-      await expectUnwrappedAmountLabel()
-    } finally { await page.setViewportSize(viewport) }
-  }
-  if (testInfo.project.name !== 'chromium-narrow') {
-    const orderBounds = await ticket.locator('.liangxiang-market-direction,.liangxiang-market-amount,.liangxiang-market-primary').evaluateAll(nodes => nodes.map(node => {
+  const amount = dialog.getByRole('spinbutton', { name: 'P2 总投入香火' })
+  const ticket = dialog.locator('[data-liangxiang-market-batch="2"]')
+  const controls = ticket.locator('.liangxiang-market-direction,.liangxiang-market-amount,.liangxiang-market-primary,.liangxiang-market-withdraw')
+  const expectCompactOrder = async (): Promise<void> => {
+    const boxes = await controls.evaluateAll(nodes => nodes.map(node => {
       const { top, bottom, left, right } = node.getBoundingClientRect()
       return { top, bottom, left, right }
     }))
-    expect(Math.max(...orderBounds.map(item => item.top))).toBeLessThan(Math.min(...orderBounds.map(item => item.bottom)))
-    for (let index = 1; index < orderBounds.length; index++) expect(orderBounds[index]!.left).toBeGreaterThanOrEqual(orderBounds[index - 1]!.right)
+    expect(boxes).toHaveLength(4)
+    const order = (await ticket.locator('.liangxiang-market-order').boundingBox())!
+    for (const box of boxes) {
+      expect(box.left).toBeGreaterThanOrEqual(order.x - 1)
+      expect(box.right).toBeLessThanOrEqual(order.x + order.width + 1)
+      expect(box.bottom - box.top).toBeGreaterThanOrEqual(30)
+    }
+    // Confirm and withdrawal stay side by side at every width.
+    expect(Math.max(boxes[2]!.top, boxes[3]!.top)).toBeLessThan(Math.min(boxes[2]!.bottom, boxes[3]!.bottom))
+    expect(boxes[3]!.left).toBeGreaterThanOrEqual(boxes[2]!.right)
+    if (page.viewportSize()!.width > 520) {
+      expect(Math.max(...boxes.map(item => item.top))).toBeLessThan(Math.min(...boxes.map(item => item.bottom)))
+      expect(boxes[1]!.left).toBeGreaterThanOrEqual(boxes[0]!.right)
+      expect(boxes[2]!.left).toBeGreaterThanOrEqual(boxes[1]!.right)
+    } else {
+      expect(Math.max(boxes[0]!.top, boxes[1]!.top)).toBeLessThan(Math.min(boxes[0]!.bottom, boxes[1]!.bottom))
+      expect(boxes[2]!.top).toBeGreaterThanOrEqual(Math.max(boxes[0]!.bottom, boxes[1]!.bottom))
+    }
   }
+  await expectCompactOrder()
+  if (testInfo.project.name === 'chromium-desktop') {
+    const viewport = page.viewportSize()!
+    try { await page.setViewportSize({ width: 662, height: 820 }); await expectCompactOrder() }
+    finally { await page.setViewportSize(viewport) }
+  }
+  await amount.fill('999999999')
+  await expect(amount).toHaveValue('100')
+  await amount.press('Tab')
+  await expect(ticket.locator('[aria-invalid="true"], [role="alert"]')).toHaveCount(0)
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await amount.fill('17')
   await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
-  await dialog.getByRole('tab', { name: /P2/ }).click()
+  await dialog.getByRole('tab', { name: /P1/ }).click()
   await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
   await expect(dialog.getByRole('spinbutton')).toBeDisabled()
+  await expect(dialog.getByRole('button', { name: '撤回', exact: true })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '撤回', exact: true })).toBeDisabled()
   await expectStableFrame()
-  await dialog.getByRole('tab', { name: /P1/ }).click()
+  await dialog.getByRole('tab', { name: /P2/ }).click()
   await expect(amount).toHaveValue('17')
+  await expect(ticket.getByRole('button', { name: '撤回', exact: true })).toBeEnabled()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await page.keyboard.press('End')
   await expect(dialog.getByRole('tab', { name: /P3/ })).toHaveAttribute('aria-selected', 'true')
@@ -323,6 +402,13 @@ test('compact ticket keeps related controls together and preserves a draft betwe
   await expect(dialog.getByRole('tab', { name: /P1/ })).toHaveAttribute('aria-selected', 'true')
   await expectStableFrame()
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
+  await dialog.getByRole('tab', { name: /P2/ }).click()
+  await ticket.getByRole('button', { name: '撤回', exact: true }).click()
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('100')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('0')
+  await expect(ticket.getByRole('button', { name: '撤回', exact: true })).toBeVisible()
+  await expect(ticket.getByRole('button', { name: '撤回', exact: true })).toBeDisabled()
+  await expectStableFrame()
 })
 
 test('tide uses smooth real anchors over the full day, leaves gaps and future open and retains candles', async ({ page }, testInfo) => {
@@ -333,6 +419,7 @@ test('tide uses smooth real anchors over the full day, leaves gaps and future op
   for (const key of ['open', 'high', 'low', 'close']) {
     await expect(chart.locator(`[data-liangxiang-market-quote="${key}"]`)).toBeVisible()
   }
+  await expect.poll(() => chart.locator('[data-liangxiang-market-candle]').count()).toBeGreaterThan(0)
   const candleCount = await chart.locator('[data-liangxiang-market-candle]').count()
   expect(candleCount).toBeGreaterThan(0)
   expect(candleCount).toBeLessThan(data.length)
@@ -418,7 +505,17 @@ test('receipt and rules remain visible controls and use overlays without shiftin
     await expect(trigger).toBeVisible()
     await trigger.click()
     await expect(trigger).toHaveAttribute('aria-expanded', 'true')
-    await expect(dialog.locator(`[data-liangxiang-market-popover="${kind}"]`)).toBeVisible()
+    const popover = dialog.locator(`[data-liangxiang-market-popover="${kind}"]`)
+    await expect(popover).toBeVisible()
+    if (kind === 'rules') {
+      await expect(popover.locator('.liangxiang-market-howto > li')).toHaveCount(3)
+      await expect(popover.locator('.liangxiang-market-rule-times strong')).toHaveText(['12:00', '17:00', '22:00'])
+      await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('投10')
+      await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('返还15')
+      await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('本金10＋赚5')
+      await expect(popover).toContainText('收盘更高就赢')
+      await expect(popover).toContainText('收盘更低就赢')
+    }
     const opened = (await dialog.boundingBox())!
     expect(Math.abs(opened.height - bounds.height)).toBeLessThanOrEqual(1)
     expect(Math.abs(opened.y - bounds.y)).toBeLessThanOrEqual(1)
@@ -427,6 +524,70 @@ test('receipt and rules remain visible controls and use overlays without shiftin
     await expect(trigger).toBeFocused()
     await expect(trigger).toHaveAttribute('aria-expanded', 'false')
   }
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+})
+
+test('an uncertain position retries its durable intent and applies the returned wallet once', async ({ page }) => {
+  const attempts: MarketPositionRequest[] = []
+  const confirmed = fixture()
+  confirmed.server_time += 1
+  confirmed.wallet = { ...confirmed.wallet, available_incense: 80, frozen_incense: 20, version: 2 }
+  confirmed.market!.batches[1] = { ...confirmed.market!.batches[1]!, long_incense: 20, short_incense: 40,
+    position: { side: 'short', amount: 20, submitted_at: confirmed.server_time, payout: null } }
+  // Emulate a committed response lost in transit; the real backend's transaction
+  // and idempotency are covered separately, while this proves the installed UI retries its ID.
+  await page.route('**/liangxiang/api/market/position', async route => {
+    attempts.push(route.request().postDataJSON() as MarketPositionRequest)
+    if (attempts.length === 1) { await route.abort('connectionfailed'); return }
+    await route.fulfill({ json: { accepted: true, reason: null, request_id: attempts[0]!.request_id, state: confirmed }, headers: { 'x-liangxiang-cache-scope': 'browser-market-scope' } })
+  })
+  const dialog = await openMarket(page), ticket = dialog.locator('[data-liangxiang-market-batch="2"]')
+  await ticket.getByRole('button', { name: '↘ 做空' }).click()
+  await ticket.getByRole('spinbutton').fill('20')
+  await ticket.getByRole('button', { name: '确认调整' }).click()
+  const retry = dialog.getByRole('button', { name: '核对上一笔', exact: true })
+  await expect(retry).toBeVisible()
+  await expect(ticket.getByRole('spinbutton')).toBeDisabled()
+  await expect(ticket.getByRole('button', { name: '撤回', exact: true })).toBeDisabled()
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+  expect(attempts).toHaveLength(1)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('liangxiang.market.pending.v1') ?? 'null')?.intent)).toEqual(attempts[0])
+  await retry.click()
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
+  expect(attempts).toHaveLength(2)
+  expect(attempts[1]).toEqual(attempts[0])
+  await expect(retry).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('liangxiang.market.pending.v1'))).toBeNull()
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), confirmed)
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
+})
+
+test('the fish reports the selected server pool on click and at the next minute without spending', async ({ page }) => {
+  await page.clock.install()
+  let positionRequests = 0
+  page.on('request', request => { if (new URL(request.url()).pathname === '/liangxiang/api/market/position') positionRequests++ })
+  const dialog = await openMarket(page)
+  const fish = dialog.getByRole('button', { name: '大肥鱼：播报本盘香池与时间', exact: true })
+  const speech = dialog.locator('.liangxiang-market-companion-speech')
+  await fish.click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'report')
+  await expect(speech).toContainText('16:00封盘')
+  await expect(speech).toContainText('香池50炷 · 多30 / 空20')
+  await page.clock.runFor(61_000)
+  await expect(speech).toHaveAttribute('data-fish-action', 'periodic')
+  await expect(speech).toContainText('余2时59分')
+  await expect(speech).toContainText('香池50炷 · 多30 / 空20')
+  await dialog.getByRole('tab', { name: /P3/ }).click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'batch3')
+  await expect(speech).toContainText('17:00开放 · 22:00定线')
+  await expect(speech).toContainText('香池0炷 · 多0 / 空0')
+  await fish.click()
+  await expect(speech).toHaveAttribute('data-fish-action', 'report')
+  await expect(speech).toContainText('22:00定线')
+  expect(positionRequests).toBe(0)
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
 })

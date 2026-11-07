@@ -2,7 +2,7 @@ import { createRequire } from 'node:module'
 import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { CandleLayer, MarketChart } from '../src/client/market/MarketChart.tsx'
-import { marketAutomaticInterval, marketDisplayCandles, marketViewportCandles } from '../src/client/market/candle-view.ts'
+import { marketAutomaticInterval, marketDisplayCandles, marketViewportCandles, marketViewportLabel, marketZoomSpan } from '../src/client/market/candle-view.ts'
 import { chartRange } from '../src/client/market/chart-model.ts'
 import { marketBubbleDirection, marketDepthBands } from '../src/client/market/pond-model.ts'
 import { LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION } from '../src/domain/liangzi.ts'
@@ -28,11 +28,31 @@ describe('readable official market chart, independent of the header illustration
     for (const elapsed of [0, 30_000, 150_000, 180_000]) {
       const observedAt = start + elapsed
       const html = renderToStaticMarkup(<svg><CandleLayer candles={candles} from={DAY} until={DAY + 24 * HOUR} min={0} max={1} observedAt={observedAt} sourceIntervalMs={300_000} /></svg>)
-      const x = Number(html.match(/<line x1="([^"]+)"/)![1])
+      const x = Number(html.match(/data-liangxiang-market-candle-x="([^"]+)"/)![1])
       const displayedAt = DAY + (x - 12) / 684 * 24 * HOUR
       expect(displayedAt).toBeLessThanOrEqual(observedAt)
       expect(displayedAt).toBe(Math.min(start + 150_000, observedAt))
     }
+  })
+
+  it('draws only real upper and lower shadows with exact OHLC endpoints and a legible non-scaling stroke', () => {
+    const candle = { at: DAY, open: .4, high: .8, low: .2, close: .6, up_votes: 6, down_votes: 4, volume: 1 }
+    const render = (sample = candle) => renderToStaticMarkup(<svg><CandleLayer candles={[sample]} from={DAY} until={DAY + HOUR} min={0} max={1} observedAt={DAY + HOUR} /></svg>)
+    const html = render()
+    const upper = html.match(/<line data-liangxiang-market-wick="upper"[^>]*>/)![0]
+    const lower = html.match(/<line data-liangxiang-market-wick="lower"[^>]*>/)![0]
+    const y = (ratio: number) => 24 + (1 - ratio) * (214 - 24)
+    for (const [line, first, last] of [[upper, .8, .6], [lower, .4, .2]] as const) {
+      expect(Number(line.match(/y1="([^"]+)"/)![1])).toBeCloseTo(y(first))
+      expect(Number(line.match(/y2="([^"]+)"/)![1])).toBeCloseTo(y(last))
+      expect(line).toContain('stroke-width="1.6"')
+      expect(line).toContain('vector-effect="non-scaling-stroke"')
+    }
+    expect(render({ ...candle, high: .6, low: .4 })).not.toContain('data-liangxiang-market-wick')
+    expect(render({ ...candle, open: .5, close: .5, high: .5, low: .5 })).not.toContain('data-liangxiang-market-wick')
+    const falling = render({ ...candle, open: .6, close: .4 })
+    expect(falling).toContain('data-direction="down"')
+    expect(falling.match(/data-liangxiang-market-wick=/g)).toHaveLength(2)
   })
 
   it('defaults to K lines, shows the complete business day and reserves future hours without inventing prices', () => {
@@ -71,14 +91,22 @@ describe('readable official market chart, independent of the header illustration
     expect(html).not.toContain('liangxiang-market-volume-bubble')
   })
 
-  it('offers a real interval selection and never advertises one-minute detail for legacy records', () => {
+  it('uses one fixed range-reset window instead of duplicate presets or a grain selector', () => {
     const minute = renderToStaticMarkup(<MarketChart state={state()} candles={[]} animated={false} candlesIntervalMs={60_000} />)
-    expect(minute).toContain('aria-label="烛线间隔"')
-    expect(minute).toContain('<option value="60000">1分钟</option>')
-    expect(minute).toContain('自动·15分钟')
+    expect(minute).toContain('aria-label="今日，复位走势时间范围"')
+    expect(minute).toContain('class="liangxiang-market-chart-window"')
+    expect(minute).toContain('今日<span aria-hidden="true"> ↺</span>')
+    expect(minute).toContain('title="00:00—24:00 · 点击复位今日"')
+    expect(minute).toContain('data-liangxiang-market-source-interval="60000"')
+    expect(minute).not.toContain('分钟烛线')
+    expect(minute).not.toContain('<select')
+    expect(minute).not.toContain('近4时')
     const legacy = renderToStaticMarkup(<MarketChart state={state()} candles={[]} animated={false} candlesIntervalMs={300_000} />)
-    expect(legacy).toContain('<option value="60000" disabled="">1分钟</option>')
-    expect(legacy).toContain('这段记录最细为5分钟')
+    expect(legacy).toContain('data-liangxiang-market-source-interval="300000"')
+    expect(legacy).not.toContain('分钟烛线')
+    expect(minute.match(/<figcaption /g)).toHaveLength(1)
+    expect(minute).not.toContain('量带高度看总量，分段看比例')
+    expect(minute).not.toContain('官方记录 · 缺口不连线')
   })
 
   it('shows only the supplied supported case policy, including legacy boundaries', () => {
@@ -127,14 +155,13 @@ describe('readable official market chart, independent of the header illustration
     expect(html).not.toContain('<image')
   })
 
-  it('uses only visible candle extremes when examining the recent window', () => {
+  it('does not restore the retired recent preset when opening a chart', () => {
     const candles = [{ at: DAY, open: 0, high: 1, low: 0, close: 1, up_votes: 10, down_votes: 0, volume: 0 },
       { at: DAY + 18 * HOUR, open: .5, high: .51, low: .49, close: .5, up_votes: 10, down_votes: 10, volume: 0 }]
     const whole = renderToStaticMarkup(<MarketChart state={state()} candles={candles} animated={false} />)
     const recent = renderToStaticMarkup(<MarketChart state={state()} candles={candles} animated={false} recent />)
     expect(whole).toContain('>100.00%</text>')
-    expect(recent).not.toContain('>100.00%</text>')
-    expect(recent).toContain('data-liangxiang-market-interval="300000"')
+    expect(recent).toEqual(whole)
   })
   it('renders real records before the trading window instead of treating 00–09 as missing history', () => {
     const candles = [2, 8, 10].map(hour => ({ at: DAY + hour * HOUR, open: .4, high: .5, low: .4, close: .5, up_votes: 10, down_votes: 10, volume: 0 }))
@@ -187,6 +214,22 @@ describe('official candle display aggregation', () => {
     expect(marketAutomaticInterval(4 * HOUR, 350, 60_000)).toBe(300_000)
     expect(marketAutomaticInterval(HOUR, 350, 60_000)).toBe(60_000)
     expect(marketAutomaticInterval(HOUR, 350, STEP)).toBe(STEP)
+    expect(marketAutomaticInterval(HOUR / 2, 244, 60_000)).toBe(60_000)
+  })
+  it('zooms through true day / 12h / 6h / 3h / 1h / 30m spans and reports that same duration', () => {
+    const stops = [24, 12, 6, 3, 1, .5].map(hours => hours * HOUR)
+    const labels = ['今日', '近12时', '近6时', '近3时', '近1时', '近30分']
+    for (let index = 0; index < stops.length; index++) {
+      expect(marketViewportLabel(stops[index]!, 24 * HOUR)).toBe(labels[index])
+      expect(marketZoomSpan(stops[index]!, 'in', 24 * HOUR)).toBe(stops[Math.min(index + 1, stops.length - 1)])
+      expect(marketZoomSpan(stops[index]!, 'out', 24 * HOUR)).toBe(stops[Math.max(0, index - 1)])
+    }
+    for (const hours of [23, 25]) {
+      expect(marketViewportLabel(hours * HOUR, hours * HOUR)).toBe('今日')
+      expect(marketZoomSpan(hours * HOUR, 'in', hours * HOUR)).toBe(12 * HOUR)
+      expect(marketZoomSpan(12 * HOUR, 'out', hours * HOUR)).toBe(hours * HOUR)
+    }
+    expect(marketViewportLabel(90 * 60_000, 24 * HOUR)).toBe('近1时30分')
   })
   it('excludes offscreen bucket extremes when panning across a coarse-candle boundary', () => {
     const minute = 60_000
@@ -199,7 +242,7 @@ describe('official candle display aggregation', () => {
     expect(chartRange(visible, []).max).toBeLessThan(.6)
     const html = renderToStaticMarkup(<svg><CandleLayer candles={visible} from={from} until={until} min={.45} max={.55} observedAt={observedAt} /></svg>)
     expect(html.match(/data-liangxiang-market-candle=/g)).toHaveLength(1)
-    const cx = Number(html.match(/<line x1="([^"]+)"/)![1])
+    const cx = Number(html.match(/data-liangxiang-market-candle-x="([^"]+)"/)![1])
     expect(cx).toBeGreaterThanOrEqual(12)
     expect(cx).toBeLessThanOrEqual(696)
   })

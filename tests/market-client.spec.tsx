@@ -191,11 +191,13 @@ describe('market dialog rendering', () => {
     expect(html).toContain('data-animated="false"')
     expect(html).toContain('P1 总投入香火')
     expect(html).toContain('冻结')
-    expect(html).toContain('三次定线')
+    expect(html).toContain('梁股')
+    expect(html).toContain('香火市场')
+    expect(html).not.toContain('三次定线 · 午夜一起揭晓')
     expect(html).toContain('data-liangxiang-market-main-whale')
     const shown = renderToStaticMarkup(<MarketDialog reducedMotion online onClose={() => {}} session={session}
       presentation={{ caseId: s.market!.case_id, policyId: LIANGZI_POLICY_VERSION, title: '同案标题' }} />)
-    expect(shown).toContain('同案标题')
+    expect(shown).not.toContain('同案标题')
     expect(shown).toContain(' · 梁总')
     const stale = renderToStaticMarkup(<MarketDialog reducedMotion online onClose={() => {}} session={session}
       presentation={{ caseId: 'another-case', policyId: LIANGZI_POLICY_VERSION, title: '旧案标题' }} />)

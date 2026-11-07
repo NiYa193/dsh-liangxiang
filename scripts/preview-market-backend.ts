@@ -63,10 +63,11 @@ const position = (id: string, batch: 1 | 2 | 3, side: 'long' | 'short', amount: 
   if (!response.accepted) throw new Error(`preview position rejected: ${response.reason}`)
 }
 
+// A fresh disposable database must not reuse an old demo's chart-cache identity.
+service.publishCase('本地演示 · 三批投入，午夜共同收盘')
 fund(maker, 3_000)
 fund(peerLong, 200)
 fund(peerShort, 200)
-service.retitleActiveCase('本地演示 · 三批投入，午夜共同收盘')
 vote('up', 200)
 vote('down', 200)
 // Initial seed votes warm up the disposable case before recorded history.
@@ -114,6 +115,9 @@ function prepareFirstInstallation(): void {
     throw new Error('preview should show an advantageous P1 short position')
   }
   runningSince = Date.now()
+  // Advancing the demo clock can expire startup tickets; keep this disposable
+  // environment joinable after its synthetic history has been prepared.
+  service.replenishAdmissionInventory()
   console.log('[liangxiang-preview] Synthetic 5,000-incense funds and P1 short prepared; simulated clock is 13:00, P2 is open.')
 }
 

@@ -1,4 +1,15 @@
 /** Integer-only rules for the daily community incense pools. */
+export const MARKET_LEGACY_RULE_VERSION = 'liangxiang-market-v1' as const
+export const MARKET_RULE_VERSION = 'liangxiang-market-v2' as const
+export type MarketRuleVersion = typeof MARKET_LEGACY_RULE_VERSION | typeof MARKET_RULE_VERSION
+
+/** Business hours for new markets only; persisted batches always own their deadlines. */
+export const MARKET_BATCH_HOURS = [[9, 11, 12], [12, 16, 17], [17, 21, 22]] as const
+
+export function isMarketRuleVersion(value: unknown): value is MarketRuleVersion {
+  return value === MARKET_LEGACY_RULE_VERSION || value === MARKET_RULE_VERSION
+}
+
 export type MarketDirection = 'long' | 'short'
 export interface MarketCounts { up_votes: number, down_votes: number }
 export interface PoolPosition { id: number, side: MarketDirection, count: number }
