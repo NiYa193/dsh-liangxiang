@@ -73,3 +73,11 @@
 - [x] Strict TLS/two-origin network, 0/50/100/150/200 ramp and 960-second sustained 200: 97,256 RPCs at 200, zero unexpected failures, no queue drops; see ECS_VALIDATION.md.
 - [x] Three-batch market/wallet/retry/reconnect, day/week/month settlement: ten checkpoints and 216 receipts independently audited; frozen restart preserved the financial/archives digest. Planned 1.15-second restart window/25 HTTP 502s retained separately.
 - [x] Protected service PIDs/config/seed unchanged; consistent snapshots and full historical backup export saved privately with matching checksums. Fresh real-clock internal ledger and verified daily backup prepared; no production cutover. Retirement requires ending new writes to the old test entry.
+
+### Internal-test migration to ECS
+
+- [x] Inventory both isolated databases and client routes; consistent source snapshots pass wallet/journal, frozen-position and pool conservation checks.
+- [x] Preserve the completed ECS capacity rehearsal separately before restoring ongoing manual-test data.
+- [x] Fix fresh-host internal-test namespace startup: an absent legacy backup directory is optional; when present it remains inaccessible.
+- [ ] Restore both test environments, verify basic signed operations, preserve client identities and change their endpoints.
+- [ ] Stop old isolated test services after verification; check active dependencies and preserve production/original backups.
