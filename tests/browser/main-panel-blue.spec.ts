@@ -84,6 +84,14 @@ async function expectPanelInkToFit(panel: Locator): Promise<void> {
       if (!parent || !text.textContent?.trim() || parent.closest('style,script,[aria-hidden="true"],[role="tooltip"]')) continue
       const style = getComputedStyle(parent)
       if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) continue
+      // Screen-reader summaries deliberately keep their full exact text in a
+      // 1px clipped box; their unpainted Range geometry is not visible overflow.
+      let ancestor: Element | null = parent, clippedSummary = false
+      while (ancestor && ancestor !== element) {
+        if (getComputedStyle(ancestor).clip !== 'auto') { clippedSummary = true;break }
+        ancestor = ancestor.parentElement
+      }
+      if (clippedSummary) continue
       const range = document.createRange();range.selectNodeContents(text)
       for (const ink of range.getClientRects()) {
         if (ink.width > 0 && ink.height > 0 && (ink.left < bounds.left - 1 || ink.right > bounds.right + 1)) overflow.push(text.textContent.trim())
@@ -171,8 +179,13 @@ test('continuous activity keeps the daily caption while a confirmed receipt reti
   await fixture.emit(wire => ({ ...wire, streamingActive: true }))
   await expect(caption).toHaveAttribute('data-view', 'daily')
   await expect(caption.locator('[data-caption-label]')).toHaveText('今日凝香')
+  // Provider-finalized usage can still lead the server's claim watermark.
+  // It may affect ring geometry, but it is not an acknowledged incense receipt.
+  await fixture.emit(wire => ({ ...wire, personal: { ...wire.personal, effectiveTokensToday: wire.personal.effectiveTokensToday + 3 * 50_000 } }))
   await page.waitForTimeout(400)
   await expect(caption).toHaveAttribute('data-view', 'daily')
+  await expect(caption).toHaveAttribute('aria-label', '今日凝香12炷')
+  await expect(fixture.panel.locator('[data-liangxiang-ring]')).toHaveAttribute('data-remaining', '1000')
   await fixture.emit(wire => ({ ...wire, personal: { ...wire.personal,
     earnedIncenseToday: 15, effectiveTokensToday: 15 * 50_000 + 17_000,
     confirmedEffectiveTokensToday: 15 * 50_000 + 17_000,
@@ -190,6 +203,20 @@ test('continuous activity keeps the daily caption while a confirmed receipt reti
   await fixture.panel.locator('[data-liangxiang-inspect-incense]').click()
   await expect(caption).toHaveAttribute('data-view', 'balance')
   await expect(caption).toHaveAttribute('aria-label', '个人余香1,003炷')
+  // A live connection may move to another case/business date without mounting
+  // a new Badge. The new scope's existing totals must be fenced as history.
+  await fixture.emit(wire => {
+    const businessDate = wire.businessDate === '2026-11-09' ? '2026-11-10' : '2026-11-09'
+    return { ...wire, businessDate,
+      activeCase: { ...wire.activeCase, id: 'case-blue-ui-new-scope', businessDate },
+      global: { ...wire.global, caseId: 'case-blue-ui-new-scope' },
+      personal: { ...wire.personal, earnedIncenseToday: 99, effectiveTokensToday: 99 * 50_000 + 17_000,
+        confirmedEffectiveTokensToday: 99 * 50_000 + 17_000 } }
+  })
+  await expect(caption).toHaveAttribute('data-view', 'daily')
+  await expect(caption).toHaveAttribute('aria-label', '今日凝香99炷')
+  await page.waitForTimeout(400)
+  await expect(caption).toHaveAttribute('data-view', 'daily')
   expect(fixture.mutations).toEqual([])
 })
 
