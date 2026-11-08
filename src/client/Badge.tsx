@@ -53,6 +53,10 @@ import { useThrottleFill } from './use-throttle-fill.ts'
 import { useTweenedCount } from './use-tweened-count.ts'
 import { hasSeenReleaseNotes, markReleaseNotesSeen, releaseNotesStorageKey, RELEASE_NOTES_LATEST_SEEN_KEY } from './release-notes.ts'
 import { loadDismissedBroadcastId, markBroadcastDismissed } from './broadcast-dismissal.ts'
+import { MAIN_PANEL_THEME_CSS, mainColor } from './main-panel-theme.ts'
+import { MainPortraitEdges } from './LiangAvatar.tsx'
+import { useMainPanelPond } from './MainPanelPond.tsx'
+import { usePersonalIncenseCaption } from './PersonalIncenseCaption.tsx'
 
 /** Preserve the exact earned-incense jump carried by one authoritative frame. */
 export function earnedIncenseGain(previous: number, current: number): number {
@@ -76,9 +80,9 @@ const buttonStyle: CSSProperties = {
   width: `${BADGE_SIZE}px`,
   height: `${BADGE_SIZE}px`,
   padding: 0,
-  border: `1px solid color-mix(in srgb, ${color.ritualGold} 28%, ${color.border})`,
-  borderRadius: '50%',
-  background: `radial-gradient(circle at 50% 38%, color-mix(in srgb, ${color.ritualGold} 16%, transparent), transparent 64%), color-mix(in srgb, ${color.bgLayer} 86%, transparent)`,
+  border: `1px solid color-mix(in srgb, ${mainColor.blue} 32%, ${mainColor.line})`,
+  borderRadius: '16px 17px 15px 15px',
+  background: `radial-gradient(ellipse at 50% 35%, color-mix(in srgb, ${mainColor.water} 16%, transparent), transparent 70%), ${mainColor.paper}`,
   boxShadow: '0 8px 22px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
   color: '#ffffff',
   display: 'flex',
@@ -91,6 +95,7 @@ const buttonStyle: CSSProperties = {
 }
 
 const BADGE_CSS = `
+${MAIN_PANEL_THEME_CSS}
 [data-liangxiang-badge] {
   transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
   transform-origin: 50% 88%;
@@ -112,8 +117,8 @@ const BADGE_CSS = `
 }
 [data-liangxiang-badge]:hover,
 [data-liangxiang-badge][aria-expanded="true"] {
-  border-color: color-mix(in srgb, ${color.ritualGold} 66%, ${color.border});
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26), 0 0 0 3px color-mix(in srgb, ${color.ritualGold} 10%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  border-color: color-mix(in srgb, ${mainColor.blue} 66%, ${mainColor.line});
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26), 0 0 0 3px color-mix(in srgb, ${mainColor.blue} 10%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14);
 }
 [data-liangxiang-badge][data-dragging="true"] {
   cursor: grabbing;
@@ -193,7 +198,7 @@ export function BadgeButton({
         style={{
           position: 'absolute',
           inset: '4px',
-          borderRadius: '50%',
+          borderRadius: '14px 15px 13px 13px',
           background: `radial-gradient(circle, color-mix(in srgb, ${color.ritualGold} 18%, transparent) 0%, transparent 68%)`,
           boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color.ritualGold} 18%, transparent)`,
           pointerEvents: 'none',
@@ -209,6 +214,7 @@ export function BadgeButton({
           size={BADGE_ICON_SIZE}
           hideLabel
           chrome="none"
+          cleanEdge
           liangQiFill={liangQiFill}
         />
       </span>
@@ -588,37 +594,52 @@ export function LiangxiangBadge(): ReactElement {
   // live frame is a baseline (Cmd+Shift+R starts at earned=0 then hydrates),
   // never a condensation. Bob / 下一炷 may replay; this overlay must not.
   const [condensedIncense, setCondensedIncense] = useState(0)
-  const prevEarned = useRef(state.observedEarnedIncenseToday)
+  const [settlementSequence, setSettlementSequence] = useState(0)
+  const [incensePeekSequence, setIncensePeekSequence] = useState(0)
+  const incenseScope = `${state.authorityMode}:${state.businessDate}:${state.activeCase.id}:${state.connection}`
+  const incenseCaption = usePersonalIncenseCaption({
+    scopeKey: incenseScope,
+    condensedIncense, settlementSequence, peekSequence: incensePeekSequence,
+  })
+  const prevEarned = useRef(state.personal.earnedIncenseToday)
+  const prevEarnedScope = useRef(incenseScope)
   const incenseEarnPrimed = useRef(false)
   const liveSince = useRef<number | null>(null)
   useEffect(() => {
     if (state.connection !== 'live') {
       incenseEarnPrimed.current = false
       liveSince.current = null
+      setCondensedIncense(0)
       return undefined
     }
     if (liveSince.current === null) liveSince.current = performance.now()
-    if (!incenseEarnPrimed.current) {
+    if (!incenseEarnPrimed.current || prevEarnedScope.current !== incenseScope) {
       incenseEarnPrimed.current = true
-      prevEarned.current = state.observedEarnedIncenseToday
+      prevEarnedScope.current = incenseScope
+      prevEarned.current = state.personal.earnedIncenseToday
+      liveSince.current = performance.now()
+      setCondensedIncense(0)
       return undefined
     }
     const previous = prevEarned.current
-    const current = state.observedEarnedIncenseToday
+    const current = state.personal.earnedIncenseToday
     prevEarned.current = current
     const gained = earnedIncenseGain(previous, current)
     if (!shouldAnnounceCondensedIncense(previous, current, performance.now() - liveSince.current)) {
       return undefined
     }
     setCondensedIncense(gained)
+    setSettlementSequence(sequence => sequence + 1)
     playIncenseEarn()
     const timer = window.setTimeout(() => setCondensedIncense(0), 1400)
     return () => window.clearTimeout(timer)
-  }, [state.connection, state.observedEarnedIncenseToday])
+  }, [state.connection, state.personal.earnedIncenseToday, incenseScope])
 
   // Transient vote feedback (已上香).
   const [voteFeedback, setVoteFeedback] = useState('')
   const [utilityOpen, setUtilityOpen] = useState(false)
+  const pondRef = useMainPanelPond({ remainingIncense: state.personal.remainingIncense, reducedMotion,
+    active: open && !utilityOpen && !welcomeVisible && !releaseNotesVisible })
   const [dayEndPending, setDayEndPending] = useState(false)
   const dayEndSaving = useRef(false)
   const [reconcilePending, setReconcilePending] = useState(false)
@@ -638,7 +659,9 @@ export function LiangxiangBadge(): ReactElement {
     setUtilityOpen(false)
     setReconcilePending(false)
     setModeConfirmOpen(false)
-    if (returnFocus) anchorRef.current?.querySelector<HTMLElement>('[data-liangxiang-utility-trigger]')?.focus()
+    const trigger = anchorRef.current?.querySelector<HTMLElement>('[data-liangxiang-utility-trigger]')
+    if (returnFocus && utilityOpenedByKeyboard.current) trigger?.focus({ preventScroll: true })
+    else if (!utilityOpenedByKeyboard.current) trigger?.blur()
     setUtilityHintSuppressed(true)
   }, [cancelUtilityClose, quietRitualReturn])
   const scheduleUtilityClose = useCallback((): void => {
@@ -1028,6 +1051,7 @@ export function LiangxiangBadge(): ReactElement {
         onPointerDown={onPointerDown}
         buttonRef={buttonRef}
       />
+      <MainPortraitEdges />
       <BadgeFeedback position={position} viewport={viewport} open={open}
         comments={comments} suppressed={tapPending || dragging || comments.length > 0} reducedMotion={reducedMotion} />
       {open && (
@@ -1044,6 +1068,9 @@ export function LiangxiangBadge(): ReactElement {
           onReleaseNotesClose={onReleaseNotesClose}
           avatarPulse={avatarPulse}
           condensedIncense={condensedIncense}
+          incenseCaption={incenseCaption}
+          onInspectIncense={() => setIncensePeekSequence(sequence => sequence + 1)}
+          pondRef={pondRef}
           voteFeedback={voteFeedback}
           positionPulse={positionPulse}
           placement={panelPlacementFor(position, viewport)}

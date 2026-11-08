@@ -31,13 +31,13 @@ export {
 export const PLUGIN_PACKAGE_NAME = 'dsh-liangxiang'
 
 /** Installed package version, surfaced by 梁相案牍. Keep in sync with package.json. */
-export const PLUGIN_VERSION = '1.3.0-alpha.12'
+export const PLUGIN_VERSION = '2.0.0-alpha.1'
 
 /**
  * Server-only release label for the community backend. Do not bump the npm /
  * client `PLUGIN_VERSION` for a backend-only change; stamp `1.1.6-uN` instead.
  */
-export const SERVER_BUILD = '1.3.0-alpha.12-u1'
+export const SERVER_BUILD = '2.0.0-alpha.1-u1'
 
 /** Welcome gift: sticks credited once per device fingerprint per business date. */
 export const STARTER_INCENSE_COUNT = 10
@@ -185,7 +185,7 @@ export const WELCOME_DISMISS = '知道了'
 
 /** Region 4 utility drawer. Routine data flow is automatic; this is not sync. */
 export const UTILITY_LABEL = '梁相案牍'
-export const UTILITY_HINT = '主页、核香、模式、版本与走势'
+export const UTILITY_HINT = '主页、定时上香、模式与版本'
 export const HOMEPAGE_URL = 'https://liang.today/'
 export const UTILITY_HOME_LABEL = '梁相主页'
 export const UTILITY_HOME_HINT = '打开 liang.today'

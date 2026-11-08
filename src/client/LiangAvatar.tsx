@@ -48,13 +48,15 @@ export interface LiangAvatarProps {
    * lands on the figure, never on a wrapping plate.
    */
   liangQiFill?: number
+  /** Main blue panel only: soften residual pale sticker edges, never native halos. */
+  cleanEdge?: boolean
 }
 
 /** GPU-composited bob: integer-pixel ends, no filter, figure layer only. */
 const AVATAR_MOTION_CSS = `
 [data-liangxiang-avatar],
 [data-liangci-dialog] {
-  --liangxiang-state-nan-text: #965269;
+  --liangxiang-state-nan-text: #456a9e;
   --liangxiang-state-gong-text: #496b82;
   --liangxiang-state-shen-text: #5644cc;
   --liangxiang-state-sheng-text: #745900;
@@ -83,7 +85,7 @@ const AVATAR_MOTION_CSS = `
 @media (prefers-color-scheme: dark) {
   [data-liangxiang-avatar],
   [data-liangci-dialog] {
-    --liangxiang-state-nan-text: #e9a9bf;
+    --liangxiang-state-nan-text: #bed8ff;
     --liangxiang-state-gong-text: #9bbbd1;
     --liangxiang-state-shen-text: #b8afff;
     --liangxiang-state-sheng-text: #e1c46a;
@@ -94,7 +96,7 @@ const AVATAR_MOTION_CSS = `
 
 export const LIANGZI_LABEL_COLOR: Record<LiangziState, string> = {
   waiting: color.textTertiary,
-  xiao_nan_liang: 'var(--liangxiang-state-nan-text, #965269)',
+  xiao_nan_liang: 'var(--liangxiang-state-nan-text, #456a9e)',
   liang_gong: 'var(--liangxiang-state-gong-text, #496b82)',
   liang_zong: color.textPrimary,
   liang_shen: 'var(--liangxiang-state-shen-text, #5644cc)',
@@ -112,6 +114,7 @@ export function LiangAvatar({
   hideLabel = false,
   chrome = 'plate',
   liangQiFill = 1,
+  cleanEdge = false,
 }: LiangAvatarProps): ReactElement {
   const waiting = state === 'waiting'
   const rangeText = liangziRatioRangeText(state, liangziPolicyForVersion(policyVersion))
@@ -124,6 +127,7 @@ export function LiangAvatar({
     flexDirection: 'column',
     alignItems: 'center',
     width: size,
+    flexShrink: 0,
     gap: hideLabel ? 0 : '2px',
     overflow: 'visible',
     background: 'transparent',
@@ -158,6 +162,8 @@ export function LiangAvatar({
     transform: 'translateZ(0)',
     backfaceVisibility: 'hidden',
     imageRendering: 'auto',
+    filter: cleanEdge && ['liang_gong', 'liang_zong', 'liang_zu'].includes(state)
+      ? 'url(#liangxiang-main-portrait-edge)' : undefined,
   }
 
   return (
@@ -198,4 +204,20 @@ export function LiangAvatar({
       )}
     </div>
   )
+}
+
+/** Only the pale outer rim is touched. Shen/Sheng retain their complete native halos. */
+export function MainPortraitEdges(): ReactElement {
+  return <svg aria-hidden="true" width="0" height="0" style={{ position: 'absolute', overflow: 'hidden', pointerEvents: 'none' }}>
+    <defs><filter id="liangxiang-main-portrait-edge" x="-3%" y="-3%" width="106%" height="106%" colorInterpolationFilters="sRGB">
+      <feMorphology in="SourceAlpha" operator="erode" radius="0.3" result="inner" />
+      <feComposite in="SourceAlpha" in2="inner" operator="out" result="rim" />
+      <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 1 0 0" result="blueMask" />
+      <feComponentTransfer in="blueMask" result="paleMask"><feFuncA type="linear" slope="6" intercept="-3.7" /></feComponentTransfer>
+      <feComposite in="rim" in2="paleMask" operator="in" result="paleRim" />
+      <feComposite in="SourceAlpha" in2="paleRim" operator="out" result="cutout" />
+      <feGaussianBlur in="cutout" stdDeviation="0.12" result="softAlpha" />
+      <feComposite in="SourceGraphic" in2="softAlpha" operator="in" />
+    </filter></defs>
+  </svg>
 }

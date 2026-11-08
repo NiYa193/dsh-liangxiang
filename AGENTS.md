@@ -25,6 +25,26 @@ and receipts; v2's early session still opens at 09:00.
 Server transactions own freezing, idempotency, integer pool allocation and
 rollover. No client cache or chart is a ledger. Usage remains soft trust.
 
+The approved blue pond design in `docs/MAIN_PANEL_BLUE_UI.md` supersedes the
+older visual details below, without changing any accounting or market rule.
+Keep the panel 256px and four regions. Use calm pale-blue water behind the
+original figures, with height based only on available incense (0–1000).
+Below 100, whole plants grow from the bottom with water depth; do not expose
+only the tips of a clipped full plant. Two little stones per side stay at the
+roots. Above 100, an occasional small whale performs the same two puffs;
+foreground bubbles grow upward from above its head and pop at the live water
+surface, away from the portrait. Hide/static/unmount cancels all local motion.
+The left caption defaults to today's earned total. Only confirmed settlements
+briefly show gained incense and then available incense; sustained request
+activity never replaces the daily caption. Clicking the figure inspects
+available incense. One highest-order ring glyph group (ones / tens / hundreds)
+avoids crowding; large amounts use the compact caption and exact accessible
+summary. The full-width Liangwei pill matches the two vote buttons together.
+Preserve blue charge/bolt/dump choreography and the original gesture timing.
+Keep the dock rounded-square. Never trim Shen/Sheng's native halos.
+The utility drawer no longer repeats the direct market entry. Repair and mode
+confirmation occupy the same fixed-height drawer, never an expanding row.
+
 The four-region panel and original Liangzi effects remain intact. The approved
 main panel keeps its original 256 CSS pixels, matching the default DSH
 sidebar's content width, with its default outer left edge and badge at x=12.
@@ -32,9 +52,8 @@ Clamp the panel independently at narrow viewport edges; never rewrite the
 freely dragged badge position to fit it. Region 4's compact right column has
 the direct `梁股` action above two bold icon-and-glyph controls `牍` / `祠`.
 Keep their full accessible names and custom hints. The market uses the primary
-ritual accent; tools/history use the quieter theme color. The drawer retains
-its full-name market shortcut below the 2×2 tiles. Both routes open the same
-chart/trading view. Keyboard closing returns focus to its actual origin;
+ritual accent; tools/history use the quieter theme color. The utility drawer omits the duplicate market shortcut; the direct entry opens
+the existing chart/trading view. Keyboard closing returns focus to its actual origin;
 pointer closing blurs the entry and keeps its hint quiet until real re-entry.
 Do not add a second `梁位走势` entry or
 restore the retired window from old browser preferences. Keep official minute candles distinct from the retained Host-local observation API.
@@ -195,14 +214,13 @@ Rules:
   and MUST NOT participate in in-flow width (`space-between` / unequal flex
   columns are forbidden here — 「今日凝香」 being wider than 「下一炷」 must
   never shove 梁子 sideways).
-- remaining incense on the ring is pictorial place-value on **separate orbits**
-  (炷=stick ones, 月=moon tens, 日=sun hundreds, each 0–9). Glyphs sit on
-  almost-full orbits with a bottom gap for the 梁位 pill — not 2px dots on a
-  cramped top arc. A moon never occupies a stick slot.
-  ≥1000 炷 falls back to a compact numeral on the ring. The ring fill is
-  next-incense progress; the 炷/月/日 marks are remaining incense. The two
-  flanks are small captions of those same two facts — they must not compete
-  with the ring as a second copy of the same information.
+- remaining incense uses only its highest nonzero pictorial magnitude on
+  the ring: 0–9 sticks below 10, 1–9 moons for tens below 100, or 1–9 suns
+  for hundreds below 1000. Keep clear orbit spacing and the bottom gap;
+  do not paint every lower-order remainder at once. At 1000+ the transient
+  personal caption and exact accessible ring summary carry the amount;
+  never add a second permanent balance badge. Ring fill remains confirmed
+  next-incense progress, independent of available incense and Liangzi state.
 - the panel 梁子 and the docked logo bob together. Only the figure layer
   translates; chrome / ring / page stay still. Cadence follows personal
   `liang_qi_fill` (0 = slow idle bob, approaching 1 = faster), never remaining
@@ -212,8 +230,8 @@ Rules:
   table or competing popup. Exact values remain accessible. Accounting and
   published rule explanations use the same static Pro ×1 / Flash, other and
   unknown ×0.5 source; do not create an independent table.
-- Live requests may add restrained smoke/glow and `凝香中` inside the existing
-  core. Activity is not progress: never extrapolate numeric Token captions,
+- Live requests may add restrained smoke/glow inside the existing core;
+  never replace the daily caption with a persistent activity label. Activity is not progress: never extrapolate numeric Token captions,
   fill a fake percentage or mint spendable incense. Only confirmed ring
   geometry may interpolate; preserve figure bob cadence. Reduced motion uses
   static activity. Do not persist activity or transmit stream content.
@@ -284,8 +302,8 @@ incense.
 - routine Token claims, snapshots, reconnects and archive refresh are automatic;
   never present a routine manual-sync action
 - 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、定时上香、在线模式/离线模式、
-  当前版本, plus one full-width `香火交易` row directly beneath the four tiles
-  (see 「走势」 below). The mode action always means switching to the other mode and requires
+  当前版本. The direct main-panel market entry makes a duplicate drawer row
+  unnecessary; omit it. The mode action always means switching to the other mode and requires
   explicit confirmation; network failure, reconnect, refresh and backend restart
   must never invoke it. 当前版本 opens a compact version-information dialog; the sound
   control has no long-press version gesture. `核对香火` remains under the collapsed
@@ -482,7 +500,7 @@ Current thresholds (approved 2026-10-18, Issue #2): the lower half is split at 2
 The joke is “a normal person is gradually夯 into an ancestor”:
 
 - 待开梁: low-presence, unlit placeholder
-- 小难梁: dusty-pink hoodie, small bow, bashful expression; the same adult 梁子 face
+- 小难梁: pale-blue hoodie, small bow, bashful expression; the same adult 梁子 face
 - 梁工: ordinary engineer / work badge
 - 梁总: suit / executive presence
 - 梁神: halo / mild levitation / starts becoming absurd

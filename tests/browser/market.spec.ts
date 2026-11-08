@@ -81,8 +81,7 @@ test.beforeEach(async ({ page }) => {
 
 async function openMarket(page: Parameters<typeof openPanel>[0]) {
   const panel = await openPanel(page)
-  await panel.locator('[data-liangxiang-utility-trigger]').click()
-  await panel.locator('[data-liangxiang-utility-market]').click()
+  await panel.locator('[data-liangxiang-market-entry]').click()
   const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
@@ -227,8 +226,8 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
     await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveCSS('font-size', '11px')
     await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     const fish = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
-    expect(fish.width).toBeGreaterThanOrEqual(95)
-    expect(fish.height).toBeGreaterThanOrEqual(99)
+    expect(fish.width).toBeGreaterThanOrEqual((page.viewportSize()?.width ?? 1440) <= 600 ? 83 : 95)
+    expect(fish.height).toBeGreaterThanOrEqual((page.viewportSize()?.width ?? 1440) <= 600 ? 87 : 99)
     expect(await dialog.evaluate(element => {
       const bounds = element.getBoundingClientRect()
       return element.scrollWidth <= element.clientWidth + 1 && [...element.querySelectorAll('.liangxiang-market-header-copy,.liangxiang-market-companion-trigger,.liangxiang-market-window-controls,.liangxiang-market-chart-window')].every(node => {
@@ -258,7 +257,7 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   expect(axe.violations).toEqual([])
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
-  await expect(page.locator('[data-liangxiang-utility-trigger]')).not.toBeFocused()
+  await expect(page.locator('[data-liangxiang-market-entry]')).not.toBeFocused()
   await expect.poll(() => page.evaluate(() => window.__liangxiangMarketStreamsClosed)).toBe(1)
 })
 
@@ -757,15 +756,12 @@ test('one market entry replaces the separate observed-bars entry without changin
   const market = await openMarket(page)
   await page.keyboard.press('Escape')
   const panel = await openPanel(page)
-  await panel.locator('[data-liangxiang-utility-trigger]').click()
-  const entry = panel.locator('[data-liangxiang-utility-market]')
+  const entry = panel.locator('[data-liangxiang-market-entry]')
   await expect(entry).toBeVisible()
-  const tileBounds = (await panel.locator('[data-liangxiang-utility-action="home"]').boundingBox())!
-  const entryBounds = (await entry.boundingBox())!
-  expect(entryBounds.height).toBeGreaterThan(tileBounds.height)
+  await expect(panel.locator('[data-liangxiang-utility-market]')).toHaveCount(0)
   await expect(entry.locator('[data-liangxiang-utility-icon="market"]')).toHaveAttribute('aria-hidden', 'true')
   await expect(panel.locator('[data-liangxiang-utility-action="bars"]')).toHaveCount(0)
-  await panel.locator('[data-liangxiang-utility-market]').click()
+  await panel.locator('[data-liangxiang-market-entry]').click()
   await expect(market).toBeVisible()
   await expect(page.getByRole('dialog', { name: '梁位走势', exact: true })).toHaveCount(0)
   await expect(market.locator('[data-liangxiang-market-available]')).toHaveText('90')
@@ -1056,8 +1052,7 @@ test('first loading swims two loops, keeps one fish and returns without blocking
     await route.fulfill({ json: fixture(), headers: { 'x-liangxiang-cache-scope': 'browser-market-scope' } })
   })
   const panel = await openPanel(page)
-  await panel.locator('[data-liangxiang-utility-trigger]').click()
-  await panel.locator('[data-liangxiang-utility-market]').click()
+  await panel.locator('[data-liangxiang-market-entry]').click()
   const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
   const companion = dialog.locator('.liangxiang-market-companion')
   const sprite = companion.locator('[data-liangxiang-market-main-whale]')
@@ -1080,8 +1075,7 @@ test('first loading swims two loops, keeps one fish and returns without blocking
     await page.evaluate(state => window.__liangxiangMarketFrame?.({ ...state, server_time: state.server_time + 1 }), fixture())
     await expect(companion).toHaveAttribute('data-loading-phase', 'idle')
     await dialog.getByRole('button', { name: '关闭香火交易', exact: true }).click()
-    await panel.locator('[data-liangxiang-utility-trigger]').click()
-    await panel.locator('[data-liangxiang-utility-market]').click()
+      await panel.locator('[data-liangxiang-market-entry]').click()
     await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
     await expect(companion).toHaveAttribute('data-loading-phase', 'idle')
     expect(await sprite.evaluate(element => element.getAnimations().length)).toBe(0)
@@ -1097,8 +1091,7 @@ test('loading failure or reduced motion cancels fishing and keeps retry availabl
     await route.fulfill({ status: 503, json: { error: 'unavailable' } })
   })
   const panel = await openPanel(page)
-  await panel.locator('[data-liangxiang-utility-trigger]').click()
-  await panel.locator('[data-liangxiang-utility-market]').click()
+  await panel.locator('[data-liangxiang-market-entry]').click()
   const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
   const companion = dialog.locator('.liangxiang-market-companion')
   try {

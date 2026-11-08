@@ -15,8 +15,9 @@
  * 梁位 value in it. Presentational only: no hooks.
  */
 import type { CSSProperties, ReactElement, ReactNode } from 'react'
-import { formatCompactCount, incensePlaceValue, liangQiIntensity, type PersonalLiangQiState } from '../domain/index.ts'
-import { color, font, ringColorForFill } from './theme.ts'
+import { liangQiIntensity, type PersonalLiangQiState } from '../domain/index.ts'
+import { color, font } from './theme.ts'
+import { mainColor } from './main-panel-theme.ts'
 
 export interface LiangQiRingProps {
   personal: PersonalLiangQiState
@@ -42,8 +43,8 @@ export const AVATAR_SLOT = 96
 /** Leave the south arc empty so 炷/月 do not sit on the 梁位 pill. */
 const BOTTOM_GAP = 1.2
 const ONES_ORBIT = RING_RADIUS + 5
-const TENS_ORBIT = RING_RADIUS + 13
-const HUNDREDS_ORBIT = RING_RADIUS + 21
+const TENS_ORBIT = RING_RADIUS + 10
+const HUNDREDS_ORBIT = RING_RADIUS + 10
 /** Warm flame tone for the candle tip. */
 const FLAME = '#f3c152'
 
@@ -144,8 +145,12 @@ export function LiangQiRing({
   const intensity = liangQiIntensity(personal.remainingIncense)
   const fill = fillOverride ?? personal.liangQiFill
   const circumference = 2 * Math.PI * RING_RADIUS
-  const stroke = ringColorForFill(fill)
-  const places = incensePlaceValue(personal.remainingIncense)
+  const stroke = mainColor.blue
+  // One legible magnitude at a time. Exact available incense stays in the
+  // caption and accessible ring summary, never in a competing permanent badge.
+  const stock = personal.remainingIncense
+  const places = { ones: stock < 10 ? stock : 0, tens: stock >= 10 && stock < 100 ? Math.floor(stock / 10) : 0,
+    hundreds: stock >= 100 && stock < 1000 ? Math.floor(stock / 100) : 0 }
   const stickOpacity = 0.55 + intensity * 0.45
   const moonOpacity = 0.6 + intensity * 0.4
   const sunOpacity = 0.55 + intensity * 0.45
@@ -169,7 +174,6 @@ export function LiangQiRing({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    filter: intensity > 0 ? `drop-shadow(0 0 ${Math.round(6 + intensity * 8)}px rgba(216, 135, 58, ${(0.16 + intensity * 0.32).toFixed(2)}))` : undefined,
   }
 
   const ringLabel = `香火环：剩余香火 ${personal.remainingIncense} 炷，距下一炷还差 ${personal.tokensToNextIncense.toLocaleString('zh-CN')} 当量`
@@ -184,7 +188,7 @@ export function LiangQiRing({
           {[22, 104].map((x, index) => (
             <path key={x} data-liangxiang-stream-wisp=""
               d={`M ${x} 57 C ${x - 6} 48 ${x + 6} 44 ${x} 35`}
-              fill="none" stroke={color.ritualGold} strokeWidth="2" strokeLinecap="round"
+              fill="none" stroke={mainColor.blue} strokeWidth="2" strokeLinecap="round"
               style={{ opacity: 0.55, animation: reducedMotion ? undefined : `liangxiang-stream-wisp 2.4s ${index * -1.2}s ease-in-out infinite` }} />
           ))}
         </svg>
@@ -224,45 +228,6 @@ export function LiangQiRing({
       <div style={{ width: AVATAR_SLOT, display: 'flex', justifyContent: 'center' }}>
         {children}
       </div>
-      {places.overflow > 0 && (
-        <span
-          data-liangxiang-overflow-aura=""
-          aria-hidden="true"
-          style={{
-            position: 'absolute',
-            inset: '18px',
-            borderRadius: '50%',
-            pointerEvents: 'none',
-            background: 'radial-gradient(circle, rgba(243, 193, 82, 0.20) 0%, rgba(216, 135, 58, 0.08) 56%, transparent 72%)',
-            boxShadow: '0 0 14px 6px rgba(216, 135, 58, 0.18)',
-          }}
-        />
-      )}
-      {places.overflow > 0 && (
-        <span
-          data-liangxiang-incense-overflow=""
-          title={`${personal.remainingIncense.toLocaleString('zh-CN')} 炷`}
-          style={{
-            position: 'absolute',
-            top: '2px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            padding: '1px 7px',
-            borderRadius: '999px',
-            background: `linear-gradient(135deg, ${color.ritualGold}, ${color.ritualEmber})`,
-            color: '#ffffff',
-            fontFamily: font.family,
-            fontSize: '11px',
-            fontWeight: 700,
-            lineHeight: '18px',
-            letterSpacing: '0.02em',
-            boxShadow: '0 5px 14px rgba(121, 63, 30, 0.26)',
-            zIndex: 1,
-          }}
-        >
-          {formatCompactCount(places.overflow)}炷
-        </span>
-      )}
       {footer !== undefined && (
         <span
           data-liangxiang-ring-footer=""
