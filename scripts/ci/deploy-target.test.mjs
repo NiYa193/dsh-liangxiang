@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, existsSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
@@ -135,18 +135,30 @@ test('the actual standby proxy branch validates the active file without copying,
 })
 
 
-test('generic product hostname is standby-only; remote preflight requires a protected marker', async () => {
+test('generic product hostname remains standby-only', async () => {
   const generic = { ...standby, LIANGXIANG_DEPLOY_EXPECTED_HOSTNAME: 'liangxiang' }
   assert.equal((await resolveDeployTarget(generic)).role, 'standby')
   await assert.rejects(resolveDeployTarget({ ...generic, LIANGXIANG_DEPLOY_ROLE: 'production' }), /hostname/)
+})
+
+test('generic host preflight checks marker contents, ownership, permissions and links', { skip: process.platform === 'win32' }, () => {
   const source = readFileSync(new URL('../load-deploy-target.sh', import.meta.url), 'utf8')
   const block = source.split('CONFIG=/etc/caddy/Caddyfile.standby\n')[1].split('for property in ExecStart')[0]
   const dir = mkdtempSync(join(tmpdir(), 'liangxiang-role-marker-')), marker = join(dir, 'role')
   try {
-    const run = () => spawnSync('bash', ['-c', 'hostname(){ echo liangxiang; }\n' + block.replaceAll('/etc/liangxiang-deploy-role', marker)], { encoding: 'utf8' })
+    // The remote target is Linux; mock its GNU stat output so the same shell
+    // guard can be exercised from macOS and from root/non-root CI runners.
+    const prelude = 'hostname(){ echo liangxiang; }\nstat(){ printf "%s\\n" "$LIANGXIANG_TEST_ROLE_STAT"; }\n'
+    const run = (metadata = '0:600') => spawnSync('bash', ['-c', prelude + block.replaceAll('/etc/liangxiang-deploy-role', marker)], {
+      encoding: 'utf8', env: { ...process.env, LIANGXIANG_TEST_ROLE_STAT: metadata },
+    })
     assert.notEqual(run().status, 0)
-    writeFileSync(marker, 'production\n', {mode:0o600}); assert.notEqual(run().status, 0)
-    writeFileSync(marker, 'standby\n'); assert.notEqual(run().status, 0, 'an unprivileged marker must fail')
-    assert.equal(run().stderr.includes('root-owned standby role marker'), true)
-  } finally { rmSync(dir, {recursive:true,force:true}) }
+    writeFileSync(marker, 'production\n', { mode: 0o600 }); assert.notEqual(run().status, 0)
+    writeFileSync(marker, 'standby\n')
+    assert.notEqual(run('1000:600').status, 0)
+    assert.notEqual(run('0:644').status, 0)
+    assert.equal(run().status, 0)
+    rmSync(marker); writeFileSync(join(dir, 'target'), 'standby\n'); symlinkSync(join(dir, 'target'), marker)
+    assert.notEqual(run().status, 0)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
 })

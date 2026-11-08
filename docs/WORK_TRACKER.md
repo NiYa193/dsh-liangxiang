@@ -69,7 +69,7 @@
 ### ECS isolated validation (2026-11-08)
 
 - [x] Freeze committed alpha.12 implementation (`1879c10`); initial verify: 993 tests passed.
-- [ ] Provision standby-only host, including generic `liangxiang` hostname guarded by a root-owned role marker.
-- [ ] Strict TLS and two-origin network checks; isolated database, 0/50/100/150/200 clients and sustained 200.
-- [ ] Market, wallet, retry/reconnect and accelerated boundary settlement audit.
-- [ ] Record protected-host evidence and retirement prerequisites; no cutover or old-server changes.
+- [x] Provision standby-only host: generic `liangxiang` marker guard, sole key-only management login, enforcing SELinux, trusted IP TLS and post-reboot health verified.
+- [x] Strict TLS/two-origin network, 0/50/100/150/200 ramp and 960-second sustained 200: 97,256 RPCs at 200, zero unexpected failures, no queue drops; see ECS_VALIDATION.md.
+- [x] Three-batch market/wallet/retry/reconnect, day/week/month settlement: ten checkpoints and 216 receipts independently audited; frozen restart preserved the financial/archives digest. Planned 1.15-second restart window/25 HTTP 502s retained separately.
+- [x] Protected service PIDs/config/seed unchanged; consistent snapshots and full historical backup export saved privately with matching checksums. Fresh real-clock internal ledger and verified daily backup prepared; no production cutover. Retirement requires ending new writes to the old test entry.
