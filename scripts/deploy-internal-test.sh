@@ -24,6 +24,18 @@ cmp /etc/liangxiang-internal-test.env "$prefix/deploy/liangxiang-internal-test.e
 curl -fsS --max-time 10 http://127.0.0.1:4196/v1/health | node "$prefix/scripts/deploy-target.mjs" health "$3" "$4"
 echo 'OK: isolated internal-test backend, exact source and real business clock verified.'
 CHECK
+  node --input-type=module - "$DEPLOY_HEALTH_URL" "$PLUGIN_VERSION" "$SERVER_BUILD" <<'HTTPS_CHECK'
+const url = new URL('/liangxiang-internal-test/v1/health', process.argv[2])
+const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
+if (!response.ok || response.headers.get('x-liangxiang-environment') !== 'internal-test') {
+  throw new Error('internal-test HTTPS route or environment label mismatch')
+}
+const health = await response.json()
+if (health.version !== process.argv[3] || health.server_build !== process.argv[4]) {
+  throw new Error('internal-test HTTPS build mismatch')
+}
+console.log('OK: allowed client HTTPS route and environment label verified.')
+HTTPS_CHECK
   exit
 fi
 [[ -n "${LIANGXIANG_INTERNAL_ALLOWED_IPS:-}" && "$LIANGXIANG_INTERNAL_ALLOWED_IPS" =~ ^[0-9a-fA-F:.,]+$ ]] \

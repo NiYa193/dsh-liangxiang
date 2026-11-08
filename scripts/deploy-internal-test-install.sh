@@ -97,7 +97,12 @@ from pathlib import Path
 import sys
 p,snippet,ips=Path(sys.argv[1]),Path(sys.argv[2]),sys.argv[3].split(',')
 snippet.write_text('handle_path /liangxiang-internal-test/* {\n @allowed remote_ip '+' '.join(ips)+'\n handle @allowed {\n  header X-Liangxiang-Environment internal-test\n  reverse_proxy 127.0.0.1:4196 {\n   flush_interval -1\n   transport http {\n    keepalive 60s\n    response_header_timeout 15s\n   }\n  }\n }\n handle {\n  respond 403\n }\n}\n')
-text=p.read_text();line='\timport /etc/caddy/liangxiang-internal-test.caddy\n'
+text=p.read_text()
+# The site-wide header block is deferred because it removes Server. Its
+# environment label must be a default so it cannot overwrite this route.
+text=text.replace('\n\t\tX-Liangxiang-Environment standby\n', '\n\t\t?X-Liangxiang-Environment standby\n')
+p.write_text(text)
+line='\timport /etc/caddy/liangxiang-internal-test.caddy\n'
 if line not in text:
  start=text.find('\treverse_proxy 127.0.0.1:4180 {');end=text.rfind('\n}')
  if start<0:raise RuntimeError('unexpected standby routing; refusing to replace it')
