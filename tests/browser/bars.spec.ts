@@ -195,6 +195,8 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
 
   await expect(dialog).toHaveAttribute('data-fullscreen', 'false')
   const floatingBounds = (await dialog.boundingBox())!
+  expect(floatingBounds.width).toBeLessThanOrEqual(800)
+  if (page.viewportSize()!.width >= 824) expect(floatingBounds.width).toBeCloseTo(800, 0)
   expect(floatingBounds.height).toBeLessThanOrEqual(testInfo.project.name === 'chromium-narrow' ? 700 : 650)
   await dialog.getByRole('button', { name: '全屏香火交易', exact: true }).click()
   await expect(dialog).toHaveAttribute('data-fullscreen', 'true')
@@ -205,6 +207,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   await dialog.getByRole('button', { name: '退出全屏香火交易', exact: true }).click()
   await expect(dialog).toHaveAttribute('data-fullscreen', 'false')
   expect(Math.abs((await dialog.boundingBox())!.height - floatingBounds.height)).toBeLessThanOrEqual(1)
+  expect(Math.abs((await dialog.boundingBox())!.width - floatingBounds.width)).toBeLessThanOrEqual(1)
 
   expect(await dialog.evaluate(element => {
     const rect = element.getBoundingClientRect()

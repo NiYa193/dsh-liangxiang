@@ -21,7 +21,7 @@ export const MARKET_DIALOG_CSS = marketCss(`
  --~chart-text:var(--~sub);
  --~future-bg:light-dark(#edf0f3,#30353d);
  box-sizing:border-box;position:relative;display:flex;flex-direction:column;
- width:min(900px,100%);height:min(512px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);
+ width:min(800px,100%);height:min(512px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);
  padding:var(--~top) 16px 7px;overflow:auto;scrollbar-width:thin;
  background:var(--~paper);color:var(--~ink);
  border:1px solid var(--~border);border-radius:16px;

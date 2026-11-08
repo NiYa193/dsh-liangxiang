@@ -43,7 +43,8 @@ test('live activity stays non-numeric, reduced motion stays static, and final se
   })
   await page.evaluate(state => window.__liangxiangActivityFrame?.(state), confirmed)
   const exactNext = wire.personal.tokenPerIncense - confirmed.personal.effectiveTokensToday % wire.personal.tokenPerIncense
-  await expect(panel.locator('[data-liangxiang-compact="next-incense"]')).toHaveAttribute('title', `${exactNext.toLocaleString('zh-CN')} 当量`)
+  await expect(panel.locator('[data-liangxiang-personal="next-incense"]')).toHaveAttribute('aria-label', `下一炷 ${exactNext.toLocaleString('zh-CN')} 当量`)
+  expect(await panel.locator('[data-liangxiang-compact="next-incense"]').getAttribute('title')).toBeNull()
   const figures = panel.locator('[data-liangxiang-compact]')
   const before = await figures.allTextContents()
   const remaining = await panel.locator('[data-liangxiang-ring]').getAttribute('data-remaining')
