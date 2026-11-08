@@ -39,7 +39,7 @@ export interface MarketSession {
 }
 
 class MarketHttpError extends Error {
-  constructor(readonly status: number) { super(status === 404 ? '当前 Host 暂不支持香火交易，请安装新版插件后再试。' : status === 409 ? '仓位状态已变化，正在重新核对。' : '暂时无法连接社区，请稍后重试。') }
+  constructor(readonly status: number) { super(status === 404 ? '当前连接尚未开放香火市场，凝香、上香与梁祠仍可使用。' : status === 409 ? '仓位状态已变化，正在重新核对。' : '暂时无法连接社区，请稍后重试。') }
 }
 
 export function browserMarketTransport(): MarketTransport {

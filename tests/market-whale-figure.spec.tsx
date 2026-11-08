@@ -7,11 +7,12 @@ const { renderToStaticMarkup } = createRequire(import.meta.url)('react-dom/serve
 const geometry = { x: 300, y: 100, width: 108, height: 112.34, waterY: 160, src: '/liangxiang/api/market/art.webp' }
 
 describe('whale illustration and water decoration', () => {
-  it('keeps the original bitmap in separate locally moving pieces without a whole-figure bob', () => {
+  it('keeps the original bitmap in separately clipped pieces with complete-fish swimming', () => {
     const html = renderToStaticMarkup(<svg><MarketWhaleFigure {...geometry} mood="ahead" animated /></svg>)
     expect(html).toContain('data-pose="surface" data-motion="true"')
     expect(html).toContain('class="liangxiang-market-whale-tail"')
     expect(html).toContain('class="liangxiang-market-whale-hair"')
+    expect(html).toContain('class="liangxiang-market-whale-swim"')
     expect(html.match(/data-liangxiang-market-whale-art=/g)).toHaveLength(1)
     expect(html).not.toContain('liangxiang-market-float')
     expect(html).not.toContain('foreignObject')
@@ -32,13 +33,15 @@ describe('whale illustration and water decoration', () => {
 
   it('moves underwater colour with each masked illustration piece, leaving no resting-colour ghost', () => {
     const html = renderToStaticMarkup(<svg><MarketWhaleFigure {...geometry} mood="behind" animated /></svg>)
-    for (const piece of ['body', 'tail', 'hair']) {
+    for (const piece of ['tail', 'hair']) {
       const group = html.match(new RegExp(`<g[^>]+data-liangxiang-market-whale-piece="${piece}"[^>]*>(.*?)</g>`))?.[0]
       expect(group).toBeDefined()
       expect(group).toContain('<image ')
       expect(group).toContain(`data-tint-part="${piece}"`)
-      expect(group).toContain(piece === 'body' ? '-body)' : `-${piece})`)
+      expect(group).toContain(`-${piece})`)
     }
+    expect(html).toMatch(/data-liangxiang-market-steady-face="" clip-path="url\(#[^"]+-dry\)"><image/)
+    expect(html).toMatch(/clip-path="url\(#[^"]+-wet\)" mask="url\(#[^"]+-occlusion\)" data-liangxiang-market-water-occlusion="dive"><image[^]+?data-tint-part="body"/)
     expect(html.match(/data-liangxiang-market-underwater-tint=/g)).toHaveLength(3)
   })
 

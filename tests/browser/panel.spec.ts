@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { RELEASE_NOTES_TITLE } from '../../src/client/release-notes.ts'
-import { DEFAULT_INCENSE_WEIGHT_POLICY, incenseWeightRows } from '../../src/domain/index.ts'
+import { DEFAULT_INCENSE_WEIGHT_POLICY } from '../../src/domain/index.ts'
 import { parseWireState } from '../../src/shared/wire.ts'
+import { wireToViewState } from '../../src/client/store.ts'
 
 import {
   badgeSelector,
@@ -73,32 +74,21 @@ test('梁小号 stays visible without a clickable explanation or keyboard stop',
   expect(await epithet.getAttribute('data-open')).toBeNull()
 })
 
-test('next-incense tooltip uses the installed Host rules and stays within the viewport', async ({ page }) => {
+test('next-incense stays passive without a model tooltip while exact Host amounts remain readable', async ({ page }) => {
   const panel = await openPanel(page)
   const response = await page.request.get('/liangxiang/api/state')
   expect(response.ok()).toBe(true)
   const wire = parseWireState(await response.json())
   expect(wire.incenseWeightPolicy).toEqual(DEFAULT_INCENSE_WEIGHT_POLICY)
   const next = panel.locator('[data-liangxiang-personal="next-incense"]')
-  await next.focus()
-  const tooltip = next.locator('[data-liangxiang-weight-hint]')
-  await expect.poll(() => tooltip.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
-  const rows = incenseWeightRows(wire.incenseWeightPolicy!, wire.personal.tokenPerIncense)
-  await expect(tooltip.locator('tbody tr')).toHaveCount(rows.length)
-  for (const [index, row] of rows.entries()) {
-    await expect(tooltip.locator('tbody tr').nth(index).locator('th,td')).toHaveText([row.model, row.stick])
-  }
-  expect(await tooltip.locator('th,td').evaluateAll(cells => cells.every(cell => {
-    const range = document.createRange()
-    range.selectNodeContents(cell)
-    return range.getClientRects().length === 1 && cell.scrollWidth <= cell.clientWidth
-  }))).toBe(true)
-  const box = await tooltip.boundingBox()
-  expect(box).not.toBeNull()
-  if (box !== null) {
-    expect(box.x).toBeGreaterThanOrEqual(0)
-    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width)
-  }
+  expect(await next.getAttribute('tabindex')).toBeNull()
+  const exact = wireToViewState(wire, 'live').personal.tokensToNextIncense.toLocaleString('zh-CN')
+  await expect(next).toHaveAttribute('aria-label', `下一炷 ${exact} 当量`)
+  expect(await next.locator('[data-liangxiang-compact="next-incense"]').getAttribute('title')).toBeNull()
+  await next.hover()
+  await expect(panel.locator('[data-liangxiang-weight-hint]')).toHaveCount(0)
+  await expect(panel.getByRole('table', { name: '凝香规则' })).toHaveCount(0)
+  await expect(panel).toContainText(`距下一炷还差 ${exact} 当量`)
 })
 
 test('fresh default dock sits just above the visible DSH footer control', async ({ page }, testInfo) => {
@@ -119,11 +109,17 @@ test('pointer crosses from 梁相案牍 into its menu and version reopens update
 
   const drawer = panel.locator('[data-liangxiang-utility-drawer]')
   await expect(drawer).toBeVisible()
+
   const triggerBox = await trigger.boundingBox()
   const drawerBox = await drawer.boundingBox()
   expect(triggerBox).not.toBeNull()
   expect(drawerBox).not.toBeNull()
   if (triggerBox === null || drawerBox === null) return
+
+  // The bridge covers the full outer drawer width, including its padding.
+  await page.mouse.move(drawerBox.x + 2, (drawerBox.y + drawerBox.height + triggerBox.y) / 2)
+  await page.waitForTimeout(220)
+  await expect(drawer).toBeVisible()
 
   // Cross the visual 6px gap explicitly. The transparent descendant bridge
   // keeps this point inside the combined trigger + drawer hover region.
@@ -155,6 +151,152 @@ test('pointer crosses from 梁相案牍 into its menu and version reopens update
   await expect(releaseNotes).toBeVisible()
   await expect(releaseNotes.locator('[data-liangxiang-release-notes-qq-qrcode]')).toBeVisible()
   await expect(page.locator('[data-liangxiang-version-dialog]')).toHaveCount(0)
+})
+
+test('utility hover closes after pointer exit despite click focus, cancels on return, and keeps confirmation controls usable', async ({ page }) => {
+  const panel = await openPanel(page)
+  const trigger = panel.locator('[data-liangxiang-utility-trigger]')
+  const drawer = panel.locator('[data-liangxiang-utility-drawer]')
+  const outside = panel.locator('[data-liangxiang-case-title]')
+  const out = (await outside.boundingBox())!
+  await trigger.click()
+  await expect(drawer).toBeVisible()
+  await expect(trigger).toBeFocused()
+  await page.mouse.move(out.x + out.width / 2, out.y + out.height / 2)
+  await trigger.hover()
+  await page.waitForTimeout(220)
+  await expect(drawer).toBeVisible()
+  await page.mouse.move(out.x + out.width / 2, out.y + out.height / 2)
+  await expect(drawer).toBeHidden()
+  await expect(panel).toBeVisible()
+
+  await trigger.click()
+  await expect(drawer).toBeVisible()
+  await drawer.locator('[data-liangxiang-utility-action="mode"]').click()
+  const confirm = drawer.locator('[data-liangxiang-mode-confirm]')
+  await expect(confirm).toBeVisible()
+  await page.mouse.move(out.x + out.width / 2, out.y + out.height / 2)
+  await page.waitForTimeout(230)
+  await expect(confirm).toBeVisible()
+  await confirm.locator('[data-liangxiang-mode-cancel]').click()
+  await expect(confirm).toBeHidden()
+  await outside.click()
+  await expect(drawer).toBeHidden()
+})
+
+test('utility short hints point toward the opposite ritual row and keyboard dismissal does not leave a sticky popup', async ({ page }) => {
+  const panel = await openPanel(page)
+  const trigger = panel.locator('[data-liangxiang-utility-trigger]')
+  const entry = panel.locator('[data-liangxiang-liangci-entry]')
+  const hint = trigger.locator('[data-liangxiang-hint]')
+  const entryHint = entry.locator('[data-liangxiang-hint]')
+  const drawer = panel.locator('[data-liangxiang-utility-drawer]')
+  await trigger.hover()
+  await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  const triggerBox = (await trigger.boundingBox())!, entryBox = (await entry.boundingBox())!, hintBox = (await hint.boundingBox())!
+  expect(hintBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height)
+  expect(Math.abs(hintBox.y - entryBox.y)).toBeLessThanOrEqual(2)
+  expect(Math.abs(hintBox.x + hintBox.width - entryBox.x - entryBox.width)).toBeLessThanOrEqual(1)
+  expect(await hint.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none')
+  await entry.hover()
+  await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  await expect.poll(() => entryHint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  expect((await entryHint.boundingBox())!.y + (await entryHint.boundingBox())!.height).toBeLessThanOrEqual(entryBox.y)
+
+  await trigger.click()
+  await expect(drawer).toBeVisible()
+  await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  await page.keyboard.press('Escape')
+  await expect(drawer).toBeHidden()
+  await expect(trigger).toBeFocused()
+  await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+
+  await page.mouse.move(0, 0)
+  await trigger.focus()
+  await page.keyboard.press('Tab')
+  await page.keyboard.press('Shift+Tab')
+  await expect(trigger).toBeFocused()
+  await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  await trigger.press('Enter')
+  await expect(drawer).toBeVisible()
+  await page.keyboard.press('Tab')
+  await expect(drawer.locator('[data-liangxiang-utility-action="home"]')).toBeFocused()
+  await page.waitForTimeout(220)
+  await expect(drawer).toBeVisible()
+  await panel.getByRole('button', { name: '关闭面板', exact: true }).focus()
+  await expect(drawer).toBeHidden()
+  await expect(panel).toBeVisible()
+})
+
+test('Escape restores ritual focus without replaying pointer hints or highlights for the drawer, calendar, market and version notes', async ({ page }) => {
+  const panel = await openPanel(page)
+  const trigger = panel.locator('[data-liangxiang-utility-trigger]')
+  const entry = panel.locator('[data-liangxiang-liangci-entry]')
+  const drawer = panel.locator('[data-liangxiang-utility-drawer]')
+  const quietStyle = (button: typeof trigger) => button.evaluate(element => {
+    const style = getComputedStyle(element)
+    return { color: style.color, background: style.backgroundColor, shadow: style.boxShadow, transform: style.transform, outline: style.outlineStyle }
+  })
+  await page.mouse.move(0, 0)
+  const triggerRest = await quietStyle(trigger), entryRest = await quietStyle(entry)
+
+  await trigger.click()
+  await expect(drawer).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(drawer).toBeHidden()
+  await expect(trigger).toBeFocused()
+  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  expect(await quietStyle(trigger)).toEqual(triggerRest)
+  await page.mouse.move(0, 0)
+  await trigger.hover()
+  await expect.poll(() => trigger.getAttribute('data-liangxiang-ritual-resting')).toBeNull()
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+
+  await entry.click()
+  const calendar = page.locator(liangciSelector)
+  await expect(calendar).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(calendar).toBeHidden()
+  await expect(entry).toBeFocused()
+  await expect(entry).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect.poll(() => entry.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  expect(await quietStyle(entry)).toEqual(entryRest)
+
+  await trigger.click()
+  await drawer.locator('[data-liangxiang-utility-action="version"]').click()
+  const notes = page.getByRole('dialog', { name: RELEASE_NOTES_TITLE })
+  await expect(notes).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(notes).toBeHidden()
+  await expect(trigger).toBeFocused()
+  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  expect(await quietStyle(trigger)).toEqual(triggerRest)
+
+  await trigger.click()
+  await drawer.locator('[data-liangxiang-utility-market]').click()
+  const market = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
+  await expect(market).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(market).toBeHidden()
+  await expect(trigger).toBeFocused()
+  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  expect(await quietStyle(trigger)).toEqual(triggerRest)
+
+  // Keyboard activation keeps an accessible return ring, while suppressing
+  // the informational hint until the next deliberate navigation gesture.
+  await page.mouse.move(0, 0)
+  await entry.focus()
+  await entry.press('Enter')
+  await expect(calendar).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(calendar).toBeHidden()
+  await expect(entry).toBeFocused()
+  await expect(entry).toHaveAttribute('data-liangxiang-ritual-resting', 'keyboard')
+  await expect.poll(() => entry.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid')
+  await expect.poll(() => entry.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
 })
 
 test('梁祠 traps focus in both directions, closes with Escape, and restores entry focus', async ({ page }) => {

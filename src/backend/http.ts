@@ -25,6 +25,7 @@ import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { MARKET_CANDLE_INTERVAL_MS, parseMarketCandleInterval, parseMarketPositionRequest, type MarketStreamEvent } from '../shared/market-v1.ts'
 import { legacyLiangziView, legacyLiangziHistory } from './liangzi-compat.ts'
+import { LegacyWalletUpgradeRequiredError, legacyWalletView } from './legacy-wallet.ts'
 import { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 import { formatLiangPosition } from '../domain/index.ts'
 import { PLUGIN_VERSION, SERVER_BUILD } from '../shared/index.ts'
@@ -34,6 +35,8 @@ import {
   DEVICE_HEADER,
   INSTALLATION_HEADER,
   LIANGZI_POLICY_HEADER,
+  WALLET_CAPABILITY_HEADER,
+  WALLET_CAPABILITY_VERSION,
   PUBLIC_KEY_HEADER,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
@@ -631,13 +634,19 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
     }
 
     if (path === `${BACKEND_API_PREFIX}/bootstrap`) {
-      const bootstrap = service.bootstrap(installationId)
-      writeJson(res, 200, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? bootstrap : legacyLiangziView(bootstrap))
+      try {
+        const response = service.bootstrap(installationId)
+        const bootstrap = headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION ? response : legacyWalletView(response)
+        writeJson(res, 200, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? bootstrap : legacyLiangziView(bootstrap))
+      } catch (error) { writeValidationError(res, error) }
       expectedEvents.record('bootstrap_hello', `[liangxiang-backend] hello ${who(req, installationId)}`)
       return
     }
     if (path === `${BACKEND_API_PREFIX}/me/daily-state`) {
-      writeJson(res, 200, service.dailyState(installationId))
+      try {
+        const response = service.dailyState(installationId)
+        writeJson(res, 200, headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION ? response : legacyWalletView(response))
+      } catch (error) { writeValidationError(res, error) }
       return
     }
     if (path === `${BACKEND_API_PREFIX}/events`) {
@@ -734,7 +743,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
           ? 0
           : Math.floor(prior.claimed_effective_tokens / prior.token_per_incense)
         const response = service.applyTokenClaim(installationId, claim)
-        writeJson(res, 200, response)
+        writeJson(res, 200, headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION ? response : legacyWalletView(response))
         const earned = response.authoritative_personal_state.earned_incense
         const have = response.authoritative_personal_state.claimed_effective_tokens
         if (response.claim_applied === true && earned > priorEarned) {
@@ -793,7 +802,8 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         }
         available = decision.available
       }
-      const response = service.vote(installationId, intent, undefined, available)
+      const response = service.vote(installationId, intent, undefined, available,
+        headerValue(req, WALLET_CAPABILITY_HEADER) !== WALLET_CAPABILITY_VERSION)
       if (response.result.status === 'accepted' && !response.result.replayed) {
         const spent = response.result.spent_incense ?? 1
         if (spent > 0) voteLimiter.consume(installationId, spent, limiterNow, lastVoteAt)
@@ -805,7 +815,8 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         voteLimiter.consume(installationId, 1, limiterNow, lastVoteAt)
       }
       const status = response.result.status === 'accepted' ? 200 : statusForRejection(response.result.reason)
-      writeJson(res, status, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? response : legacyLiangziView(response))
+      const view = headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION ? response : legacyWalletView(response)
+      writeJson(res, status, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? view : legacyLiangziView(view))
       const direction = intent.vote_type === 'up' ? '夯' : '拉'
       const snapshot = response.global_snapshot
       const position = formatLiangPosition(snapshot.up_votes, snapshot.down_votes)
@@ -861,6 +872,12 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
 }
 
 function writeValidationError(res: ServerResponse, error: unknown): void {
+  if (error instanceof LegacyWalletUpgradeRequiredError) {
+    // Old vote clients treat every 409 as a complete business receipt. A
+    // capability precondition uses 412 so they retain the actual error code.
+    writeError(res, 412, 'wallet_upgrade_required', error.message)
+    return
+  }
   if (error instanceof WireError) {
     writeError(res, 400, 'invalid_request', error.message, error.field)
     return

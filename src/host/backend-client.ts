@@ -17,6 +17,8 @@ import {
   INSTALLATION_HEADER,
   LIANGZI_POLICY_HEADER,
   LIANGZI_POLICY_VERSION,
+  WALLET_CAPABILITY_HEADER,
+  WALLET_CAPABILITY_VERSION,
   PUBLIC_KEY_HEADER,
   SIGNATURE_HEADER,
   TIMESTAMP_HEADER,
@@ -130,7 +132,8 @@ export function createBackendClient(options: BackendClientOptions): BackendClien
   const eventStreams = new Set<() => void>()
 
   const signedHeaders = (method: string, path: string, installationId?: string, rawBody = ''): Record<string, string> => {
-    const headers: Record<string, string> = { [LIANGZI_POLICY_HEADER]: LIANGZI_POLICY_VERSION }
+    const headers: Record<string, string> = { [LIANGZI_POLICY_HEADER]: LIANGZI_POLICY_VERSION,
+      [WALLET_CAPABILITY_HEADER]: WALLET_CAPABILITY_VERSION }
     if (installationId !== undefined) headers[INSTALLATION_HEADER] = installationId
     const identity = options.signer?.() ?? null
     if (identity !== null && installationId !== undefined) {

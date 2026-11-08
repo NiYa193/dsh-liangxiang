@@ -63,6 +63,7 @@ import { createBusinessDateProvider, systemClock, type BusinessDateProvider, typ
 import { SNAPSHOT_HISTORY_LIMIT, type BackendConfig } from './config.ts'
 import { CASE_BANK, nextCycledCaseTitle } from './case-bank.ts'
 import { CommunityAuthError } from './community-auth.ts'
+import { legacyDailyPersonal } from './legacy-wallet.ts'
 import {
   isUniqueConstraintError,
   type BackendStore,
@@ -1049,6 +1050,7 @@ export class LiangxiangBackendService {
     intent: V1VoteRequest,
     now = this.clock.now(),
     maxSpend = Number.POSITIVE_INFINITY,
+    legacyDaily = false,
   ): V1VoteResponse {
     const activeCase = this.ensureActiveCase(now)
     this.store.transaction(() => this.ensureRow(installationId, activeCase, now))
@@ -1056,7 +1058,7 @@ export class LiangxiangBackendService {
     try {
       result = this.store.transaction(() => {
         const before = this.store.statsFor(activeCase.id)
-        const outcome = this.voteInTransaction(installationId, intent, activeCase, now, maxSpend)
+        const outcome = this.voteInTransaction(installationId, intent, activeCase, now, maxSpend, legacyDaily)
         if (outcome.status === 'accepted' && !outcome.replayed) {
           this.publishInTransaction(activeCase, now)
           this.marketLedger.recordCandle(activeCase, now, before, outcome.spent_incense ?? 1)
@@ -1100,6 +1102,7 @@ export class LiangxiangBackendService {
     activeCase: CaseRow,
     now: number,
     maxSpend: number,
+    legacyDaily: boolean,
   ): V1VoteResult {
     const requestedCount = intent.count ?? 1
     const existingRequest = this.store.voteRequestByRequestId(installationId, intent.request_id)
@@ -1156,7 +1159,9 @@ export class LiangxiangBackendService {
     this.ensureRow(installationId, target, now)
     // Read before the insert: after it, this installation always has a vote.
     const firstVoteForCase = !this.store.hasVotedForCase(installationId, target.id)
-    const remaining = this.remainingFor(installationId, target)
+    const remaining = legacyDaily
+      ? legacyDailyPersonal(this.personalState(installationId, target, now)).remaining_incense
+      : this.remainingFor(installationId, target)
     const spent = clampVoteSpend(requestedCount, remaining, maxSpend)
     if (spent < 1) {
       return this.recordRejectedRequest(

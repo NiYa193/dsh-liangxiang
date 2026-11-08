@@ -11,7 +11,7 @@ import { liangziPolicyForVersion, LIANGZI_POLICY_VERSION } from '../domain/index
  * Presentational only (no hooks); the container wires state and callbacks.
  */
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactElement } from 'react'
-import { LIANG_POSITION_DECIMALS, VOTE_COUNT_MAX, formatCompactCount, formatIncenseShare, formatRatioPercents, incenseWeightRows, LEGACY_INCENSE_WEIGHT_POLICY, type LocalEpithet, type LocalIncenseStats, type VoteType } from '../domain/index.ts'
+import { LIANG_POSITION_DECIMALS, VOTE_COUNT_MAX, formatCompactCount, formatIncenseShare, formatRatioPercents, type LocalEpithet, type LocalIncenseStats, type VoteType } from '../domain/index.ts'
 import {
   ABSURD_CLAIM_NOTICE,
   ACCOUNTING_UNAVAILABLE_HINT,
@@ -26,10 +26,10 @@ import {
   LIANGCI_ENTRY_HINT,
   LIANGCI_ENTRY_LABEL,
   MY_INCENSE_LABEL,
+  MARKET_TITLE,
   NEXT_INCENSE_LABEL,
   NEXT_INCENSE_PROGRESS_LABEL,
   NEXT_INCENSE_UNIT,
-  NEXT_INCENSE_WEIGHT_TITLE,
   NO_INCENSE_REASON,
   OFFLINE_REASON,
   PANEL_TITLE,
@@ -96,6 +96,7 @@ import { ReleaseNotesDialog } from './ReleaseNotesDialog.tsx'
 const versionSuffixAt = PLUGIN_VERSION.search(/[-+]/)
 const versionBase = versionSuffixAt < 0 ? PLUGIN_VERSION : PLUGIN_VERSION.slice(0, versionSuffixAt)
 const versionSuffix = versionSuffixAt < 0 ? '' : PLUGIN_VERSION.slice(versionSuffixAt + 1)
+const MARKET_ENTRY_PARTS = MARKET_TITLE.split(' · ')
 
 export interface PanelProps {
   state: LiangxiangViewState
@@ -159,7 +160,16 @@ export interface PanelProps {
   /** Region 4's themed utility drawer; normal synchronization remains automatic. */
   utilityOpen: boolean
   onUtilityToggle: () => void
-  onUtilityClose: () => void
+  onUtilityClose: (returnFocus?: boolean) => void
+  utilityHintSuppressed?: boolean
+  ritualResting?: Partial<Record<'utility' | 'liangci', 'pointer' | 'keyboard'>>
+  onRitualReactivate?: (kind: 'utility' | 'liangci') => void
+  onUtilityEnter?: () => void
+  onUtilityLeave?: () => void
+  onUtilityFocus?: (keyboard: boolean, trigger: boolean) => void
+  onUtilityBlur?: () => void
+  onUtilityPointerInput?: () => void
+  onUtilityKeyboardInput?: (key: string) => void
   onOpenHomepage: () => void
   modeConfirmOpen: boolean
   modeChanging: boolean
@@ -203,6 +213,7 @@ function panelChrome(): CSSProperties {
 
 const STAT_ICON_SIZE = 26
 const BROADCAST_MARQUEE_MIN_CHARS = 20
+const UTILITY_DRAWER_WIDTH = 242
 
 const statStyle: CSSProperties = {
   position: 'relative',
@@ -738,36 +749,25 @@ const PANEL_CSS = `
   opacity: 1;
   transform: translateY(0);
 }
-[data-~personal="next-incense"] {
-  cursor: help;
-  outline: none;
+[data-~utility-trigger] [data-~hint] {
+  top: calc(100% + 6px);
+  bottom: auto;
+  transform: translateY(-4px);
 }
-[data-~personal="next-incense"] [data-~weight-hint] {
-  position: absolute;
-  right: 0;
-  top: calc(100% - 8px);
-  z-index: 3;
-  min-width: 168px;
-  max-width: calc(100vw - 32px);
-  box-sizing: border-box;
-  padding: 6px 8px;
-  border-radius: 10px;
-  border: 1px solid ${color.border};
-  background: ${color.bgLayer};
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
-  color: ${color.textPrimary};
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: nowrap;
+[data-~utility-trigger][data-~hint-suppressed][aria-expanded] [data-~hint] {
   opacity: 0;
-  transform: translateY(4px);
-  pointer-events: none;
-  transition: opacity 40ms ease, transform 40ms ease;
 }
-[data-~personal="next-incense"]:hover [data-~weight-hint],
-[data-~personal="next-incense"]:focus-within [data-~weight-hint] {
-  opacity: 1;
+[data-~utility-slot] [data-~ritual][data-~ritual-resting] [data-~hint] {
+  opacity: 0;
+  transition: none;
+}
+[data-~utility-slot] [data-~ritual][data-~ritual-resting="pointer"] {
+  outline: none;
+  color: ${color.textSecondary};
+  background: ${color.bgSubtle};
+  box-shadow: inset 0 0 0 1px ${color.border};
   transform: translateY(0);
+  transition: none;
 }
 [data-~stat] [data-~stat-hint] {
   position: absolute;
@@ -832,20 +832,6 @@ const PANEL_CSS = `
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, ${color.border} 80%, transparent);
-}
-[data-~weight-hint] table {
-  border-collapse: collapse;
-  width: 100%;
-}
-[data-~weight-hint] th,
-[data-~weight-hint] td {
-  padding: 2px 4px;
-  text-align: left;
-  font-weight: 500;
-  white-space: nowrap;
-}
-[data-~weight-hint] td {
-  text-align: right;
 }
 @keyframes liangxiang-condense {
   0% { opacity: 0; transform: translate(-50%, 16px) scale(0.72); }
@@ -946,6 +932,7 @@ export function Panel(props: PanelProps): ReactElement {
     onBroadcastDismiss = () => undefined,
     onInsufficientVote, onClose, onReconcileAsk, onReconcileConfirm, onReconcileCancel,
     reconcilePending, utilityOpen, onUtilityToggle, onUtilityClose, onOpenHomepage,
+    utilityHintSuppressed = false, ritualResting = {}, onRitualReactivate, onUtilityEnter, onUtilityLeave, onUtilityFocus, onUtilityBlur, onUtilityPointerInput, onUtilityKeyboardInput,
     modeConfirmOpen, modeChanging, onModeAsk, onModeConfirm, onModeCancel,
     onShowVersion, onOpenMarket, onOpenLiangci, onCycleLocalCase,
     onOpenBars = () => undefined,
@@ -1014,7 +1001,7 @@ export function Panel(props: PanelProps): ReactElement {
       if (releaseNotesVisible) onReleaseNotesClose()
       else if (modeConfirmOpen) onModeCancel()
       else if (reconcilePending) onReconcileCancel()
-      else if (utilityOpen) onUtilityClose()
+      else if (utilityOpen) onUtilityClose(true)
       else onClose()
     }
   }
@@ -1353,14 +1340,12 @@ export function Panel(props: PanelProps): ReactElement {
         <div
           style={{ ...flankStyle, right: '0px' }}
           data-liangxiang-personal="next-incense"
-          tabIndex={0}
-          aria-label={`${NEXT_INCENSE_LABEL} ${toNextExact} ${NEXT_INCENSE_UNIT}，悬停查看凝香规则`}
+          aria-label={`${NEXT_INCENSE_LABEL} ${toNextExact} ${NEXT_INCENSE_UNIT}`}
         >
           <span style={flankCaptionStyle}>{NEXT_INCENSE_LABEL}</span>
           <span style={flankValueStyle}>
             <span
               data-liangxiang-compact="next-incense"
-              title={`${toNextExact} ${NEXT_INCENSE_UNIT}`}
             >
               {formatCompactCount(displayTokensToNext, 0)}
             </span>
@@ -1368,22 +1353,9 @@ export function Panel(props: PanelProps): ReactElement {
           </span>
           <span style={{ ...flankUnitStyle, ...(streamingActive ? { color: color.ritualEmberText } : {}) }}
             data-liangxiang-stream-status={streamingActive ? '' : undefined}
-            role={streamingActive ? 'status' : undefined}
-            title={streamingActive ? '回复进行中，香火按最终用量结算' : undefined}>
+            role={streamingActive ? 'status' : undefined}>
             {streamingActive ? '凝香中' : `${NEXT_INCENSE_PROGRESS_LABEL} ${Math.trunc(Math.min(1, Math.max(0, personal.liangQiFill)) * 100)}%`}
           </span>
-          <div data-liangxiang-weight-hint="" role="tooltip">
-            <table aria-label={NEXT_INCENSE_WEIGHT_TITLE}>
-              <tbody>
-                {incenseWeightRows(state.incenseWeightPolicy ?? LEGACY_INCENSE_WEIGHT_POLICY, personal.tokenPerIncense).map((row) => (
-                  <tr key={`${row.model}:${row.weight}`}>
-                    <th scope="row">{row.model}</th>
-                    <td>{row.stick}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
 
@@ -1689,16 +1661,24 @@ export function Panel(props: PanelProps): ReactElement {
           </span>
           <strong data-liangxiang-stat-value="voters" style={statValueStyle}>{shownVoters.toLocaleString('zh-CN')}</strong>
         </span>
-        <div data-liangxiang-utility-slot="" style={{ display: 'contents' }}>
+        <div data-liangxiang-utility-slot="" style={{ display: 'contents' }}
+          onPointerEnter={event => { if (event.pointerType !== 'touch') onUtilityEnter?.() }}
+          onPointerLeave={event => { if (event.pointerType !== 'touch') onUtilityLeave?.() }}
+          onPointerDownCapture={() => onUtilityPointerInput?.()}
+          onKeyDownCapture={event => onUtilityKeyboardInput?.(event.key)}
+          onFocusCapture={event => onUtilityFocus?.(event.target.matches(':focus-visible'), event.target.hasAttribute('data-liangxiang-utility-trigger'))}
+          onBlurCapture={event => { if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) onUtilityBlur?.() }}>
           <div
             data-liangxiang-utility-desk=""
-            onMouseLeave={onUtilityClose}
             style={{ position: 'relative', gridColumn: 3, gridRow: 1, justifySelf: 'end' }}
           >
           <button
             type="button"
             data-liangxiang-utility-trigger=""
             data-liangxiang-ritual=""
+            data-liangxiang-hint-suppressed={utilityOpen || utilityHintSuppressed ? '' : undefined}
+            data-liangxiang-ritual-resting={ritualResting.utility}
+            onPointerMove={event => { if (event.movementX !== 0 || event.movementY !== 0) onRitualReactivate?.('utility') }}
             aria-label={`${UTILITY_LABEL}：${UTILITY_HINT}`}
             aria-expanded={utilityOpen}
             onClick={onUtilityToggle}
@@ -1717,7 +1697,7 @@ export function Panel(props: PanelProps): ReactElement {
                   right: 0,
                   bottom: '100%',
                   zIndex: 2,
-                  width: '220px',
+                  width: `${UTILITY_DRAWER_WIDTH}px`,
                   height: '7px',
                 }}
               />
@@ -1734,7 +1714,8 @@ export function Panel(props: PanelProps): ReactElement {
                   right: 0,
                   bottom: 'calc(100% + 6px)',
                   zIndex: 3,
-                  width: '220px',
+                  width: `${UTILITY_DRAWER_WIDTH}px`,
+                  boxSizing: 'border-box',
                   padding: '10px',
                   borderRadius: '12px',
                   border: `1px solid ${color.border}`,
@@ -1811,9 +1792,9 @@ export function Panel(props: PanelProps): ReactElement {
                     </span>
                   </button>
                 </div>
-                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" data-motion={!reducedMotion} onClick={onOpenMarket} aria-label="香火交易：走势与三次入场">
+                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" data-motion={!reducedMotion} onClick={onOpenMarket} aria-label={`${MARKET_TITLE}：走势与三次入场`}>
                   <MarketMiniatureIcon />
-                  <strong>香火交易</strong><span data-liangxiang-utility-market-caption="">走势、仓位一处看</span>
+                  <strong style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><span>{MARKET_ENTRY_PARTS[0]}</span><i aria-hidden="true" style={{ width: '3px', height: '3px', flexShrink: 0, borderRadius: '50%', background: 'currentColor', opacity: .6 }} /><span>{MARKET_ENTRY_PARTS[1]}</span></strong><span data-liangxiang-utility-market-caption="">走势、仓位一处看</span>
                   <span data-liangxiang-utility-market-arrow="" aria-hidden="true">›</span>
                 </button>}
                 {!onOpenMarket && <button
@@ -1877,6 +1858,8 @@ export function Panel(props: PanelProps): ReactElement {
             type="button"
             data-liangxiang-liangci-entry=""
             data-liangxiang-ritual=""
+            data-liangxiang-ritual-resting={ritualResting.liangci}
+            onPointerMove={event => { if (event.movementX !== 0 || event.movementY !== 0) onRitualReactivate?.('liangci') }}
             aria-label={`${LIANGCI_ENTRY_LABEL}：${LIANGCI_ENTRY_HINT}`}
             onClick={onOpenLiangci}
             style={{ gridColumn: 3, gridRow: 2, justifySelf: 'end' }}

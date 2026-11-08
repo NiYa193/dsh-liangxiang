@@ -43,6 +43,21 @@ decoration, never a replacement central Liangzi or a new business namespace.
 Market animation/static preference is local and respects reduced motion.
 Market surfaces inherit DSH's explicit color scheme. Verify an OS-light / DSH-dark
 combination as well as ordinary light/dark themes; static mode stops every local CSS transition and WAAPI action.
+Dragging either chart must not select its labels or adjacent readout; ordinary
+text outside the drag remains selectable. The readout has stable left-aligned
+direction, Liang position and detail slots. Keep whole-fish swimming and local
+motion in dynamic mode; solve sharpness in rendering rather than removing motion.
+First uncached loading may swim two circles then return the same fish to its
+header slot; errors, hiding, static mode and unmount cancel the flight. All
+fish speech shares one unboxed, staggered fading area beside the fish; do not
+restore a second speech card. Clicked fish may emit up to three short local
+lines sampled from current confirmed facts. They expire, never block controls,
+and never claim unconfirmed earnings. Static mode keeps the text readable.
+New Hosts negotiate `x-liangxiang-wallet: cumulative-v1`. Older Hosts retain
+the actual daily protocol and transactionally bounded daily voting, using the
+same wallet. Never invent daily Tokens or spending to fit old equations; mixed
+or downgraded installs that cannot represent their actual funds require a clear
+compatibility response. Unupgraded daily-only users must remain supported.
 Do not read another implementation until the independent implementation has
 been completed and recorded in a commit; comparisons must be documented.
 
@@ -161,17 +176,18 @@ Rules:
   `liang_qi_fill` (0 = slow idle bob, approaching 1 = faster), never remaining
   incense or the global 梁位. Respect `prefers-reduced-motion`.
 - right overlay: personal `tokens_to_next_incense` in **Pro 当量** (not raw
-  Flash Token). Hover/focus on 下一炷 shows the model-weight table
-  from the same static rule data used by accounting (Pro ×1,
-  Flash / other / unknown ×0.5); never maintain a second static table.
+  Flash Token). Keep it a passive caption without a hover/focus model-rate
+  table or competing popup. Exact values remain accessible. Accounting and
+  published rule explanations use the same static Pro ×1 / Flash, other and
+  unknown ×0.5 source; do not create an independent table.
 - Live requests may add restrained smoke/glow and `凝香中` inside the existing
   core. Activity is not progress: never extrapolate numeric Token captions,
   fill a fake percentage or mint spendable incense. Only confirmed ring
   geometry may interpolate; preserve figure bob cadence. Reduced motion uses
   static activity. Do not persist activity or transmit stream content.
 - visible 下一炷 当量 uses integer compact (`33K`, never `≈ 33.4K`) so the
-  flank does not overlap 梁子. Hover title and the screen-reader summary keep
-  the exact integer. 今日凝香 / 环上 overflow 仍可用一位小数。
+  flank does not overlap 梁子. The screen-reader summary keeps the exact
+  integer without adding a hover popup. 今日凝香 / 环上 overflow 仍可用一位小数。
 - under the avatar: **exactly one** global number — 梁位 = `up_ratio`, printed with
   6 decimals (`LIANG_POSITION_DECIMALS`) — then a causal arrow to the 称呼
   (`梁位 83.021952% → 梁神`). The authoritative text label remains outside the
@@ -650,7 +666,8 @@ The single static rule source is `src/domain/incense-weight.ts`: match whole
 DeepSeek route IDs by family, not model age, provider, display name or release
 date. Do not fetch an upstream model catalog or add remote earning-rate
 overrides. Stored or received rule metadata must not change these rates.
-Host sends the same rule data to Client for its tooltip. Details:
+Host exposes the same rule data to Client for consistent explanations, without
+restoring the removed main-panel hover table. Details:
 `docs/INCENSE_POLICY.md`.
 
 Streaming usage is provisional: current DSH's durable `assistant/message` or
@@ -1165,6 +1182,13 @@ For substantial work:
 6. run typecheck/lint/unit/integration/UI/backend tests as applicable
 7. fix failures before considering the phase complete
 8. update docs when contracts/integration seams change
+
+Maintain a concise visible checklist for ongoing multi-step work in
+`docs/WORK_TRACKER.md`. Add new requests without dropping unfinished items;
+mark each completed item with its verification evidence and show progress to
+the user. Keep pending approval distinct from implementation and testing.
+Reopen an item if a regression is found; never use checked boxes as a substitute
+for the final build/install/backend gates.
 
 ### Version (HARD RULE — 用户可见改动必须升版本)
 

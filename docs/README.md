@@ -35,6 +35,7 @@
 - PR #7、DSH 重试漏算及会话迁移回归：`PR7_REVIEW.md`。
 - 连接消息去重与保留的实时性边界：`CONNECTION_EFFICIENCY.md`。
 - 累计钱包与交易候选：`MARKET_WALLET.md`、`MARKET_UI_COMPARISON.md`；当前验收证据为 `MARKET_VALIDATION.md`。
+- 新旧客户端过渡、真实日账和混用／降级限制：`LEGACY_WALLET_COMPAT.md`。
 - 香港专用隔离演练：`MARKET_REHEARSAL.md`；12客户端真实结算与手工收盘结果为 `MARKET_REHEARSAL_REPORT.md`。
 - `npm-readme.md` 是发布 README 输入；必须由现行权威校验，不能反向定义产品。
 

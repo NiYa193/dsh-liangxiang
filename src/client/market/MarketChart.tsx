@@ -88,7 +88,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const [size, setSize] = useState({ width: WIDTH, height: HEIGHT })
   const [viewport, setViewport] = useState<ChartViewport | null>(null)
   const box = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ x: number, from: number, until: number, moved: boolean } | null>(null)
+  const drag = useRef<{ pointer: number, x: number, from: number, until: number, moved: boolean } | null>(null)
   const skipClick = useRef(false)
   const wheel = useRef<((event: globalThis.WheelEvent) => void) | null>(null)
   const wheelFeedback = useRef<number | null>(null)
@@ -212,6 +212,8 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const move = (event: PointerEvent<SVGSVGElement>): void => {
     const gesture = drag.current
     if (gesture) {
+      if (gesture.pointer !== event.pointerId) return
+      event.preventDefault()
       const offset = event.clientX - gesture.x
       if (Math.abs(offset) > 3) gesture.moved = true
       if (gesture.moved) changeWindow(gesture.from - offset / Math.max(1, event.currentTarget.getBoundingClientRect().width) * size.width / plotWidth * (gesture.until - gesture.from), gesture.until - gesture.from)
@@ -258,11 +260,12 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     </div>
     <div className={marketClass('chart-scroll')} ref={box}>
       <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" tabIndex={0} data-liangxiang-market-from={from} data-liangxiang-market-until={until} data-liangxiang-market-interval={interval} data-liangxiang-market-source-interval={candlesIntervalMs} data-liangxiang-market-pinned={pinned !== null}
-        style={{ width: '100%', height: '100%', display: 'block', overflow: 'hidden', touchAction: 'pan-y' }}
+        style={{ width: '100%', height: '100%', display: 'block', overflow: 'hidden', touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none' }}
         aria-label={`今日梁位${mode === 'tide' ? '潮汐' : 'K线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方行情，加减号或滚轮缩放，拖动平移，0或双击复位，点击固定，Escape解除固定；缺口不连线。${readout}`}
-        onPointerMove={move} onPointerDown={event => { if (event.button !== 0) return; stopWheel(); skipClick.current = false; drag.current = { x: event.clientX, from, until, moved: false }; event.currentTarget.setPointerCapture(event.pointerId) }}
-        onPointerUp={event => { if (drag.current?.moved) { skipClick.current = true; onInteraction?.('pan') } drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
-        onPointerCancel={() => { stopWheel(); drag.current = null; skipClick.current = true }}
+        onPointerMove={move} onPointerDown={event => { if (event.button !== 0 || drag.current) return; event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); stopWheel(); skipClick.current = false; drag.current = { pointer: event.pointerId, x: event.clientX, from, until, moved: false }; event.currentTarget.setPointerCapture(event.pointerId) }}
+        onPointerUp={event => { if (drag.current?.pointer !== event.pointerId) return; if (drag.current.moved) { skipClick.current = true; onInteraction?.('pan') } drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
+        onPointerCancel={event => { if (drag.current?.pointer !== event.pointerId) return; stopWheel(); drag.current = null; skipClick.current = true }}
+        onLostPointerCapture={event => { if (drag.current?.pointer === event.pointerId) { drag.current = null; skipClick.current = true } }} onDragStart={event => event.preventDefault()}
         onDoubleClick={resetWindow}
         onClick={event => { if (skipClick.current) { skipClick.current = false; return } const at = hit(event as unknown as PointerEvent<SVGSVGElement>); if (at !== null) { setPinned(old => old === at ? null : at); setHover(at); onInteraction?.('inspect') } }}
         onPointerLeave={() => { if (!drag.current && pinned === null) { setHover(null); setSpecial(null) } }} onKeyDown={key}>
@@ -309,6 +312,6 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
         {ticks.filter((_tick, index) => size.width >= 500 || index === 0 || index === ticks.length - 1 || index % 2 === 0).map((tick, index, shown) => <g key={tick.at} className={marketClass('time-tick')}><text x={x(tick.at)} y={size.height - 5} textAnchor={index === 0 ? 'start' : index === shown.length - 1 ? 'end' : 'middle'} fill={LIGHT_INK} fontSize="11">{tick.label}</text></g>)}
       </svg>
     </div>
-    <figcaption className="liangxiang-market-chart-readout liangxiang-market-pond-legend" aria-live="off" title={`${currentLabel} · ${readout}`}><span className={marketClass('chart-current')}>{currentLabel}</span><span><i style={{ background: VERMILION }} />夯</span><span><i style={{ background: SLATE }} />拉</span><span className={marketClass('chart-detail')}>{pinned !== null ? '已固定 · ' : ''}{readout}</span></figcaption>
+    <figcaption className="liangxiang-market-chart-readout liangxiang-market-pond-legend" aria-live="off" title={`${currentLabel} · ${readout}`}><span className={marketClass('chart-directions')}><span><i style={{ background: VERMILION }} />夯</span><span><i style={{ background: SLATE }} />拉</span></span><span className={marketClass('chart-current')}>{currentLabel}</span><span className={marketClass('chart-detail')}>{pinned !== null ? '已固定 · ' : ''}{readout}</span></figcaption>
   </figure>
 })

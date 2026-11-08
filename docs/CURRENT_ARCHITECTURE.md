@@ -4,8 +4,8 @@
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.5`，`SERVER_BUILD=1.3.0-alpha.5-u1`。
-当前源码为 **1.3.0-alpha.5 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.7`，`SERVER_BUILD=1.3.0-alpha.7-u1`。
+当前源码为 **1.3.0-alpha.7 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定线与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **14**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
@@ -46,7 +46,7 @@ DSH 最终请求用量
 
 | 功能 | 最终规则与资料 |
 |---|---|
-| 累计钱包（候选） | 可用/冻结分离、余额与 Token 余量跨日；每日统计独立，旧客户端需配套升级。见 [`MARKET_WALLET.md`](MARKET_WALLET.md) |
+| 累计钱包（候选） | 可用/冻结分离、余额与 Token 余量跨日；新版协商累计钱包，旧版保留真实日账和日额度、共享唯一钱包。混用与降级限制见 [`MARKET_WALLET.md`](MARKET_WALLET.md) |
 | 香火交易（候选） | 案牍统一入口；每日三批延迟定线、午夜共同收盘。默认官方分钟数据聚合烛线，全天持续记录，交易时段仅用底色区分；单一时间窗随缩放变化，自动匹配真实粒度；潮汐、分列读数、缩放／平移／全屏保留，确认与撤回同栏，大肥鱼按操作及每分钟播报。新场12／17／22定线，旧场保留原时点。现行视觉见 [`MARKET_UI_COMPARISON.md`](MARKET_UI_COMPARISON.md) |
 | 小难梁 | 有票且梁位 <25%；25%–<50% 为梁工。旧梁案和档案保留原规则，见 [`ISSUE2_IMPLEMENTATION.md`](ISSUE2_IMPLEMENTATION.md) |
 | 凝香 | Pro ×1；Flash、其他及未知 ×0.5；按每个请求最终用量结算。V4.1 路由与重试/迁移边界见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)、[`PR7_REVIEW.md`](PR7_REVIEW.md) |
@@ -78,6 +78,8 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 
 ## 验证与协作
 
+当前多项工作与待审核建议逐项记在 [`WORK_TRACKER.md`](WORK_TRACKER.md)；每项完成即更新，不用旧验证记录推断新任务已完成。
+
 完成变更至少运行 `pnpm run verify`；DSH/打包触点运行 `smoke:clean-profile`，UI 运行
 `smoke:browser-clean-profile`，权威/API 变化运行 `smoke:online`，提交和推送必须通过隐私门禁。
 当前交易候选的验证证据集中记录在 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)，
@@ -87,6 +89,7 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 
 个人 fork 从最新社区 main 开发并向 main 提 PR；三平台锁定依赖、隐私与完整安装、
 浏览器及隔离在线检查均通过后由维护者审核合入。CI 使用只读权限，不重复运行 push 检查。
+每批前后端开发通过相应验证后立即提交并推送个人fork功能分支暂存；这不授权社区合入、公开发布或部署。
 dev 已在全部历史进入 main 后删除，本机远程跟踪引用已清理；不再自动晋级。
 PR 必须来自作者本人的个人 fork、非默认功能分支；主仓禁止创建开发分支与直接推送。
 普通账号自动运行 CI；新注册账号首次贡献仍受 GitHub 运行审批限制。

@@ -260,6 +260,90 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   await expect(page.locator('[data-liangxiang-utility-trigger]')).toBeFocused()
 })
 
+test('dragging either plot past its time labels pans without selecting text and leaves ordinary copy selectable', async ({ page }) => {
+  const { chart } = await openChart(page)
+  const svg = chart.locator('svg[data-liangxiang-market-from]')
+  for (const mode of ['K 线', '潮汐']) {
+    await chart.getByRole('button', { name: mode, exact: true }).click()
+    await svg.focus()
+    await page.keyboard.press('0')
+    await chart.getByRole('button', { name: '放大走势', exact: true }).click()
+    const before = Number(await svg.getAttribute('data-liangxiang-market-from'))
+    const tick = (await chart.locator('.liangxiang-market-time-tick text').nth(1).boundingBox())!
+    const bounds = (await svg.boundingBox())!
+    await page.evaluate(() => window.getSelection()?.removeAllRanges())
+    await page.mouse.move(tick.x + tick.width / 2, tick.y + tick.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(tick.x + tick.width / 2 - 45, bounds.y + bounds.height + 20, { steps: 10 })
+    await page.mouse.up()
+    await expect.poll(async () => Number(await svg.getAttribute('data-liangxiang-market-from'))).toBeGreaterThan(before)
+    expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('')
+    await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
+    await expect(svg).toBeFocused()
+    // Releasing capture must finish the gesture, even outside the SVG.
+    const after = await svg.getAttribute('data-liangxiang-market-from')
+    await page.mouse.move(bounds.x + bounds.width * .75, bounds.y + 30)
+    expect(await svg.getAttribute('data-liangxiang-market-from')).toBe(after)
+    await svg.focus()
+    await page.keyboard.press('ArrowLeft')
+    await expect(svg).toBeFocused()
+  }
+  // Selection prevention is local to the plot, not a blanket page rule.
+  const copy = (await chart.locator('.liangxiang-market-chart-current').boundingBox())!
+  await page.mouse.move(copy.x + 1, copy.y + copy.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(copy.x + copy.width - 1, copy.y + copy.height / 2, { steps: 10 })
+  await page.mouse.up()
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('梁位')
+  await page.evaluate(() => window.getSelection()?.removeAllRanges())
+})
+
+test('readout keeps left-aligned direction, position and volume slots stable through ordinary, gap and large-volume inspection', async ({ page }) => {
+  const data = chartCandles().filter(candle => candle.at < DAY + 4.25 * HOUR || candle.at >= DAY + 5.25 * HOUR)
+    .map(candle => candle.at === DAY + 6 * HOUR ? { ...candle, volume: 9_999_999 } : candle)
+  await page.route('**/liangxiang/api/market/candles?*', route => route.fulfill({ json: candlePage(route.request().url(), data) }))
+  const { chart } = await openChart(page)
+  const svg = chart.locator('svg[data-liangxiang-market-from]')
+  const readout = chart.locator('.liangxiang-market-chart-readout')
+  const slots = readout.locator(':scope > span')
+  await expect(slots).toHaveCount(3)
+  await expect(slots.nth(0)).toHaveClass(/chart-directions/)
+  await expect(slots.nth(1)).toHaveClass(/chart-current/)
+  await expect(slots.nth(2)).toHaveClass(/chart-detail/)
+  const positions = async () => slots.evaluateAll(nodes => nodes.map(node => {
+    const { x, y, width, height } = node.getBoundingClientRect()
+    return { x, y, width, height, align: getComputedStyle(node).textAlign }
+  }))
+  const original = await positions()
+  expect(original.every(slot => slot.align === 'left')).toBe(true)
+  expect(original[0]!.x).toBeCloseTo((await readout.boundingBox())!.x)
+  expect(original[1]!.x).toBeGreaterThan(original[0]!.x + original[0]!.width)
+  const inspect = async (hour: number): Promise<void> => {
+    const location = await svg.evaluate((element, hour) => {
+      const svg = element as SVGSVGElement, bounds = svg.getBoundingClientRect(), width = svg.viewBox.baseVal.width
+      return { x: bounds.left + (12 + (width - 76) * hour / 24) / width * bounds.width, y: bounds.top + 40 }
+    }, hour)
+    await page.mouse.move(location.x, location.y)
+  }
+  const stable = async (): Promise<void> => {
+    const next = await positions()
+    for (let index = 0; index < next.length; index++) for (const key of ['x', 'y', 'width', 'height'] as const) {
+      expect(Math.abs(next[index]![key] - original[index]![key])).toBeLessThanOrEqual(1)
+    }
+  }
+  await inspect(8)
+  await expect(slots.nth(2)).toContainText('本场新增')
+  await stable()
+  await inspect(4.75)
+  await expect(slots.nth(2)).toContainText('这段未记录')
+  await stable()
+  await inspect(6.1)
+  await expect(slots.nth(2)).toContainText('方向未确认')
+  await expect(slots.nth(2)).toContainText(/\d{1,3},\d{3},\d{3}/)
+  await stable()
+  expect(await readout.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+})
+
 test('the latest marker stays on the true forming-minute endpoint in tide and aggregated K line views', async ({ page }) => {
   const state = chartFixture(), observed = DAY + 13 * HOUR + 26 * MINUTE + 20_000
   state.server_time = observed

@@ -4,8 +4,8 @@ import type { ReactElement } from 'react'
 import sharp from 'sharp'
 import { describe, expect, it } from 'vitest'
 import { COMPANION_CSS, MarketFishCompanion } from '../src/client/market/MarketFishCompanion.tsx'
-import { createFishFeedback, expireFishFeedback, fishResponse, receiveFishFeedback, type FishAction } from '../src/client/market/fish-feedback.ts'
-import { fishMotion, MARKET_MOTION_CSS } from '../src/client/market/market-motion-style.ts'
+import { createFishFeedback, expireFishFeedback, fishDanmaku, fishFeedbackDuration, fishResponse, fishSpeechLines, receiveFishFeedback, type FishAction } from '../src/client/market/fish-feedback.ts'
+import { fishLoadingFrames, fishMotion, MARKET_MOTION_CSS } from '../src/client/market/market-motion-style.ts'
 import type { PositionMood } from '../src/client/market/chart-model.ts'
 
 const { renderToStaticMarkup } = createRequire(import.meta.url)('react-dom/server') as { renderToStaticMarkup(element: ReactElement): string }
@@ -63,7 +63,7 @@ describe('decorative header companion', () => {
       expect(html).toContain('咕噜')
     }
   })
-  it('keeps the idle face outside every continuously scaled or rotated layer while tail, hair and water retain motion', () => {
+  it('keeps the dry face out of raster masks while whole-body swimming, tail, hair and water retain motion', () => {
     for (const mood of ['ahead', 'behind', 'waiting'] as const) {
       const html = renderToStaticMarkup(<MarketFishCompanion mood={mood} animated reaction={null} />)
       const marker = html.indexOf('data-liangxiang-market-steady-face=')
@@ -74,14 +74,43 @@ describe('decorative header companion', () => {
         else ancestors.push(tag)
       }
       expect(ancestors.join('')).not.toMatch(/class="liangxiang-market-(?:companion-sway|whale-breath|whale-tail|whale-hair)"/)
-      expect(html.match(/<g mask="url\(#[^"]+-occlusion\)"/g)).toHaveLength(2)
+      expect(ancestors.join('')).not.toMatch(/\bmask=/)
+      expect(ancestors.join('')).toContain('class="liangxiang-market-whale-swim"')
+      expect(html).toContain('clip-rule="evenodd"')
       expect(html).toContain('class="liangxiang-market-companion-sway"')
       expect(html).toContain('class="liangxiang-market-whale-tail"')
       expect(html).toContain('class="liangxiang-market-whale-hair"')
       if (mood !== 'waiting') expect(html).toContain('<ellipse class="liangxiang-market-whale-breath"')
     }
     expect(COMPANION_CSS).toContain('animation:liangxiang-market-fish-swim')
+    expect(MARKET_MOTION_CSS).toContain('animation:liangxiang-market-body-swim')
+    expect(MARKET_MOTION_CSS.match(/@keyframes liangxiang-market-body-swim\{[^@]+/)?.[0]).not.toContain('scale(')
     for (const name of ['breathe', 'tail', 'hair', 'ripple', 'dive-bubble']) expect(MARKET_MOTION_CSS).toContain(`animation:liangxiang-market-${name}`)
+  })
+  it('samples up to two current facts and one mood-specific click line without inventing a number', () => {
+    const facts = Object.freeze(['梁位53.000000% · 梁总', 'P2香池40炷 · 多30 / 空10', '本盘做多5炷', '可用80炷 · 冻结20炷'])
+    for (const mood of ['ahead', 'behind', 'waiting'] as const) for (let i = 0; i < 20; i++) {
+      const lines = fishDanmaku(mood, facts, i)
+      expect(lines).toHaveLength(3)
+      expect(new Set(lines).size).toBe(3)
+      expect(lines.slice(1).every(line => facts.includes(line))).toBe(true)
+      expect(lines[0]).not.toMatch(/\d|稳赚|必赚|到账/)
+    }
+    expect(fishDanmaku('ahead', facts, 0)[0]).not.toBe(fishDanmaku('behind', facts, 0)[0])
+    expect(fishDanmaku('waiting', [], 0)).toHaveLength(1)
+    expect(fishDanmaku('waiting', [' 同一条 ', '同一条', ''], 0)).toHaveLength(2)
+  })
+  it('prepares two complete bounded loops with no bitmap zoom and keeps loading decorative', () => {
+    const frames = fishLoadingFrames(100, 150, 30)
+    expect(frames).toHaveLength(19)
+    expect(frames[1]).toEqual(frames[9])
+    expect(frames[9]).toEqual(frames[17])
+    expect(frames.at(-1)?.transform).toBe('translate(100px,150px) rotate(0deg)')
+    expect(JSON.stringify(frames)).not.toContain('scale')
+    const html = renderToStaticMarkup(<MarketFishCompanion mood="waiting" animated loading reaction={null} />)
+    expect(html).toContain('大肥鱼捕捞中')
+    expect(html.match(/data-liangxiang-market-main-whale=/g)).toHaveLength(1)
+    expect(html).not.toContain('aria-live')
   })
   it('preserves the supplied authoritative report and its line break without deriving balances or truncating copy', () => {
     const text = 'P1 · 11:00封盘，12:00定线\n多池 120 炷 · 空池 80 炷'
@@ -91,6 +120,25 @@ describe('decorative header companion', () => {
     expect(html).toContain('data-motion="false"')
     expect(html).not.toContain('line-clamp')
     expect(html).not.toContain('aria-live')
+  })
+  it('uses one card-free line container for idle, reports and every operation, including static copy', () => {
+    for (const reaction of [null, { id: 1, action: 'report' as const, text: '16:00封盘\n香池40炷' }, { id: 2, action: 'confirmed' as const, text: '已确认空7炷' }, { id: 3, action: 'periodic' as const, text: '17:00定线\n多30 / 空10' }]) {
+      const html = renderToStaticMarkup(<MarketFishCompanion mood="ahead" animated={false} reaction={reaction} />)
+      expect(html.match(/class="liangxiang-market-companion-speech liangxiang-market-companion-danmaku"/g)).toHaveLength(1)
+      expect(html.match(/data-liangxiang-market-danmaku=/g)?.length).toBeGreaterThanOrEqual(1)
+      expect(html).toContain('data-speech-motion="false"')
+      if (reaction?.text) for (const line of reaction.text.split('\n')) expect(html).toContain(`>${line}</span>`)
+    }
+    expect(MARKET_MOTION_CSS).not.toContain('visibility:hidden')
+  })
+  it('keeps all supplied text within three rows and ends the click report without restoring a second bubble', () => {
+    expect(fishSpeechLines(' 第一行 \n第二行\n第三行\n第四行\n第五行')).toEqual(['第一行', '第二行', '第三行 · 第四行 · 第五行'])
+    expect(fishSpeechLines('一\r\n\r\n二')).toEqual(['一', '二'])
+    const reaction = { id: 1, action: 'report' as const, text: 'P1香池40炷\n16:00封盘' }
+    const state = createFishFeedback(reaction, 100)
+    expect(fishFeedbackDuration(reaction)).toBe(5_200)
+    expect(expireFishFeedback(state, 5_299).active).toEqual(reaction)
+    expect(expireFishFeedback(state, 5_300).active).toBeNull()
   })
   it('keeps a continuous zoom gesture to one readable response without extending its lifetime', () => {
     let state = createFishFeedback({ id: 1, action: 'zoom-in' }, 0)
