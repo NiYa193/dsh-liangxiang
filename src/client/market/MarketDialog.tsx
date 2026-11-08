@@ -8,7 +8,8 @@ import { MarketChart } from './MarketChart.tsx'
 import { MarketFishCompanion, type FishAction, type FishReaction } from './MarketFishCompanion.tsx'
 import { MARKET_DIALOG_CSS } from './market-style.ts'
 import { MARKET_TITLE } from '../../shared/index.ts'
-import { formatMarketIncense, marketBatchName, marketBatchStatus } from './market-presentation.ts'
+import { formatMarketIncense, marketBatchName, marketBatchStatus, marketHour, marketPoolReport } from './market-presentation.ts'
+import { marketDepthBands } from './pond-model.ts'
 
 const [MARKET_BRAND, MARKET_TOPIC] = MARKET_TITLE.split(' · ')
 
@@ -36,6 +37,14 @@ function poolReport(batch: MarketBatch, format = formatMarketIncense): string { 
 function Incense({ value }: { value: number | bigint | undefined }): ReactElement {
   const exact = value?.toLocaleString() ?? '—'
   return <span title={exact} aria-label={exact}>{value === undefined ? '—' : formatMarketIncense(value)}</span>
+}
+
+function StageIcon({ batch }: { batch: MarketBatchId }): ReactElement {
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d={[
+    'M3 17h18M5 21h14M7 17a5 5 0 0 1 10 0M12 3v3M4 9l2 2M20 9l-2 2',
+    'M12 2v2M12 20v2M2 12h2M20 12h2M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
+    'M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10Z',
+  ][batch - 1]} /></svg>
 }
 
 function batchReport(batch: MarketBatch, state: MarketState, now: number, exact = false): string {
@@ -129,9 +138,13 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
   }
   const animatedNow = animated && visible && !reducedMotion
   const shownBatch = market?.batches.find(batch => batch.batch === selected)
+  const currentPoint = market?.close_point ?? state?.current_point ?? null
+  const currentRatio = pointRatio(currentPoint)
+  const currentName = currentRatio === null ? '待开梁' : marketDepthBands(casePresentation?.policyId).find(band => currentRatio >= band.low && (currentRatio < band.high || band.high === 1))?.label
+  const currentLabel = `梁位${marketRatioLabel(currentRatio)}${currentName ? ` · ${currentName}` : ''}`
   const fishMood = shownBatch ? positionMood(shownBatch, market?.close_point ?? state?.current_point ?? null) : 'waiting'
   const fishFacts = state && shownBatch ? [
-    `梁位${marketRatioLabel(pointRatio(market?.close_point ?? state.current_point))}`,
+    currentLabel,
     `${marketBatchName(selected)}${poolReport(shownBatch)}`,
     shownBatch.position ? `本盘${sideLabel(shownBatch.position.side)}${formatMarketIncense(shownBatch.position.amount)}炷，${shownBatch.reference ? '午夜一起揭晓' : '等定梁再看高低'}` : '本盘还没下水，先看看浪～',
     `可用${formatMarketIncense(state.wallet.available_incense)}炷，冻结${formatMarketIncense(state.wallet.frozen_incense)}炷`,
@@ -152,18 +165,18 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="liangxiang-market-title" tabIndex={-1} data-liangxiang-market-dialog="" data-animated={animatedNow} data-fullscreen={fullscreen}
       onClickCapture={event => {
         if (!(event.target instanceof Element)) return
-        const button = event.target.closest<HTMLButtonElement>('button')
+        const button = event.target.closest<HTMLElement>('button,summary')
         const action = button?.dataset.fishAction as FishAction | undefined
         if (action === 'motion') reactFish('motion', reducedMotion ? '系统要安静，鱼干也陪你看～' : button?.getAttribute('aria-checked') === 'true' ? '尾巴收好，大鱼干休假～' : undefined)
-        else if (action) reactFish(action)
+        else if (action) reactFish(action, undefined, true)
       }}
       onPointerDownCapture={event => { if (event.target instanceof Element && !event.target.closest('[data-liangxiang-market-popover], [data-liangxiang-market-popover-trigger]')) setPopover(null) }}>
       <header className={marketClass('header')}>
         <div className={marketClass('header-copy')}>
         <h2 id="liangxiang-market-title" aria-label={MARKET_TITLE}><span>{MARKET_BRAND}</span><i aria-hidden="true" /><small>{MARKET_TOPIC}</small></h2>
         <div className={marketClass('wallet')} aria-label="服务器累计钱包" title="可用与已到账收益跨日保留；冻结香火不能重复投入或上香">
-          <span>个人可用<strong data-liangxiang-market-available=""><Incense value={state?.wallet.available_incense} /></strong>炷</span>
-          <span>冻结<strong data-liangxiang-market-frozen=""><Incense value={state?.wallet.frozen_incense} /></strong>炷</span>
+          <span><span className={marketClass('wallet-label')}>个人可用</span><strong data-liangxiang-market-available=""><Incense value={state?.wallet.available_incense} /></strong>炷</span>
+          <span><span className={marketClass('wallet-label')}>冻结香火</span><strong data-liangxiang-market-frozen=""><Incense value={state?.wallet.frozen_incense} /></strong>炷</span>
         </div>
         </div>
         <button type="button" className={marketClass('companion-trigger')} aria-label="大肥鱼：播报本盘香池与时间" aria-description={shownBatch && state ? batchReport(shownBatch, state, now, true) : undefined} onClick={() => { if (shownBatch && state) reactFish('report', batchReport(shownBatch, state, now)) }}>
@@ -180,10 +193,10 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
         <time className={marketClass('clock')} data-liangxiang-market-clock="" title={market ? `${market.business_date} · ${market.timezone} · 服务器业务时间` : '等待服务器时间'}>{state && market ? `${market.business_date.slice(5).replace('-', '/')} ${marketTime(state.server_time, market.timezone)}` : '--:--'}</time>
         </div>
       </header>
-      <span className={marketClass('a11y')} aria-live="polite">{fishReaction?.action === 'confirmed' ? fishReaction.text : ''}</span>
+      <span className={marketClass('a11y')} aria-live="polite">{fishReaction && ['confirmed', 'pool', 'position'].includes(fishReaction.action) ? fishReaction.text : ''}</span>
       <div className={marketClass('status')} role="status" aria-live="polite">
         {!online ? '社区交易仅在线模式可用，离线香火与社区钱包分别保存。' : view.error ?? view.chartError ?? ''}
-        {online && view.error && (view.pending ? <button type="button" disabled={view.sending} onClick={() => { void session.retryPending() }}>{view.sending ? '核对中…' : '核对上一笔'}</button> : view.status === 'offline' && !view.state && <button type="button" onClick={() => { void session.start() }}>重新连接</button>)}
+        {online && view.error && (view.pending ? <button type="button" data-fish-action="retry" disabled={view.sending} onClick={() => { void session.retryPending() }}>{view.sending ? '核对中…' : '核对上一笔'}</button> : view.status === 'offline' && !view.state && <button type="button" data-fish-action="retry" onClick={() => { void session.start() }}>重新连接</button>)}
       </div>
       {fetching && <p className={marketClass('loading')} role="status" aria-live="polite"><span className={marketClass('a11y')}>{initialLoading ? '大肥鱼捕捞中' : '正在读取行情'}</span></p>}
       {state && online && <>
@@ -196,7 +209,7 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
               onClick={() => selectAndReport(batch.batch)} onKeyDown={event => {
                 const next = event.key === 'ArrowRight' ? batch.batch % 3 + 1 : event.key === 'ArrowLeft' ? (batch.batch + 1) % 3 + 1 : event.key === 'Home' ? 1 : event.key === 'End' ? 3 : null
                 if (next !== null) { event.preventDefault(); selectAndReport(next as MarketBatchId); document.getElementById(`liangxiang-market-tab-${next}`)?.focus() }
-              }}><span className={marketClass('button-face')}><strong><span>{marketBatchName(batch.batch)}</span><time>{marketTime(batch.locks_at, market.timezone)}封盘</time></strong><small><span>{batch.position ? <>{sideLabel(batch.position.side)}<Incense value={batch.position.amount} />炷</> : '未投入'}</span><em>{marketBatchStatus(batch)}</em></small></span></button>)}
+              }}><span className={marketClass('button-face')}><strong><StageIcon batch={batch.batch} /><b>{marketBatchName(batch.batch)}</b><time>{marketHour(batch.locks_at, market.timezone)}封盘</time></strong><small>{batch.position && <strong>{sideLabel(batch.position.side)}<Incense value={batch.position.amount} />炷</strong>}<em>{marketBatchStatus(batch)}</em></small></span></button>)}
           </div>
           {market.batches.map(batch => <section className={marketClass('stage')} key={`${market.id}:${batch.batch}`} role="tabpanel" id={`liangxiang-market-stage-${batch.batch}`} aria-labelledby={`liangxiang-market-tab-${batch.batch}`} hidden={selected !== batch.batch}>
             <BatchCard batch={batch} state={state} now={now} pending={view.sending || view.pending !== null || view.status !== 'live'} onInteract={() => select(batch.batch)} onDraft={() => reactFish('amount')}
@@ -214,20 +227,31 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
           </section>)}
         </>}
         <footer className={marketClass('footer')}>
-          <button type="button" data-fish-action="history" data-liangxiang-market-popover-trigger="history" aria-expanded={popover === 'history'} aria-controls="liangxiang-market-history" onClick={() => setPopover(popover === 'history' ? null : 'history')}><span aria-hidden="true">▤ </span>我的回执</button>
-          <button type="button" data-fish-action="rules" data-liangxiang-market-popover-trigger="rules" aria-expanded={popover === 'rules'} aria-controls="liangxiang-market-rules" onClick={() => setPopover(popover === 'rules' ? null : 'rules')}><span aria-hidden="true">ⓘ </span>玩法</button>
+          <div className={marketClass('footer-metrics')}>
+            <button type="button" className={marketClass('position')} aria-label={`${currentLabel}，点击听大肥鱼播报`} onClick={() => reactFish('position', `${currentLabel}\n夯${formatMarketIncense(currentPoint?.up_votes ?? 0)} / 拉${formatMarketIncense(currentPoint?.down_votes ?? 0)}，一起看浪～`, true)}>
+              <span className={marketClass('metric-label')}>梁位 {currentName && <b>· {currentName}</b>}</span><strong>{marketRatioLabel(currentRatio)}</strong>
+            </button>
+            <button type="button" className={marketClass('pool')} data-liangxiang-market-pool="" disabled={!shownBatch} aria-describedby="liangxiang-market-reveal" aria-label={shownBatch ? `${marketBatchName(shownBatch.batch)}香池，多${shownBatch.long_incense.toLocaleString()}炷，空${shownBatch.short_incense.toLocaleString()}炷，点击听多空比例` : '尚无香池'} onClick={() => { if (shownBatch) reactFish('pool', marketPoolReport(shownBatch), true) }}>
+              <span className={marketClass('metric-label')}>{shownBatch ? marketBatchName(shownBatch.batch) : ''}香池 <b id="liangxiang-market-reveal" className={marketClass('connection')} data-reveal={view.status === 'live' && market?.status === 'open'}>{view.status === 'live' ? market?.status === 'open' ? '24:00后一起揭晓' : market?.status === 'cancelled' ? '已取消' : '已收盘' : '正在重连'}</b></span>
+              <strong><Incense value={shownBatch ? poolAmount(shownBatch) : undefined} /><small>炷</small></strong>
+            </button>
+          </div>
+          <div className={marketClass('footer-actions')}>
+          <button type="button" data-fish-action={popover === 'history' ? 'dismiss' : 'history'} data-liangxiang-market-popover-trigger="history" aria-expanded={popover === 'history'} aria-controls="liangxiang-market-history" onClick={() => setPopover(popover === 'history' ? null : 'history')}><span aria-hidden="true">▤ </span>我的回执</button>
+          <button type="button" data-fish-action={popover === 'rules' ? 'dismiss' : 'rules'} data-liangxiang-market-popover-trigger="rules" aria-expanded={popover === 'rules'} aria-controls="liangxiang-market-rules" onClick={() => setPopover(popover === 'rules' ? null : 'rules')}><span aria-hidden="true">ⓘ </span>梁股玩法</button>
+          </div>
           <section id="liangxiang-market-history" className={marketClass('popover')} data-liangxiang-market-popover="history" aria-label="我的结算回执" aria-busy={view.historyLoading} hidden={popover !== 'history'}>
-            <div className={marketClass('popover-heading')}><strong>我的收盘回执</strong><button type="button" aria-label="关闭回执" onClick={() => setPopover(null)}>×</button></div>
+            <div className={marketClass('popover-heading')}><strong>我的收盘回执</strong><button type="button" data-fish-action="dismiss" aria-label="关闭回执" onClick={() => setPopover(null)}>×</button></div>
             {view.receipts.length === 0 && <p>{view.historyLoading ? '正在读取…' : '第一份回执，收盘后见。'}</p>}
             {view.receipts.map(receipt => <Receipt key={receipt.id} receipt={receipt} />)}
             {(view.receipts.length > 0 || view.historyPage > 1) && <nav className={marketClass('history-nav')} aria-label="回执分页">
-              <button type="button" onClick={() => { void session.loadHistory('newer') }} disabled={view.historyLoading || view.historyPage === 1}>较新回执</button>
+              <button type="button" data-fish-action="newer" onClick={() => { void session.loadHistory('newer') }} disabled={view.historyLoading || view.historyPage === 1}>较新回执</button>
               <small aria-live="polite">{view.historyLoading ? '读取中…' : `第${view.historyPage}页`}</small>
-              <button type="button" onClick={() => { void session.loadHistory(true) }} disabled={view.historyLoading || !view.nextCursor}>更早回执</button>
+              <button type="button" data-fish-action="older" onClick={() => { void session.loadHistory(true) }} disabled={view.historyLoading || !view.nextCursor}>更早回执</button>
             </nav>}
           </section>
           <section id="liangxiang-market-rules" className={marketClass('popover')} data-liangxiang-market-popover="rules" aria-label="交易玩法" hidden={popover !== 'rules'}>
-            <div className={marketClass('popover-heading')}><strong>30秒看懂梁股</strong><button type="button" aria-label="关闭玩法" onClick={() => setPopover(null)}>×</button></div>
+            <div className={marketClass('popover-heading')}><strong>30秒看懂梁股</strong><button type="button" data-fish-action="dismiss" aria-label="关闭玩法" onClick={() => setPopover(null)}>×</button></div>
             <ol className={marketClass('howto')}>
               <li><b>选一盘，选方向</b><p>做多盼涨，做空盼跌。整炷投入并冻结，封盘前可调整或撤回。</p></li>
               <li><b>记下这盘的梁位</b><div className={marketClass('rule-times')}>{market?.batches.map(batch => <span key={batch.batch}>{marketBatchName(batch.batch)}<strong>{marketTime(batch.reference_at, market.timezone)}定梁</strong></span>)}</div><p>定梁＝记录本盘梁位。封盘后还能上香争梁位；午夜收盘时与它比高低。</p><div className={marketClass('rule-sides')}><span>↗ 做多：收盘更高就赢</span><span>↘ 做空：收盘更低就赢</span></div></li>
@@ -237,10 +261,6 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
             <p className={marketClass('rule-note')}>出水占优，潜水落后，收盘才算数。投入看盘次按钮，香池看下方。</p>
             <small className={marketClass('rule-trust')}>社区娱乐积分；用量由本机申报，钱包、时间与结果由服务器记账。</small>
           </section>
-          <div className={marketClass('pool')} data-liangxiang-market-pool="">
-            <span>{shownBatch ? marketBatchName(shownBatch.batch) : ''}香池<strong><Incense value={shownBatch ? poolAmount(shownBatch) : undefined} /></strong>炷</span>
-            <span className={marketClass('connection')}><i />{view.status === 'live' ? market?.status === 'open' ? '24:00后一起揭晓' : market?.status === 'cancelled' ? '已取消' : '已收盘' : '正在重连'}</span>
-          </div>
         </footer>
       </>}
     </div>
@@ -286,7 +306,7 @@ function BatchCard({ batch, state, now, pending, onSet, onInteract, onDraft }: {
 }
 
 function Receipt({ receipt }: { receipt: MarketReceipt }): ReactElement {
-  return <details className={marketClass('receipt')}><summary style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span>{receipt.business_date} <small>投入 <Incense value={receipt.invested_incense} /> · 返还 <Incense value={receipt.returned_incense} /></small></span><strong style={{ color: receipt.pnl_incense >= 0 ? 'var(--liangxiang-market-blue-text)' : 'var(--liangxiang-market-sub)' }}>{receipt.pnl_incense > 0 ? '+' : ''}<Incense value={receipt.pnl_incense} /> 炷</strong></summary>
+  return <details className={marketClass('receipt')}><summary data-fish-action="receipt" style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', gap: '12px' }}><span>{receipt.business_date} <small>投入 <Incense value={receipt.invested_incense} /> · 返还 <Incense value={receipt.returned_incense} /></small></span><strong style={{ color: receipt.pnl_incense >= 0 ? 'var(--liangxiang-market-blue-text)' : 'var(--liangxiang-market-sub)' }}>{receipt.pnl_incense > 0 ? '+' : ''}<Incense value={receipt.pnl_incense} /> 炷</strong></summary>
     <div style={{ fontSize: '10px', color: 'var(--liangxiang-market-sub)', lineHeight: 1.9 }}>{receipt.batches.map(batch => <div key={batch.batch}>{marketBatchName(batch.batch)} · {sideLabel(batch.side)} <Incense value={batch.amount} /> 炷 → 返还 <Incense value={batch.payout} /> 炷{batch.result === 'void' || batch.result === 'draw' ? '（退回）' : ''}</div>)}</div>
   </details>
 }

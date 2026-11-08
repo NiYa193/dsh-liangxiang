@@ -8,7 +8,9 @@ import { createRequire } from 'node:module'
 const client = await readFile(new URL('../lib/client.js', import.meta.url))
 // Merging the existing read-only bars dialog adds 17.6 KB raw / 5.9 KB gzip.
 // Both chart surfaces stay available; no artwork or runtime dependency was added.
-const rawLimit = 720_000
+// Approved market layout and seven distinct companion interactions add about
+// 2.9 KB of code to alpha10. Keep the original compressed transfer ceiling.
+const rawLimit = 725_000
 // The original portraits remain pixel-identical. The market adds about 22 KB
 // compressed code; its separately budgeted sprite stays outside this always-loaded bundle.
 const gzipLimit = 430_000

@@ -1,4 +1,5 @@
 import type { MarketBatch, MarketBatchId } from '../../shared/market-v1.ts'
+import { marketTime } from './chart-model.ts'
 
 const NAMES = ['早盘', '午盘', '晚盘'] as const
 const STATUS: Record<MarketBatch['status'], string> = {
@@ -7,6 +8,17 @@ const STATUS: Record<MarketBatch['status'], string> = {
 
 export function marketBatchName(batch: MarketBatchId): string { return NAMES[batch - 1]! }
 export function marketBatchStatus(batch: MarketBatch): string { return STATUS[batch.status] }
+export function marketHour(at: number, timezone: string): string {
+  const time = marketTime(at, timezone)
+  return time.endsWith(':00') ? `${Number(time.slice(0, 2))}点` : time
+}
+
+export function marketPoolReport(batch: MarketBatch): string {
+  const total = BigInt(batch.long_incense) + BigInt(batch.short_incense)
+  const head = `${marketBatchName(batch.batch)}香池${formatMarketIncense(total)}炷`
+  return total === 0n ? `${head}\n还没有投入，等香火落池～` : head + ([['多', batch.long_incense], ['空', batch.short_incense]] as const)
+    .map(([side, count]) => `\n${side}${formatMarketIncense(count)}炷 · ${Number(BigInt(count) * 10000n / total) / 100}%`).join('')
+}
 
 /** Presentation only: truncate magnitude without rounding spendable money up. */
 export function formatMarketIncense(value: number | bigint): string {

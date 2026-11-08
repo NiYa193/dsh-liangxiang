@@ -48,12 +48,20 @@ reads `24:00后一起揭晓`. One noninteractive time-window text beside the zoo
 Wheel zoom is continuous and pointer-anchored; +/− step through 24/12/6/3/1 hours and 30 minutes; candle grain is automatic,
 never a separate interval selector, and cannot exceed the real source resolution. Record the active case all
 business day, including before trading opens; phase shading never hides prices. The normal window and order ticket stay compact. The header whale uses action-specific local motion and readable speech. It reports the selected batch's actual cutoff and pool once per minute, below operation/error priority; clicking it reports on demand.
-The stage buttons permanently show 早盘/午盘/晚盘, the actual lock time and
-the user's direction/amount. Use 争梁位/已定梁 consistently. The footer shows
-the selected stage's total pool in a fixed, left-aligned numeric slot beside
-the midnight reveal text. Do not restore a permanent countdown, sticky pool
-popup or duplicate position-caption row. Show personal funds as 个人可用;
-the clock under the motion toggle uses the server business date/time only.
+The stage buttons use centered groups with small daypart icons: 早盘/午盘/晚盘
+above the user's direction/amount, with the actual cutoff in quieter type
+(11点封盘; retain minutes for non-hour cutoffs). Omit 未投入; show necessary
+status when there is no position. Use 争梁位/已定梁 consistently. The footer's
+left two thirds contain 梁位/state and the selected stage's total pool/reveal
+time; the right third contains 我的回执/梁股玩法. Keep amount and 炷 together,
+inside a stable information cell; never reserve a gap between digits and unit.
+State/reveal text is bolder than its caption. Clicking either fact prompts the
+fish; pool speech uses actual side quantities and percentages, never fake 50/50
+for an empty pool. Do not restore a permanent countdown, sticky pool popup or
+duplicate position-caption row. Align 个人可用/冻结香火 labels and value starts,
+with the available amount larger. Reserve enough header height for both rows;
+the chart toolbar must stay clear. The slightly larger clock under the motion
+toggle stays within its control column and uses server business date/time only.
 Confirm and withdraw share one compact order row. The title is `梁股 · 香火市场`.
 Receipts and rules open overlays from permanent buttons; batch, status and wallet updates never resize the window.
 Its blue whale-girl artwork is a market
@@ -62,8 +70,10 @@ Market animation/static preference is local and respects reduced motion.
 Market surfaces inherit DSH's explicit color scheme. Verify an OS-light / DSH-dark
 combination as well as ordinary light/dark themes; static mode stops every local CSS transition and WAAPI action.
 Dragging either chart must not select its labels or adjacent readout; ordinary
-text outside the drag remains selectable. The readout keeps stable left-aligned
-direction and Liang position slots; candle details follow the pointer in a
+text outside the drag remains selectable. The 夯/拉 legend sits beside the
+volume band in the same centered right-axis column as the price labels, below
+the lowest tick, while 梁位 is in the footer; no independent readout row.
+Candle details follow the pointer in a
 bounded themed tooltip, retaining exact keyboard/touch access. Compact amounts
 use at most four significant digits and truncate toward zero, with exact
 accessible values and integer editing; 梁位 retains six truncated decimals.

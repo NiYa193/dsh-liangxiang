@@ -151,7 +151,6 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const current = pointRatio(market?.close_point ?? state.current_point)
   const bands = useMemo(() => marketDepthBands(liangziPolicyId), [liangziPolicyId])
   const activeBand = current === null ? undefined : bands.find(band => current >= band.low && (current < band.high || (band.high === 1 && current === 1)))
-  const currentLabel = `梁位 ${marketRatioLabel(current)}${activeBand ? ` · ${activeBand.label}` : ''}`
   const selectedAt = pinned ?? hover
   const selected = visible.find(c => c.at === selectedAt) ?? visible[visible.length - 1]
   const maxVolume = Math.max(1, ...visible.map(c => c.volume))
@@ -293,7 +292,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
         </g>}
         {Array.from({ length: size.height < 190 ? 3 : 5 }, (_, index) => {
           const ratio = range.max - (range.max - range.min) * index / (size.height < 190 ? 2 : 4), cy = y(ratio)
-          return <g key={index} data-liangxiang-market-price-axis=""><line x1={LEFT} x2={LEFT + plotWidth} y1={cy} y2={cy} stroke={BORDER} strokeWidth=".8" /><text x={LEFT + plotWidth + 6} y={cy + 4} fill={LIGHT_INK} fontSize="11">{(ratio * 100).toFixed(2)}%</text></g>
+          return <g key={index} data-liangxiang-market-price-axis=""><line x1={LEFT} x2={LEFT + plotWidth} y1={cy} y2={cy} stroke={BORDER} strokeWidth=".8" /><text x={size.width - RIGHT / 2} y={cy + 4} textAnchor="middle" fill={LIGHT_INK} fontSize="11">{(ratio * 100).toFixed(2)}%</text></g>
         })}
         {currentTimeInRange && <line data-liangxiang-market-current-time="" data-at={state.server_time} role="img" aria-label={`当前时间 ${marketTime(state.server_time, timezone)}`} x1={x(state.server_time)} x2={x(state.server_time)} y1={TOP} y2={volumeY + volumeHeight} stroke={LIGHT_INK} strokeWidth="1" strokeOpacity=".45" vectorEffect="non-scaling-stroke" />}
         <g clipPath="url(#liangxiang-market-price-clip)">
@@ -324,6 +323,9 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
             <rect x={cx - Math.max(3, width / 2)} y={volumeY - 3} width={Math.max(6, width)} height={volumeHeight + 6} fill="transparent" />
           </g>
         })}</g>
+        <g data-liangxiang-market-direction-legend="" role="img" aria-label="量带：夯／拉" transform={`translate(${size.width - RIGHT / 2},${volumeY + volumeHeight / 2})`} pointerEvents="none" fill={LIGHT_INK} fontSize="11">
+          <circle cx="-23" r="2.5" fill={VERMILION} /><text x="-16" y="4">夯</text><circle cx="8" r="2.5" fill={SLATE} /><text x="15" y="4">拉</text>
+        </g>
         {ticks.filter((_tick, index) => size.width >= 500 || index === 0 || index === ticks.length - 1 || index % 2 === 0).map((tick, index, shown) => <g key={tick.at} className={marketClass('time-tick')}><text x={x(tick.at)} y={size.height - 5} textAnchor={index === 0 ? 'start' : index === shown.length - 1 ? 'end' : 'middle'} fill={LIGHT_INK} fontSize="11">{tick.label}</text></g>)}
       </svg>
       {tip && <div className={marketClass('chart-tip')} data-liangxiang-market-point-detail="" role="tooltip" aria-label={readout} style={marketTooltipPosition(tip)}>
@@ -331,6 +333,5 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
       </div>}
     </div>
     <span className={marketClass('a11y')} aria-live={tip?.keyboard ? 'polite' : 'off'}>{readout}</span>
-    <figcaption className="liangxiang-market-chart-readout liangxiang-market-pond-legend"><span className={marketClass('chart-directions')}><span><i style={{ background: VERMILION }} />夯</span><span><i style={{ background: SLATE }} />拉</span></span><span className={marketClass('chart-current')}>{currentLabel}</span></figcaption>
   </figure>
 })

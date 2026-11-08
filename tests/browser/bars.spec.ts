@@ -1,5 +1,5 @@
 import AxeBuilder from '@axe-core/playwright'
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Locator } from '@playwright/test'
 import type { MarketCandle, MarketState, MarketCandlesResponse } from '../../src/shared/market-v1.ts'
 import { axeSummary, bootInstalledLiangxiang, openPanel } from './helpers.ts'
 
@@ -55,6 +55,33 @@ async function openChart(page: Page) {
   return { dialog, chart }
 }
 
+async function expectAlignedPriceColumn(chart: Locator): Promise<void> {
+  await expect.poll(() => chart.evaluate(element => {
+    const failures: string[] = []
+    const svg = element.querySelector<SVGSVGElement>('svg[data-liangxiang-market-from]')!
+    const labels = [...element.querySelectorAll<SVGTextElement>('[data-liangxiang-market-price-axis] text')]
+    const legend = element.querySelector<SVGGElement>('[data-liangxiang-market-direction-legend]')!
+    const frame = svg.getBoundingClientRect(), origin = legend.getScreenCTM()!
+    const plotRight = element.querySelector('[data-liangxiang-market-price-axis] line')!.getBoundingClientRect().right
+    for (const label of labels) {
+      const bounds = label.getBoundingClientRect()
+      if (label.getAttribute('text-anchor') !== 'middle' || Math.abs(bounds.left + bounds.width / 2 - origin.e) > 1) failures.push('price text shares the legend centerline')
+      if (bounds.left <= plotRight || bounds.right > frame.right - 2) failures.push('price text stays inside its axis column')
+    }
+    const bounds = legend.getBoundingClientRect(), lowerPrice = labels.at(-1)!.getBoundingClientRect()
+    if (bounds.left < plotRight + 2 || bounds.right > frame.right - 2 || bounds.top < lowerPrice.bottom + 1) failures.push('legend fits the clear area below the price labels')
+    const words = [...legend.querySelectorAll('text')].map(node => node.getBoundingClientRect())
+    const dots = [...legend.querySelectorAll('circle')].map(node => node.getBoundingClientRect())
+    if (words.length !== 2 || dots.length !== 2) failures.push('both labeled direction swatches remain')
+    else {
+      if (Math.abs(words[0]!.width - words[1]!.width) > 1) failures.push('direction labels have equal width')
+      if (Math.abs((words[0]!.left - dots[0]!.right) - (words[1]!.left - dots[1]!.right)) > 1) failures.push('direction swatches use equal spacing')
+      if (words[0]!.right >= dots[1]!.left) failures.push('direction swatches do not overlap')
+    }
+    return failures
+  }), { message: 'Price labels and equal-width direction swatches fit one centered right-axis column' }).toEqual([])
+}
+
 test.beforeEach(async ({ page }) => {
   // Exercise the real packed UI with deterministic official candle fixtures.
   // Presentation tests never submit a position or contact a community node.
@@ -97,6 +124,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
     expect(Number.parseFloat(axisLabels[index]!.label)).toBeLessThan(Number.parseFloat(axisLabels[index - 1]!.label))
     expect(axisLabels[index]!.top).toBeGreaterThanOrEqual(axisLabels[index - 1]!.bottom)
   }
+  await expectAlignedPriceColumn(chart)
 
   const toolbar = chart.locator('.liangxiang-market-chart-toolbar')
   const controls = toolbar.locator('button')
@@ -160,8 +188,8 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
     Number(node.getAttribute('y2')) > Number(node.getAttribute('y1'))
       && Number(node.getAttribute('stroke-width')) >= 1.5
       && node.getAttribute('vector-effect') === 'non-scaling-stroke'))).toBe(true)
-  await expect(chart.locator('figcaption')).toHaveCount(1)
-  await expect(chart.locator('figcaption')).not.toContainText('量带高度看总量')
+  await expect(chart.locator('figcaption')).toHaveCount(0)
+  await expect(chart).not.toContainText('量带高度看总量')
 
   const quoteBounds = []
   for (const key of ['open', 'high', 'low', 'close']) {
@@ -172,7 +200,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   for (let i = 1; i < quoteBounds.length; i++) {
     expect(quoteBounds[i]!.x).toBeGreaterThanOrEqual(quoteBounds[i - 1]!.x + quoteBounds[i - 1]!.width)
   }
-  const readout = chart.locator('.liangxiang-market-chart-readout')
+  const readout = dialog.locator('.liangxiang-market-position')
   const initialReadout = (await readout.textContent())!
   const initialDetails = await svg.getAttribute('aria-label')
   await svg.focus()
@@ -223,6 +251,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
     try {
       await page.setViewportSize({ width: 320, height: 800 })
       await expect.poll(() => chart.locator('svg[data-liangxiang-market-from]').evaluate(element => element.getBoundingClientRect().width)).toBeLessThan(320)
+      await expectAlignedPriceColumn(chart)
       const edgeChecks = await dialog.evaluate(element => {
         const bounds = element.getBoundingClientRect()
         return [...element.querySelectorAll<HTMLElement>('.liangxiang-market-window-controls button,.liangxiang-market-wallet,.liangxiang-market-header-copy,.liangxiang-market-chart-toolbar button,[data-liangxiang-market-quote],[data-liangxiang-market-main-whale]')].map(node => {
@@ -248,7 +277,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
         ...element.querySelectorAll('.liangxiang-market-chart-toolbar,.liangxiang-market-chart-scroll,.liangxiang-market-stage:not([hidden])')]
         .map(node => ({ name: node.className, overflows: node.scrollWidth > node.clientWidth + 1 })))
       expect(overflow.filter(item => item.overflows)).toEqual([])
-      await dialog.getByRole('button', { name: '玩法', exact: true }).click()
+      await dialog.getByRole('button', { name: '梁股玩法', exact: true }).click()
       const rules = dialog.locator('[data-liangxiang-market-popover="rules"]')
       await expect(rules).toBeVisible()
       expect(await rules.evaluate(element => {
@@ -271,7 +300,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
 })
 
 test('dragging either plot past its time labels pans without selecting text and leaves ordinary copy selectable', async ({ page }) => {
-  const { chart } = await openChart(page)
+  const { dialog, chart } = await openChart(page)
   const svg = chart.locator('svg[data-liangxiang-market-from]')
   for (const mode of ['K 线', '潮汐']) {
     await chart.getByRole('button', { name: mode, exact: true }).click()
@@ -299,26 +328,28 @@ test('dragging either plot past its time labels pans without selecting text and 
     await expect(svg).toBeFocused()
   }
   // Selection prevention is local to the plot, not a blanket page rule.
-  const copy = (await chart.locator('.liangxiang-market-chart-current').boundingBox())!
+  const copy = (await dialog.locator('.liangxiang-market-wallet-label').first().boundingBox())!
   await page.mouse.move(copy.x + 1, copy.y + copy.height / 2)
   await page.mouse.down()
   await page.mouse.move(copy.x + copy.width - 1, copy.y + copy.height / 2, { steps: 10 })
   await page.mouse.up()
-  expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('梁位')
+  expect(await page.evaluate(() => window.getSelection()?.toString() ?? '')).toContain('个人可用')
   await page.evaluate(() => window.getSelection()?.removeAllRanges())
 })
 
-test('point tooltip follows inspection inside plot edges while the two footer slots stay fixed across themes, gaps and large amounts', async ({ page }) => {
+test('point tooltip follows inspection inside plot edges while footer facts and the right-axis legend stay fixed', async ({ page }) => {
   const data = chartCandles().filter(candle => candle.at < DAY + 4.25 * HOUR || candle.at >= DAY + 5.25 * HOUR)
     .map(candle => candle.at === DAY + 6 * HOUR ? { ...candle, volume: 9_999_999 } : candle)
   await page.route('**/liangxiang/api/market/candles?*', route => route.fulfill({ json: candlePage(route.request().url(), data) }))
-  const { chart } = await openChart(page)
+  const { dialog, chart } = await openChart(page)
   const svg = chart.locator('svg[data-liangxiang-market-from]')
-  const readout = chart.locator('.liangxiang-market-chart-readout')
-  const slots = readout.locator(':scope > span')
+  const readout = dialog.locator('.liangxiang-market-footer-metrics')
+  const slots = readout.locator(':scope > button')
   await expect(slots).toHaveCount(2)
-  await expect(slots.nth(0)).toHaveClass(/chart-directions/)
-  await expect(slots.nth(1)).toHaveClass(/chart-current/)
+  await expect(slots.nth(0)).toHaveClass(/market-position/)
+  await expect(slots.nth(1)).toHaveClass(/market-pool/)
+  await expect(chart.locator('[data-liangxiang-market-direction-legend]')).toBeVisible()
+  await expectAlignedPriceColumn(chart)
   await expect(readout).not.toContainText('上香')
   const tip = chart.locator('[data-liangxiang-market-point-detail]')
   await expect(tip).toHaveCount(0)

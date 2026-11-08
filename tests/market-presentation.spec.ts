@@ -1,12 +1,31 @@
 import { describe, expect, it } from 'vitest'
 import type { MarketBatch } from '../src/shared/market-v1.ts'
-import { formatMarketIncense, marketBatchName, marketBatchStatus } from '../src/client/market/market-presentation.ts'
+import { formatMarketIncense, marketBatchName, marketBatchStatus, marketHour, marketPoolReport } from '../src/client/market/market-presentation.ts'
 import { fishResponse } from '../src/client/market/fish-feedback.ts'
 
 const batch: MarketBatch = { batch: 1, opens_at: 1, locks_at: 2, reference_at: 3, status: 'pending',
   reference: null, long_incense: 0, short_incense: 0, position: null, result: null }
 
 describe('shared market presentation', () => {
+  it('shortens whole business hours while preserving non-hour cutoffs and timezone', () => {
+    const at = Date.UTC(2026, 10, 8, 16)
+    expect(marketHour(at, 'UTC')).toBe('16点')
+    expect(marketHour(at + 30 * 60_000, 'UTC')).toBe('16:30')
+    expect(marketHour(at, 'Asia/Shanghai')).toBe('0点')
+    expect(marketHour(at, 'Asia/Kolkata')).toBe('21:30')
+  })
+
+  it('reports actual pool sides and conservative percentages without inventing an empty split', () => {
+    const input = { ...batch, batch: 2 as const, long_incense: 30, short_incense: 20 }
+    expect(marketPoolReport(input)).toBe('午盘香池50炷\n多30炷 · 60%\n空20炷 · 40%')
+    expect(input).toEqual({ ...batch, batch: 2, long_incense: 30, short_incense: 20 })
+    expect(marketPoolReport(batch)).toBe('早盘香池0炷\n还没有投入，等香火落池～')
+    expect(marketPoolReport({ ...batch, long_incense: 1, short_incense: 2 })).toContain('33.33%\n空2炷 · 66.66%')
+    expect(marketPoolReport({ ...batch, short_incense: Number.MAX_SAFE_INTEGER })).toContain('多0炷 · 0%\n空9007万亿炷 · 100%')
+    expect(marketPoolReport({ ...batch, long_incense: Number.MAX_SAFE_INTEGER, short_incense: Number.MAX_SAFE_INTEGER }))
+      .toBe('早盘香池1.801亿亿炷\n多9007万亿炷 · 50%\n空9007万亿炷 · 50%')
+  })
+
   it('uses the same ordinary names for all three batches and fish responses', () => {
     expect([marketBatchName(1), marketBatchName(2), marketBatchName(3)]).toEqual(['早盘', '午盘', '晚盘'])
     expect(fishResponse('waiting', 'batch1', 0)).toBe('早盘，探个头～')

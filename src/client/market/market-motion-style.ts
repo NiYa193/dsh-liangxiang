@@ -30,6 +30,13 @@ const MOTIONS: Record<Exclude<FishAction, 'idle'>, MotionSpec> = {
   report: [1_200, 1, [0,-8,-7,1.06], [0,-4,6,1.04], [0,2,4,.99,1.02], [0,-2,-2]],
   periodic: [1_200, 0, [0,-1,-2], [0,1,2]],
   error: [650, 0, [-3], [3], [-2], [2]],
+  pool: [950, 1, [-4,4,-5], [4,-3,5]],
+  position: [850, 0, [0,-5,12], [2,-2,-4]],
+  newer: [750, 0, [7,-1,4]],
+  older: [750, 0, [-7,-1,-4]],
+  dismiss: [650, 0, [0,4,9,.95,1.05]],
+  retry: [1_050, 1, [-4,0,-6], [4,0,6], [0,-3]],
+  receipt: [900, 2, [3,-3,-9], [0,1,3]],
 }
 
 /** Local acting directions, independent of the confirmed position's surface/dive pose. */
@@ -71,7 +78,7 @@ export const MARKET_MOTION_CSS = marketCss(`
 .~companion-accent{transform-box:fill-box;transform-origin:center;pointer-events:none}
 .~companion-accent[data-accent=bubbles] circle{opacity:0}
 .~companion-accent[data-accent=stamp]{opacity:0}
-.~companion-danmaku{position:absolute;grid-column:2;grid-row:1;left:0;right:0;top:50%;transform:translateY(-50%);display:grid;gap:3px;pointer-events:none;z-index:5}
+.~companion-danmaku{position:absolute;grid-column:2;grid-row:1;left:0;right:6px;top:50%;transform:translateY(-50%);display:grid;grid-template-columns:minmax(0,1fr);gap:3px;pointer-events:none;z-index:5}
 .~companion-danmaku>span{display:block;max-width:100%;width:max-content;color:var(--~blue-text);font-size:11px;line-height:1.35;white-space:normal;overflow-wrap:anywhere;text-shadow:0 1px var(--~paper)}
 .~companion[data-speech-motion=true] .~companion-danmaku>span{animation:liangxiang-market-danmaku 4.8s ease-out both}
 .~companion-loading-label{font-size:10px;font-weight:600;fill:var(--~blue-text)}

@@ -5,6 +5,7 @@ export type FishAction = 'idle' | 'submit' | 'confirmed' | 'withdraw' | 'long' |
   | 'batch1' | 'batch2' | 'batch3' | 'history' | 'rules' | 'motion' | 'error'
   | 'zoom-in' | 'zoom-out' | 'mode-candles' | 'mode-tide' | 'pan' | 'inspect' | 'reset'
   | 'fullscreen' | 'restore' | 'amount' | 'report' | 'periodic'
+  | 'pool' | 'position' | 'newer' | 'older' | 'dismiss' | 'retry' | 'receipt'
 
 export interface FishReaction { id: number, action: FishAction, text?: string, deliberate?: boolean }
 
@@ -83,6 +84,13 @@ const ACTIONS: Record<Exclude<FishAction, 'idle'>, readonly string[]> = {
   amount: ['整炷记在草稿里，还没投入。', '数一数香火，点头再落笔。'],
   report: ['本盘近况，给你念一念。', '水塘小广播，探头播报～'],
   periodic: ['我在旁边，静静看浪。', '看浪小提醒，慢慢来～'],
+  pool: ['两边香火，捞来瞧瞧～'],
+  position: ['梁位看清，再摆鱼尾～'],
+  newer: ['往新的一页游～'],
+  older: ['回头翻翻旧浪花～'],
+  dismiss: ['收好小册，接着看浪～'],
+  retry: ['再敲敲门，等个准信～'],
+  receipt: ['这张回执，展开瞧瞧～'],
 }
 
 /** Decorative conversation only. A confirmed line requires a confirmed receipt. */

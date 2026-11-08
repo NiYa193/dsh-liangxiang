@@ -37,13 +37,15 @@ export const MARKET_DIALOG_CSS = marketCss(`
 [data-~dialog] button:disabled{opacity:.42;cursor:default}
 [data-~dialog] button:hover:not(:disabled){background:color-mix(in srgb,var(--~blue) 8%,var(--~paper))}
 [data-~dialog] :is(button,input,summary,svg):focus-visible{outline:2px solid var(--~blue);outline-offset:3px}
-.~header{display:grid;grid-template-columns:170px minmax(0,1fr) 64px;align-items:center;gap:8px;flex:none;height:calc(var(--~control)*2 + var(--~gap));margin-bottom:var(--~gap)}
+.~header{display:grid;grid-template-columns:170px minmax(0,1fr) 64px;align-items:center;gap:8px;flex:none;height:74px;margin-bottom:var(--~gap)}
 .~header-copy{min-width:0;align-self:start}
 .~header h2{display:flex;align-items:center;gap:8px;margin:0 0 4px;white-space:nowrap;font-size:20px;font-weight:650;line-height:1.2}
 .~header h2 i{width:4px;height:4px;border-radius:50%;background:var(--~blue);opacity:.7}
 .~header h2 small{font-size:14px;font-weight:500;color:var(--~sub)}
-.~wallet{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 7px;line-height:18px;white-space:nowrap;font-size:11px;color:var(--~sub)}
-.~wallet strong{margin:0 3px;font-size:13px;font-weight:600;color:var(--~ink)}
+.~wallet{display:grid;gap:1px;line-height:20px;white-space:nowrap;font-size:11px;color:var(--~sub)}
+.~wallet>span{display:flex;align-items:baseline;gap:4px}
+.~wallet-label{width:4em;flex:none}
+.~wallet strong{font-size:13px;font-weight:600;color:var(--~ink)}
 .~wallet [data-~available]{font-size:21px;color:var(--~blue-text)}
 [data-~dialog] .~companion-trigger{align-self:start;display:flex;align-items:center;justify-content:center;padding:4px 0 0;min-width:0;height:100px;border:0;background:none;text-align:left;overflow:visible}
 [data-~dialog] button.~companion-trigger:hover:not(:disabled){background:transparent}
@@ -54,7 +56,7 @@ export const MARKET_DIALOG_CSS = marketCss(`
 [data-~dialog] .~motion{display:flex;gap:4px;align-items:center;justify-content:center;white-space:nowrap;width:100%;height:var(--~control);min-height:var(--~control);margin-top:4px;padding:0;font-size:12px;color:var(--~blue-text)}
 [data-~dialog] button.~motion:hover:not(:disabled){background:transparent}
 .~motion>span:first-child{font-size:17px}
-.~clock{text-align:center;font-size:9px;line-height:12px;color:var(--~sub)}
+.~clock{text-align:center;font-size:10px;line-height:13px;white-space:nowrap;color:var(--~sub)}
 .~dried-fish{filter:grayscale(1);transform:rotate(-18deg)}
 [data-~dialog] :is(.~close,.~fullscreen){display:grid;place-items:center;padding:0;width:var(--~control);height:var(--~control);min-width:0;min-height:var(--~control);color:var(--~sub);border:1px solid var(--~border);border-radius:9px;background:var(--~paper-2);box-shadow:0 2px 0 #111a261c}
 :is(.~close,.~fullscreen)>svg{display:block;width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -76,24 +78,18 @@ export const MARKET_DIALOG_CSS = marketCss(`
 .~chart-quotes b{font-size:12px;font-weight:600;white-space:nowrap}
 .~chart-scroll{position:relative;flex:1;min-height:140px;overflow:hidden}
 .~chart-scroll>svg{width:100%;height:100%;display:block}
-.~chart-readout{display:grid;grid-template-columns:64px minmax(0,1fr);align-items:center;column-gap:16px;flex:none;height:25px;min-width:0;padding:3px 0;font-size:11px;line-height:18px;color:var(--~sub);white-space:nowrap;text-align:left}
-.~chart-readout>span{min-width:0}
-.~chart-directions{display:flex;align-items:center;gap:9px}
-.~chart-current{color:var(--~ink);overflow:hidden;text-overflow:ellipsis;text-align:left}
 .~chart-tip{position:absolute;z-index:3;pointer-events:none;padding:6px 8px;border:1px solid var(--~border);border-radius:7px;background:var(--~paper);color:var(--~ink);font-size:11px;line-height:16px;box-shadow:0 2px 8px #081d461c}
 .~chart-tip>b,.~chart-tip>span{display:block}
-.~pond-legend{margin:0}
-.~chart-directions>span{display:inline-flex;align-items:center;gap:4px}
-.~pond-legend i{display:inline-block;width:6px;height:6px;flex:none;border-radius:50%}
-.~stage-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;flex:none;height:35px;margin-top:4px;padding:2px;background:var(--~paper-2);border-radius:10px}
-[data-~dialog] .~stage-tabs button{padding:0;min-width:0;min-height:29px;border-radius:8px;color:var(--~sub)}
-.~stage-tabs .~button-face{display:grid;grid-template-rows:14px 13px;gap:0;height:29px;padding:0 5px;white-space:nowrap;text-align:left}
-.~stage-tabs :is(strong,small){display:flex;align-items:baseline;justify-content:space-between;min-width:0;gap:4px;}
-.~stage-tabs strong{font-size:11px;font-weight:550}
-.~stage-tabs time{font-size:10px;font-weight:400;color:var(--~sub)}
-.~stage-tabs em{font-size:9px;font-style:normal;font-weight:400;color:var(--~sub)}
-.~stage-tabs small{font-size:11px;color:var(--~blue-text)}
+.~stage-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;flex:none;height:46px;margin-top:4px;padding:3px;background:var(--~paper-2);border-radius:10px}
+[data-~dialog] .~stage-tabs button{padding:0;min-width:0;min-height:40px;border-radius:8px;color:var(--~sub)}
+.~stage-tabs .~button-face{display:grid;align-content:center;gap:2px;height:40px;padding:3px 5px;white-space:nowrap;text-align:center}
+.~stage-tabs :is(strong,small){display:flex;align-items:center;justify-content:center;min-width:0;gap:5px;font-size:11px;font-weight:500}
+.~stage-tabs b{font-size:12px;font-weight:650;color:var(--~ink)}
+.~stage-tabs time,.~stage-tabs em{font-size:10px;font-style:normal;font-weight:400;color:var(--~sub)}
+.~stage-tabs small>strong{display:block;color:var(--~blue-text)}
+.~stage-tabs svg{width:12px;height:12px;flex:none;fill:none;stroke:var(--~blue-text);stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 [data-~dialog] .~stage-tabs [aria-selected=true]{background:var(--~paper);color:var(--~blue-text);box-shadow:0 1px 2px #081d461f,inset 0 -2px 0 var(--~blue)}
+.~stage-tabs [aria-selected=true] b{color:var(--~blue-text)}
 .~stage{flex:none;height:56px}
 .~batch{height:56px;padding:10px 0 8px;min-width:0}
 .~order{display:grid;grid-template-columns:minmax(138px,1fr) minmax(105px,145px) minmax(161px,190px);gap:9px;align-items:center;height:36px}
@@ -114,14 +110,18 @@ export const MARKET_DIALOG_CSS = marketCss(`
 [data-~dialog] .~withdraw{color:var(--~blue-text)}
 [data-~dialog] button:active:not(:disabled)>.~button-face{transform:translateY(1px) scale(.98)}
 [data-animated=true] .~button-face{transition:transform 180ms cubic-bezier(.2,.8,.3,1.3),background 120ms ease}
-.~footer{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:9px;position:sticky;bottom:-7px;z-index:5;flex:none;height:31px;margin:0;padding-top:3px;background:var(--~paper);border-top:1px solid var(--~border);font-size:11px;color:var(--~sub)}
-[data-~dialog] .~footer>button{min-height:27px;padding:3px 5px;font-size:11px;color:var(--~sub)}
-.~pool{display:grid;justify-self:center;max-width:100%;line-height:13px;min-width:0;}
-.~pool>span:first-child{display:grid;grid-template-columns:auto 6em auto;gap:4px;white-space:nowrap}
-.~pool strong{font-weight:600;text-align:left;color:var(--~blue-text)}
-.~connection{white-space:nowrap;font-size:9px}
-.~connection i{display:inline-block;width:5px;height:5px;margin-right:5px;border-radius:50%;background:var(--~blue);vertical-align:middle}
-.~popover{position:absolute;z-index:8;left:0;bottom:38px;width:min(430px,100%);max-height:min(430px,calc(100dvh - 145px));padding:13px 15px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--~border);border-radius:13px;background:var(--~paper);color:var(--~ink);box-shadow:0 7px 24px #081d4630}
+.~footer{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);align-items:center;gap:12px;position:sticky;bottom:-7px;z-index:5;flex:none;height:46px;margin:0;padding-top:5px;background:var(--~paper);border-top:1px solid var(--~border);font-size:11px;color:var(--~sub)}
+.~footer-metrics{display:grid;grid-template-columns:1fr 1fr;gap:16px;min-width:0}
+[data-~dialog] .~footer-metrics>button{display:grid;align-content:center;min-width:0;min-height:37px;padding:0;text-align:left;white-space:nowrap}
+.~metric-label{font-size:10px;font-weight:400;line-height:15px;color:var(--~sub)}
+.~metric-label b{font-weight:600;color:var(--~ink)}
+.~footer-metrics button>strong{display:flex;align-items:baseline;gap:4px;font-size:13px;line-height:19px;font-weight:600;color:var(--~ink)}
+.~footer-metrics button>strong>small{font-size:11px;font-weight:400;color:var(--~sub)}
+.~pool>strong{color:var(--~blue-text)!important}
+.~connection{margin-left:4px;white-space:nowrap}
+.~footer-actions{display:grid;grid-template-columns:1fr 1fr;gap:5px;padding-left:10px;border-left:1px solid var(--~border);min-width:0}
+[data-~dialog] .~footer-actions>button{min-width:0;min-height:30px;padding:3px 0;font-size:11px;white-space:nowrap;color:var(--~sub)}
+.~popover{position:absolute;z-index:8;right:0;bottom:52px;width:min(430px,100%);max-height:min(370px,calc(100dvh - 160px));padding:13px 15px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--~border);border-radius:13px;background:var(--~paper);color:var(--~ink);box-shadow:0 7px 24px #081d4630}
 .~popover-heading{position:sticky;top:0;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:28px;font-size:14px;background:var(--~paper)}
 .~history-nav{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:8px;background:var(--~paper)}
 [data-~dialog] .~popover-heading button{display:grid;place-items:center;min-width:27px;min-height:27px;padding:0;font-size:19px}
@@ -146,53 +146,54 @@ export const MARKET_DIALOG_CSS = marketCss(`
 .~receipt small{font-size:11px;color:var(--~sub)}
 ${MARKET_MOTION_CSS}
 ${COMPANION_CSS}
-@media(max-width:640px){
- .~chart-readout{grid-template-columns:56px minmax(0,1fr);column-gap:12px}
-}
 @media(max-width:600px){
- .~header{height:162px;grid-template-columns:minmax(0,1fr) 64px;grid-template-rows:62px 100px;gap:0 8px}
+ .~header{height:162px;grid-template-columns:minmax(0,1fr) 64px;grid-template-rows:74px 88px;gap:0 8px}
  .~header h2{font-size:18px;gap:6px;margin-bottom:4px}
  .~header h2 small{font-size:12px}
- .~wallet{flex-wrap:wrap;gap:1px 6px}
- .~companion-trigger{grid-column:1/-1;grid-row:2}
- .~companion-trigger .~companion{padding-left:0}
+ [data-~dialog] .~companion-trigger{grid-column:1/-1;grid-row:2;height:88px}
+ .~companion-trigger .~companion{padding-left:0;height:88px;grid-template-columns:84px minmax(0,1fr)}
+ .~companion-trigger .~companion>svg{width:84px;height:88px}
  .~window-controls{grid-column:2;grid-row:1}
 }
 @media(max-width:520px){
- [data-~dialog]{--~top:9px;height:min(580px,calc(100dvh - 24px));padding:var(--~top) 12px 7px;border-radius:13px}
- .~wallet{font-size:10px;gap:6px}
+ [data-~dialog]{--~top:9px;height:min(600px,calc(100dvh - 24px));padding:var(--~top) 12px 7px;border-radius:13px}
+ .~wallet{font-size:10px}
  .~wallet [data-~available]{font-size:18px}
- .~chart{min-height:240px}
+ .~chart{min-height:225px}
  .~chart-quotes{grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
  .~chart-quote-time{display:none}
  .~chart-quotes b{font-size:11px}
- .~chart-readout{gap:6px;font-size:10px}
- .~chart-current{font-size:10px}
  .~stage-tabs .~button-face{padding:0 4px}
  .~stage,.~batch{height:91px}
  .~order{grid-template-columns:1fr 1fr;grid-template-rows:36px 35px;gap:6px 8px;height:77px}
  .~direction{max-width:none}
  .~order-actions{grid-column:1/-1;grid-template-columns:1fr 85px}
  .~status{left:12px;right:12px}
+ .~footer{gap:7px}
+ .~footer-metrics{gap:8px}
+ .~footer-actions{padding-left:5px;gap:3px}
+ [data-~dialog] .~footer-actions>button{font-size:10px}
 }
 @media(max-width:380px){
  [data-~dialog]{height:min(610px,calc(100dvh - 24px));padding:var(--~top) 10px 6px}
  .~header h2{font-size:16px}
  .~header h2 small{font-size:11px}
  .~header h2 i{width:3px;height:3px}
- .~wallet{flex-wrap:wrap;gap:1px 5px;line-height:18px}
  .~wallet [data-~available]{font-size:17px}
  .~wallet strong{font-size:11px}
  .~chart-toolbar{gap:4px}
  [data-~dialog] .~chart-toolbar button{padding:3px 5px}
- .~stage-tabs [data-has-position=true] em{display:none}
- .~stage-tabs :is(strong,small){font-size:10px}
- .~stage-tabs time{font-size:9px}
+ .~stage-tabs [data-has-position=true] em,.~stage-tabs svg{display:none}
+ .~stage-tabs :is(strong,small){gap:3px;font-size:10px}
+ .~stage-tabs b{font-size:11px}
  .~chart-quotes b{font-size:10px}
  .~footer{gap:4px;font-size:10px}
- .~pool>span:first-child{grid-template-columns:auto 5.5em auto;gap:2px}
- .~connection{font-size:8px}
- [data-~dialog] .~footer>button{padding:3px 2px;font-size:10px}
+ .~footer-metrics button>strong{font-size:11px}
+ .~metric-label{font-size:9px}
+ .~footer-actions{grid-template-columns:1fr;gap:0}
+ [data-~dialog] .~footer-actions>button{min-height:19px;padding:0}
+ .~connection[data-reveal=true]{font-size:0}
+ .~connection[data-reveal=true]::after{content:'24点后';font-size:9px}
 }
 @media(prefers-reduced-motion:reduce){[data-~dialog] *,[data-~dialog] *::before,[data-~dialog] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 `)

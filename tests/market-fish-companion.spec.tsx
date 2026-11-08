@@ -29,7 +29,7 @@ describe('decorative header companion', () => {
     expect(fishResponse('behind', 'long')).toMatch(/^咕噜，/)
     expect(fishResponse('ahead', 'submit')).toBe('等账本点头～')
     expect(fishResponse('ahead', 'confirmed')).toContain('账本点头')
-    const actions: FishAction[] = ['idle', 'submit', 'confirmed', 'withdraw', 'long', 'short', 'batch1', 'batch2', 'batch3', 'history', 'rules', 'motion', 'error', 'zoom-in', 'zoom-out', 'mode-candles', 'mode-tide', 'pan', 'inspect', 'reset', 'fullscreen', 'restore', 'amount', 'report', 'periodic']
+    const actions: FishAction[] = ['idle', 'submit', 'confirmed', 'withdraw', 'long', 'short', 'batch1', 'batch2', 'batch3', 'history', 'rules', 'motion', 'error', 'zoom-in', 'zoom-out', 'mode-candles', 'mode-tide', 'pan', 'inspect', 'reset', 'fullscreen', 'restore', 'amount', 'report', 'periodic', 'pool', 'position', 'newer', 'older', 'dismiss', 'retry', 'receipt']
     const moods: PositionMood[] = ['ahead', 'behind', 'waiting', 'even', 'won', 'lost', 'returned']
     for (const mood of moods) for (const action of actions) for (let variant = 0; variant < 8; variant++) {
       const text = fishResponse(mood, action, variant)
@@ -121,6 +121,32 @@ describe('decorative header companion', () => {
     expect(html).not.toContain('line-clamp')
     expect(html).not.toContain('aria-live')
   })
+  it('preserves the clicked pool and position facts in motion and static mode instead of sampling a generic fish report', () => {
+    for (const animated of [true, false]) for (const action of ['pool', 'position'] as const) {
+      const text = action === 'pool' ? '多30炷，占60%\n空20炷，占40%' : '梁位55.000000% · 梁总\n夯55票 · 拉45票'
+      const html = renderToStaticMarkup(<MarketFishCompanion mood="ahead" animated={animated} facts={['过时事实不应覆盖本次点击']} reaction={{ id: 1, action, text, deliberate: true }} />)
+      for (const line of text.split('\n')) expect(html).toContain(`>${line}</span>`)
+      expect(html).toContain(`data-fish-action="${action}"`)
+      expect(html).not.toContain('过时事实')
+      expect(html).not.toContain('aria-live')
+    }
+  })
+  it('replies to each deliberate repeat without letting periodic or idle chatter replace the operation', () => {
+    for (const action of ['pool', 'position', 'newer', 'older', 'dismiss', 'retry', 'receipt'] as const) {
+      let state = createFishFeedback({ id: 1, action, deliberate: true }, 0)
+      state = receiveFishFeedback(state, { id: 2, action, deliberate: true }, 100)
+      expect(state.active?.id).toBe(2)
+      for (const [id, low] of [[3, 'periodic'], [4, 'idle']] as const) state = receiveFishFeedback(state, { id, action: low }, 200)
+      expect(state.active?.id).toBe(2)
+      expect(expireFishFeedback(state, state.until).active).toBeNull()
+      const html = renderToStaticMarkup(<MarketFishCompanion mood="behind" animated={false} reaction={{ id: 1, action }} />)
+      expect(html).toContain('data-motion="false"')
+      expect(html).toContain('data-speech-motion="false"')
+      expect(html).toContain('data-pose="dive"')
+    }
+    expect(fishMotion('newer')!.frames[1]!.transform).toContain('translate(7px,-1px)')
+    expect(fishMotion('older')!.frames[1]!.transform).toContain('translate(-7px,-1px)')
+  })
   it('uses one card-free line container for idle, reports and every operation, including static copy', () => {
     for (const reaction of [null, { id: 1, action: 'report' as const, text: '16:00封盘\n香池40炷' }, { id: 2, action: 'confirmed' as const, text: '已确认空7炷' }, { id: 3, action: 'periodic' as const, text: '17:00定线\n多30 / 空10' }]) {
       const html = renderToStaticMarkup(<MarketFishCompanion mood="ahead" animated={false} reaction={reaction} />)
@@ -194,7 +220,7 @@ describe('decorative header companion', () => {
     expect(state.until).toBe(4_100)
   })
   it('assigns distinct acting directions instead of replaying one generic swim', () => {
-    const actions: FishAction[] = ['long', 'short', 'confirmed', 'withdraw', 'batch1', 'batch2', 'batch3', 'zoom-in', 'zoom-out', 'mode-candles', 'mode-tide', 'history', 'rules', 'motion', 'fullscreen', 'restore', 'amount', 'report', 'error']
+    const actions: FishAction[] = ['long', 'short', 'submit', 'confirmed', 'withdraw', 'batch1', 'batch2', 'batch3', 'zoom-in', 'zoom-out', 'mode-candles', 'mode-tide', 'pan', 'inspect', 'reset', 'history', 'rules', 'motion', 'fullscreen', 'restore', 'amount', 'report', 'periodic', 'error', 'pool', 'position', 'newer', 'older', 'dismiss', 'retry', 'receipt']
     const motions = actions.map(action => fishMotion(action)!)
     expect(new Set(motions.map(motion => JSON.stringify(motion.frames))).size).toBe(actions.length)
     expect(fishMotion('short')?.accent).toBe('bubbles')

@@ -4,8 +4,8 @@
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.10`，`SERVER_BUILD=1.3.0-alpha.10-u1`。
-当前源码为 **1.3.0-alpha.10 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.12`，`SERVER_BUILD=1.3.0-alpha.12-u1`。
+当前源码为 **1.3.0-alpha.12 开发候选，正式 1.3.0 尚未发布**。本轮仅UI更新，香港人工后台仍为alpha10-u1，未部署源码中的服务构建；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定梁与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **14**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
@@ -79,7 +79,8 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 ## 验证与协作
 
 当前多项工作与待审核建议逐项记在 [`WORK_TRACKER.md`](WORK_TRACKER.md)；每项完成即更新，不用旧验证记录推断新任务已完成。
-市场盘名、常驻投入／香池、业务时钟、点位浮层及紧凑金额的当前结果见 [`MARKET_UI_ALPHA10.md`](MARKET_UI_ALPHA10.md)。
+已审核样稿的当前落实与验收边界见 [`MARKET_UI_ALPHA12.md`](MARKET_UI_ALPHA12.md)。
+市场盘名、常驻投入／香池、业务时钟、点位浮层及紧凑金额的alpha10验证结果见 [`MARKET_UI_ALPHA10.md`](MARKET_UI_ALPHA10.md)。
 DSH侧栏默认280px、梁相外框256px的实现与实测见 [`DSH_LAYOUT_WIDTH.md`](DSH_LAYOUT_WIDTH.md)；alpha8按最终反馈保持256px，新增梁股直接入口与紧凑统计，指针关闭失焦、键盘关闭归还焦点。
 
 完成变更至少运行 `pnpm run verify`；DSH/打包触点运行 `smoke:clean-profile`，UI 运行

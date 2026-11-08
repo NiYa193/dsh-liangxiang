@@ -23,15 +23,12 @@ function state(): MarketState {
 }
 
 describe('readable official market chart, independent of the header illustration', () => {
-  it('keeps point details out of the steady footer while preserving exact accessible amounts and Chinese batch names', () => {
+  it('keeps the chart footer out of the layout while preserving exact accessible amounts and Chinese batch names', () => {
     const candles = [{ at: DAY + 18 * HOUR, open: .4, high: .6, low: .3, close: .5, up_votes: 10, down_votes: 10, volume: 9_999_999 }]
     const html = renderToStaticMarkup(<MarketChart state={state()} candles={candles} animated={false} />)
-    const footer = html.match(/<figcaption[^>]*>(.*?)<\/figcaption>/)![1]!
-    expect(footer).toContain('夯')
-    expect(footer).toContain('拉')
-    expect(footer).toContain('梁位 55.000000%')
-    expect(footer).not.toContain('上香')
-    expect(footer).not.toContain('chart-detail')
+    expect(html).not.toContain('<figcaption')
+    expect(html).not.toContain('chart-readout')
+    expect(html).toContain('当前 55.000000%')
     expect(html).not.toContain('data-liangxiang-market-point-detail')
     expect(html).toContain('本段上香 9,999,999 炷')
     expect(html.match(/data-liangxiang-market-volume=""[^>]+/)![0]).toContain('本段上香 9,999,999 炷')
@@ -41,6 +38,25 @@ describe('readable official market chart, independent of the header illustration
       expect(html).toContain(`${name}锁仓定梁`)
     }
     expect(html).not.toContain('锁仓定线')
+  })
+  it('centres the directional legend in the same right-axis column, below the final price tick and beside the volume band', () => {
+    const html = renderToStaticMarkup(<MarketChart state={state()} candles={[]} animated={false} />)
+    const axes = html.match(/<g data-liangxiang-market-price-axis="">[\s\S]*?<\/g>/g)!
+    const legend = html.match(/<g data-liangxiang-market-direction-legend=""[^>]*>[\s\S]*?<\/g>/)![0]
+    const [centerX, centerY] = legend.match(/transform="translate\(([^,]+),([^)]+)\)"/)!.slice(1).map(Number) as [number, number]
+    for (const axis of axes) {
+      const label = axis.match(/<text[^>]*>/)![0]
+      expect(Number(label.match(/\bx="([^"]+)"/)![1])).toBe(centerX)
+      expect(label).toContain('text-anchor="middle"')
+    }
+    const lowest = Number(axes.at(-1)!.match(/<text[^>]*\by="([^"]+)"/)![1])
+    expect(centerY).toBeGreaterThan(lowest + 11)
+    expect(centerY + 7).toBeLessThan(272 - 16)
+    expect(centerX - 26).toBeGreaterThan(760 - 64)
+    expect(centerX + 27).toBeLessThan(760)
+    expect(legend).toContain('量带：夯／拉')
+    expect(legend).toContain('>夯</text>')
+    expect(legend).toContain('>拉</text>')
   })
   it('places a bounded point tooltip on either side of mouse, keyboard and touch positions without escaping the plot', () => {
     for (const width of [240, 360, 760]) for (const height of [140, 272]) for (const x of [0, width / 2, width]) for (const y of [0, height / 2, height]) {
@@ -181,7 +197,7 @@ describe('readable official market chart, independent of the header illustration
     const legacy = renderToStaticMarkup(<MarketChart state={state()} candles={[]} animated={false} candlesIntervalMs={300_000} />)
     expect(legacy).toContain('data-liangxiang-market-source-interval="300000"')
     expect(legacy).not.toContain('分钟烛线')
-    expect(minute.match(/<figcaption /g)).toHaveLength(1)
+    expect(minute).not.toContain('<figcaption')
     expect(minute).not.toContain('量带高度看总量，分段看比例')
     expect(minute).not.toContain('官方记录 · 缺口不连线')
   })
