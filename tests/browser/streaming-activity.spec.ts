@@ -51,7 +51,8 @@ test('live activity stays non-numeric, reduced motion stays static, and final se
   const position = await panel.locator('[data-liangxiang-liang-position-value]').textContent()
   const active = { ...confirmed, revision: confirmed.revision + 1, streamingActive: true }
   await page.evaluate(state => window.__liangxiangActivityFrame?.(state), active)
-  await expect(panel.locator('[data-liangxiang-stream-status]')).toHaveText('凝香中')
+  await expect(panel.locator('[data-liangxiang-stream-status]')).toHaveCount(0)
+  await expect(panel.locator('[data-caption-label]')).toHaveText('今日凝香')
   const wisps = panel.locator('[data-liangxiang-stream-wisp]')
   await expect(wisps).toHaveCount(2)
   expect(await wisps.evaluateAll(nodes => nodes.every(node => node.getAnimations().length === 0))).toBe(true)
@@ -82,5 +83,6 @@ test('live activity stays non-numeric, reduced motion stays static, and final se
   await expect(panel.locator('[data-liangxiang-stream-activity]')).toHaveCount(0)
   await expect(panel.locator('[data-liangxiang-stream-status]')).toHaveCount(0)
   await expect(panel.locator('[data-liangxiang-ring]')).toHaveAttribute('data-remaining', String(wire.personal.remainingIncense + 2))
-  await expect(panel.locator('[data-liangxiang-condensed]')).toHaveText('凝香 +2 炷')
+  await expect(panel.locator('[data-caption-label]')).toHaveText('凝香到账')
+  await expect(panel.locator('[data-caption-amount]')).toHaveText('+2')
 })

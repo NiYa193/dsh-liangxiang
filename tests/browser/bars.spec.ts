@@ -44,9 +44,8 @@ function candlePage(url: string, data: MarketCandle[], intervalMs: 60_000 | 300_
 
 async function openChart(page: Page) {
   const panel = await openPanel(page)
-  await panel.locator('[data-liangxiang-utility-trigger]').click()
   await expect(panel.locator('[data-liangxiang-utility-action="bars"]')).toHaveCount(0)
-  await panel.locator('[data-liangxiang-utility-market]').click()
+  await panel.locator('[data-liangxiang-market-entry]').click()
   const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
   await expect(dialog).toBeVisible()
   const chart = dialog.locator('[data-liangxiang-market-chart-mode]')
@@ -293,7 +292,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   // Both entry clicks are pointer actions; Escape clears their focus and hint.
-  const trigger = page.locator('[data-liangxiang-utility-trigger]')
+  const trigger = page.locator('[data-liangxiang-market-entry]')
   await expect(trigger).not.toBeFocused()
   await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
   await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
@@ -616,7 +615,7 @@ test('legacy full-screen preferences cannot restore a second chart on reload', a
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
   // Both entry clicks are pointer actions; Escape clears their focus and hint.
-  const trigger = page.locator('[data-liangxiang-utility-trigger]')
+  const trigger = page.locator('[data-liangxiang-market-entry]')
   await expect(trigger).not.toBeFocused()
   await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
   await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')

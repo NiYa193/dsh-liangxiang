@@ -10,7 +10,7 @@ import { liangziPolicyForVersion, LIANGZI_POLICY_VERSION } from '../domain/index
  * No personal-growth section, no ranking, no third option.
  * Presentational only (no hooks); the container wires state and callbacks.
  */
-import type { CSSProperties, KeyboardEvent, PointerEvent, ReactElement } from 'react'
+import type { CSSProperties, KeyboardEvent, PointerEvent, ReactElement, RefObject } from 'react'
 import { LIANG_POSITION_DECIMALS, VOTE_COUNT_MAX, formatCompactCount, formatIncenseShare, formatRatioPercents, type LocalEpithet, type LocalIncenseStats, type VoteType } from '../domain/index.ts'
 import {
   ABSURD_CLAIM_NOTICE,
@@ -25,10 +25,8 @@ import {
   LIANG_POSITION_LABEL,
   LIANGCI_ENTRY_HINT,
   LIANGCI_ENTRY_LABEL,
-  MY_INCENSE_LABEL,
   MARKET_TITLE,
   NEXT_INCENSE_LABEL,
-  NEXT_INCENSE_PROGRESS_LABEL,
   NEXT_INCENSE_UNIT,
   NO_INCENSE_REASON,
   OFFLINE_REASON,
@@ -61,7 +59,6 @@ import {
   UTILITY_HOME_HINT,
   UTILITY_HOME_LABEL,
   UTILITY_LABEL,
-  UTILITY_RECONCILE_HINT,
   UTILITY_RECONCILE_LABEL,
   UTILITY_MODE_LOCAL_HINT,
   UTILITY_MODE_LOCAL_LABEL,
@@ -92,11 +89,14 @@ import { color, font } from './theme.ts'
 import type { ThrottledProgress } from './use-throttle-fill.ts'
 import { QqGroupCard } from './QqGroupCard.tsx'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog.tsx'
+import { MAIN_PANEL_THEME_CSS, mainColor } from './main-panel-theme.ts'
+import { MainPanelPond } from './MainPanelPond.tsx'
+import { PersonalIncenseCaption, type PersonalIncenseCaptionState } from './PersonalIncenseCaption.tsx'
+import { formatMainIncense } from './main-panel-presentation.ts'
 
 const versionSuffixAt = PLUGIN_VERSION.search(/[-+]/)
 const versionBase = versionSuffixAt < 0 ? PLUGIN_VERSION : PLUGIN_VERSION.slice(0, versionSuffixAt)
 const versionSuffix = versionSuffixAt < 0 ? '' : PLUGIN_VERSION.slice(versionSuffixAt + 1)
-const MARKET_ENTRY_PARTS = MARKET_TITLE.split(' · ')
 
 export interface PanelProps {
   state: LiangxiangViewState
@@ -117,6 +117,10 @@ export interface PanelProps {
   avatarPulse: boolean
   /** Actual incense gained in the latest live update; 0 means no feedback. */
   condensedIncense: number
+  /** Transient confirmed settlement feedback; never derived from request activity. */
+  incenseCaption?: PersonalIncenseCaptionState
+  onInspectIncense?: () => void
+  pondRef?: RefObject<HTMLDivElement>
   /** Transient feedback line under the buttons (e.g. 已上香), empty = none. */
   voteFeedback: string
   /** Play one short pop on the 梁位 value (the container detects the change). */
@@ -202,9 +206,9 @@ function panelChrome(): CSSProperties {
   boxSizing: 'border-box',
   padding: '10px 12px 8px',
   borderRadius: `${radius.xl}px`,
-  border: `1px solid ${color.border}`,
-  background: `radial-gradient(circle at 50% 34%, color-mix(in srgb, ${color.ritualGold} 10%, transparent), transparent 38%), linear-gradient(180deg, color-mix(in srgb, ${color.ritualEmber} 5%, ${color.bgLayer}) 0%, ${color.bgLayer} 40%)`,
-  color: color.textPrimary,
+  border: `1px solid ${mainColor.line}`,
+  background: mainColor.paper,
+  color: mainColor.ink,
   fontFamily: font.family,
   boxShadow: '0 18px 48px rgba(0, 0, 0, 0.24), 0 2px 8px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
   pointerEvents: 'auto',
@@ -272,9 +276,7 @@ const statValueStyle: CSSProperties = {
 
 /** Keep tiny social slots bounded; the custom detail and aria keep exact counts. */
 function socialCount(value: number): string {
-  if (value < 10_000) return value.toLocaleString('zh-CN')
-  if (value < 1_000_000_000_000) return formatCompactCount(value, 0)
-  return `${Math.floor(value / 1_000_000_000_000)}T`
+  return formatMainIncense(value)
 }
 
 /**
@@ -290,7 +292,7 @@ const numericStyle: CSSProperties = {
 /** One voice for `梁位 83.021952% → 梁祖` — same size/weight, quiet glue vs facts. */
 const positionLineStyle: CSSProperties = {
   fontFamily: font.family,
-  fontSize: '13px',
+  fontSize: '11px',
   fontWeight: 600,
   lineHeight: '18px',
   letterSpacing: '0.15px',
@@ -311,19 +313,22 @@ const positionFactStyle: CSSProperties = {
  * 「今日凝香」(wider copy) vs 「下一炷」 pulls `space-between` off-center and
  * the 梁子, ring, and incense dots drift sideways.
  */
-const FLANK_WIDTH = 54
+const FLANK_WIDTH = 52
 /** Top pad must clear 日/月 glyphs that sit outside the 126px ring box. */
-const CORE_PAD_Y = 20
+const CORE_PAD_Y = 10
 /** Room for the absolutely positioned 梁位 pill under the ring. */
-const CORE_PAD_BOTTOM = 36
+const CORE_PAD_BOTTOM = 32
 
 const coreStyle: CSSProperties = {
   position: 'relative',
   padding: `${CORE_PAD_Y}px 0 ${CORE_PAD_BOTTOM}px`,
   overflow: 'visible',
+  isolation: 'isolate',
 }
 
 const coreAnchorStyle: CSSProperties = {
+  position: 'relative',
+  zIndex: 3,
   display: 'flex',
   justifyContent: 'center',
 }
@@ -352,9 +357,9 @@ const flankCaptionStyle: CSSProperties = {
 /** Shared by 今日凝香 and 下一炷 so the two numbers are one voice. */
 const flankValueStyle: CSSProperties = {
   ...numericStyle,
-  fontSize: '13px',
+  fontSize: '17px',
   fontWeight: 700,
-  color: color.ritualEmber,
+  color: mainColor.deep,
   lineHeight: '18px',
 }
 
@@ -410,7 +415,7 @@ function placementStyle(placement: PanelPlacement): CSSProperties {
 /** Panel-scoped CSS that inline styles cannot express (focus ring, keyframes). */
 // Expand selector prefixes once; the resulting CSS is byte-for-byte unchanged.
 const PANEL_CSS = `
-[data-~panel] { --liangxiang-ember-readable: color-mix(in srgb, var(--liangxiang-ember, #c95f38) 64%, var(--dsw-alias-label-primary, #1c2130)); }
+${MAIN_PANEL_THEME_CSS}
 [data-~panel] {
   animation: liangxiang-panel-enter 110ms cubic-bezier(.2,.8,.2,1) both;
 }
@@ -426,6 +431,8 @@ const PANEL_CSS = `
   opacity: 0.72;
   cursor: pointer;
 }
+[data-~inspect-incense] { transition: transform 160ms ease; }
+[data-~inspect-incense]:active { transform: scale(1.04,.96); }
 [data-~vote]:hover:not([disabled]) {
   transform: translateY(-1px);
   filter: brightness(1.04);
@@ -438,12 +445,12 @@ const PANEL_CSS = `
 [data-~vote][data-charging] {
   --charge: 0;
   z-index: 1;
-  color: #fffdf3 !important;
+  color: #f5fcff !important;
   filter: brightness(calc(1.08 + (var(--charge) * 1.15))) saturate(calc(1 + (var(--charge) * 0.55)));
   box-shadow:
-    0 0 calc(10px + (var(--charge) * 28px)) color-mix(in srgb, #fff1a8 calc(40% + (var(--charge) * 60%)), transparent),
-    0 0 calc(22px + (var(--charge) * 36px)) color-mix(in srgb, #ffb347 calc(var(--charge) * 70%), transparent),
-    inset 0 0 calc(12px + (var(--charge) * 18px)) color-mix(in srgb, #fff6c8 calc(var(--charge) * 55%), transparent);
+    0 0 calc(10px + (var(--charge) * 28px)) color-mix(in srgb, #dff2ff calc(40% + (var(--charge) * 60%)), transparent),
+    0 0 calc(22px + (var(--charge) * 36px)) color-mix(in srgb, #8cc8f6 calc(var(--charge) * 70%), transparent),
+    inset 0 0 calc(12px + (var(--charge) * 18px)) color-mix(in srgb, #c6e8ff calc(var(--charge) * 55%), transparent);
   animation: liangxiang-vote-quake calc(130ms - (var(--charge) * 80ms)) linear infinite;
 }
 [data-~vote][data-charging][data-armed] {
@@ -466,7 +473,7 @@ const PANEL_CSS = `
   bottom: 0;
   height: calc(var(--charge) * 100%);
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 252, 220, 0.96) 0%, rgba(255, 168, 46, 0.88) 55%, rgba(190, 40, 16, 0.72) 100%);
+  background: linear-gradient(180deg, rgba(245, 252, 255, 0.96) 0%, rgba(140, 200, 246, 0.88) 55%, rgba(53, 95, 159, 0.72) 100%);
   opacity: calc(0.25 + (var(--charge) * 0.7));
   mix-blend-mode: screen;
 }
@@ -479,11 +486,11 @@ const PANEL_CSS = `
   width: 18px;
   height: 160%;
   pointer-events: none;
-  background: linear-gradient(180deg, #ffffff 0%, #fff3b0 38%, #ffbe3b 70%, transparent 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #dff2ff 38%, #8cc8f6 70%, transparent 100%);
   clip-path: polygon(42% 0, 78% 22%, 52% 22%, 88% 58%, 36% 40%, 58% 40%, 12% 100%, 48% 62%, 30% 62%, 62% 0);
   mix-blend-mode: plus-lighter;
   opacity: calc(var(--charge) * 0.95);
-  filter: drop-shadow(0 0 6px #fff4b8);
+  filter: drop-shadow(0 0 6px #c6e8ff);
   animation: liangxiang-vote-bolt calc(160ms - (var(--charge) * 90ms)) steps(2, end) infinite;
 }
 [data-~vote="down"] [data-~vote-bolt] {
@@ -515,8 +522,8 @@ const PANEL_CSS = `
   inset: -18px -8px;
   pointer-events: none;
   background:
-    linear-gradient(100deg, transparent 30%, rgba(255, 255, 230, 0.88) 48%, rgba(255, 210, 90, 0.55) 50%, rgba(255, 255, 230, 0.88) 52%, transparent 70%),
-    radial-gradient(ellipse at 50% 50%, rgba(255, 244, 180, 0.55), transparent 62%);
+    linear-gradient(100deg, transparent 30%, rgba(245, 252, 255, 0.88) 48%, rgba(140, 200, 246, 0.55) 50%, rgba(245, 252, 255, 0.88) 52%, transparent 70%),
+    radial-gradient(ellipse at 50% 50%, rgba(198, 232, 255, 0.55), transparent 62%);
   mix-blend-mode: screen;
   animation: liangxiang-dump-sheet 420ms ease-out both;
 }
@@ -898,9 +905,7 @@ const PANEL_CSS = `
     animation: none !important;
     transition: none !important;
   }
-}
-@media (prefers-color-scheme: dark) {
-  [data-~panel] { --liangxiang-ember-readable: #cf9a85; }
+  [data-~inspect-incense]:active { transform: none !important; }
 }
 `.replaceAll('[data-~', '[data-liangxiang-')
 
@@ -969,7 +974,7 @@ export function Panel(props: PanelProps): ReactElement {
   const {
     state, reducedMotion, throttle, soundLevel, onCycleSound,
     welcomeVisible, onChooseOnline, onChooseLocal, releaseNotesVisible, onReleaseNotesClose,
-    avatarPulse, condensedIncense, voteFeedback,
+    avatarPulse, incenseCaption, onInspectIncense, pondRef, voteFeedback,
     onVote,
     onDayEndToggle = () => undefined, onDayEndDirection = () => undefined, dayEndPending = false,
     onVoteClick = () => undefined,
@@ -1063,12 +1068,10 @@ export function Panel(props: PanelProps): ReactElement {
   // contradict the Liangzi state rendered beside them (AGENTS.md §12).
   const panelTitle = state.authorityMode === 'LOCAL_FAKE_DEV' ? PANEL_TITLE_LOCAL : PANEL_TITLE
   const percents = formatRatioPercents(snapshot.upVotes, snapshot.downVotes, LIANG_POSITION_DECIMALS)
-  const earnedObserved = state.observedEarnedIncenseToday
-  const earnedExact = earnedObserved.toLocaleString('zh-CN')
+  const earnedToday = personal.earnedIncenseToday
+  const earnedExact = earnedToday.toLocaleString('zh-CN')
   const remainingExact = personal.remainingIncense.toLocaleString('zh-CN')
   const toNextExact = personal.tokensToNextIncense.toLocaleString('zh-CN')
-  const earnedCompact = formatCompactCount(earnedObserved)
-  const remainingCompact = formatCompactCount(personal.remainingIncense)
   const summary = `当前梁子状态：${LIANGZI_STATE_LABELS[snapshot.liangziState]}`
     + `（${liangziRatioRangeText(snapshot.liangziState, liangziPolicyForVersion(snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION))}）。`
     + `${LIANG_POSITION_LABEL} ${percents.up}（即${VOTE_UP_NAME} ${percents.up}，${VOTE_DOWN_NAME} ${percents.down}）。`
@@ -1181,7 +1184,7 @@ export function Panel(props: PanelProps): ReactElement {
                 border: 'none',
                 borderRadius: '10px',
                 padding: '8px 10px',
-                background: `linear-gradient(135deg, ${color.ritualEmber}, color-mix(in srgb, ${color.ritualEmber} 74%, #7f2f25))`,
+                background: `linear-gradient(180deg, color-mix(in srgb, ${mainColor.fill} 84%, #ffffff), ${mainColor.fill})`,
                 color: '#ffffff',
                 fontFamily: font.family,
                 fontSize: '13px',
@@ -1316,28 +1319,53 @@ export function Panel(props: PanelProps): ReactElement {
                           梁位 83.021952% → 梁祖
       */}
       <div data-liangxiang-region="core" style={coreStyle}>
+        <MainPanelPond remainingIncense={personal.remainingIncense} reducedMotion={reducedMotion}
+          active={!utilityOpen && !welcomeVisible && !releaseNotesVisible}
+          {...(pondRef === undefined ? {} : { pondRef })} />
         <div data-liangxiang-core-anchor="" style={coreAnchorStyle}>
           <LiangQiRing
             personal={personal}
             reducedMotion={reducedMotion}
-            condensedIncense={condensedIncense}
+            condensedIncense={0}
             streamingActive={streamingActive}
             fillOverride={displayFill}
-            footer={(
+
+          >
+            <button type="button" data-liangxiang-inspect-incense="" aria-label="轻拍梁子，查看个人余香"
+              onClick={onInspectIncense} style={{ padding: 0, border: 0, background: 'none', cursor: 'pointer', lineHeight: 0 }}>
+            <LiangAvatar
+              state={snapshot.liangziState}
+              policyVersion={snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION}
+              pulse={avatarPulse}
+              crossing={avatarPulse}
+              reducedMotion={reducedMotion}
+              size={snapshot.liangziState === 'liang_sheng' ? 100 : snapshot.liangziState === 'liang_zu' ? 102 : AVATAR_SLOT}
+              hideLabel
+              cleanEdge
+              chrome="none"
+              liangQiFill={displayFill}
+            />
+            </button>
+          </LiangQiRing>
+        </div>
               <span
                 data-liangxiang-liang-position=""
                 title={`${VOTE_UP_NAME} ${percents.up} / ${VOTE_DOWN_NAME} ${percents.down} → ${LIANGZI_STATE_LABELS[snapshot.liangziState]}`}
                 style={{
+                  position: 'absolute',
+                  left: 0,
+                  bottom: 0,
+                  width: '100%',
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '4px',
                   boxSizing: 'border-box',
-                  padding: '4px 9px',
-                  borderRadius: '999px',
+                  padding: '3px 6px',
+                  borderRadius: '9px',
                   border: `1px solid color-mix(in srgb, ${color.ritualGold} 20%, ${color.border})`,
                   background: `color-mix(in srgb, ${color.bgLayer} 90%, ${color.ritualGold})`,
-                  boxShadow: '0 5px 16px rgba(0, 0, 0, 0.10)',
+                  boxShadow: 'none',
                   whiteSpace: 'nowrap',
                   ...positionLineStyle,
                 }}
@@ -1366,32 +1394,12 @@ export function Panel(props: PanelProps): ReactElement {
                   {LIANGZI_STATE_LABELS[snapshot.liangziState]}
                 </span>
               </span>
-            )}
-          >
-            <LiangAvatar
-              state={snapshot.liangziState}
-              policyVersion={snapshot.liangziPolicyVersion ?? LIANGZI_POLICY_VERSION}
-              pulse={avatarPulse}
-              crossing={avatarPulse}
-              reducedMotion={reducedMotion}
-              size={AVATAR_SLOT}
-              hideLabel
-              liangQiFill={displayFill}
-            />
-          </LiangQiRing>
-        </div>
-        <div style={{ ...flankStyle, left: '0px' }} data-liangxiang-personal="incense">
-          <span style={flankCaptionStyle}>{MY_INCENSE_LABEL}</span>
-          <span title={`今日生成 ${earnedExact} 炷`} style={flankValueStyle}>
-            <span data-liangxiang-compact="incense">{earnedCompact}</span>
-            <span style={flankUnitStyle}> 炷</span>
-          </span>
-          <span title={`余 ${remainingExact} 炷`} style={flankUnitStyle}>
-            余 {remainingCompact} 炷
-          </span>
+        <div style={{ ...flankStyle, left: '-5px', zIndex: 5 }} data-liangxiang-personal="incense">
+          <PersonalIncenseCaption earnedIncenseToday={earnedToday} remainingIncense={personal.remainingIncense}
+            reducedMotion={reducedMotion} {...(incenseCaption === undefined ? {} : { caption: incenseCaption })} />
         </div>
         <div
-          style={{ ...flankStyle, right: '0px' }}
+          style={{ ...flankStyle, right: '-5px', zIndex: 5 }}
           data-liangxiang-personal="next-incense"
           aria-label={`${NEXT_INCENSE_LABEL} ${toNextExact} ${NEXT_INCENSE_UNIT}`}
         >
@@ -1402,12 +1410,7 @@ export function Panel(props: PanelProps): ReactElement {
             >
               {formatCompactCount(displayTokensToNext, 0)}
             </span>
-            <span style={flankUnitStyle}> {NEXT_INCENSE_UNIT}</span>
-          </span>
-          <span style={{ ...flankUnitStyle, ...(streamingActive ? { color: color.ritualEmberText } : {}) }}
-            data-liangxiang-stream-status={streamingActive ? '' : undefined}
-            role={streamingActive ? 'status' : undefined}>
-            {streamingActive ? '凝香中' : `${NEXT_INCENSE_PROGRESS_LABEL} ${Math.trunc(Math.min(1, Math.max(0, personal.liangQiFill)) * 100)}%`}
+            <span style={flankUnitStyle}>量</span>
           </span>
         </div>
       </div>
@@ -1447,7 +1450,7 @@ export function Panel(props: PanelProps): ReactElement {
           style={{
             ...voteButtonBase,
             ...(chargeVoteType === 'up' ? { ['--charge']: String(charge) } as CSSProperties : {}),
-            background: `linear-gradient(135deg, ${color.ritualEmber}, color-mix(in srgb, ${color.ritualEmber} 74%, #7f2f25))`,
+            background: `linear-gradient(180deg, color-mix(in srgb, ${mainColor.fill} 84%, #ffffff), ${mainColor.fill})`,
             borderColor: `color-mix(in srgb, ${color.ritualEmber} 84%, ${color.border})`,
             color: '#ffffff',
             boxShadow: `0 5px 14px color-mix(in srgb, ${color.ritualEmber} 18%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18)`,
@@ -1495,9 +1498,9 @@ export function Panel(props: PanelProps): ReactElement {
           style={{
             ...voteButtonBase,
             ...(chargeVoteType === 'down' ? { ['--charge']: String(charge) } as CSSProperties : {}),
-            background: `color-mix(in srgb, ${color.ritualCool} 13%, ${color.bgSubtle})`,
-            borderColor: `color-mix(in srgb, ${color.ritualCool} 42%, ${color.border})`,
-            color: color.textPrimary,
+            background: mainColor.soft,
+            borderColor: mainColor.line,
+            color: mainColor.deep,
             boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.06)',
           }}
         >
@@ -1692,7 +1695,8 @@ export function Panel(props: PanelProps): ReactElement {
               mine={localIncense}
             />
           </span>
-          <strong data-liangxiang-stat-value="incense" style={statValueStyle}>{socialCount(shownIncense)}</strong>
+          <strong data-liangxiang-stat-value="incense" style={{ ...statValueStyle,
+            fontSize: socialCount(shownIncense).length >= 6 ? '12px' : '13px' }}>{socialCount(shownIncense)}</strong>
         </span>
         <span
           data-liangxiang-stat="voters"
@@ -1712,7 +1716,8 @@ export function Panel(props: PanelProps): ReactElement {
               lifetime={lifetimeVoters}
             />
           </span>
-          <strong data-liangxiang-stat-value="voters" style={statValueStyle}>{socialCount(shownVoters)}</strong>
+          <strong data-liangxiang-stat-value="voters" style={{ ...statValueStyle,
+            fontSize: socialCount(shownVoters).length >= 6 ? '12px' : '13px' }}>{socialCount(shownVoters)}</strong>
         </span>
         <div data-liangxiang-utility-slot="" data-liangxiang-compact={onOpenMarket ? '' : undefined} style={{ display: 'contents' }}
           onPointerEnter={event => { if (event.pointerType !== 'touch') onUtilityEnter?.() }}
@@ -1781,6 +1786,7 @@ export function Panel(props: PanelProps): ReactElement {
                   bottom: 'calc(100% + 6px)',
                   zIndex: 3,
                   width: `${UTILITY_DRAWER_WIDTH}px`,
+                  height: '208px',
                   boxSizing: 'border-box',
                   padding: '10px',
                   borderRadius: '12px',
@@ -1791,7 +1797,8 @@ export function Panel(props: PanelProps): ReactElement {
               >
                 <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: '8px' }}>
                   <strong style={{ fontSize: '12px', letterSpacing: '1px', color: color.textPrimary }}>{UTILITY_LABEL}</strong>
-                  <span style={{ fontSize: '9px', color: color.textSecondary }}>一卷在手 · 模式分明</span>
+                  <button type="button" aria-label="关闭案牍" onClick={() => onUtilityClose(true)}
+                    style={{ border: 0, background: 'none', color: mainColor.sub, padding: '1px 4px', cursor: 'pointer', fontSize: '14px' }}>×</button>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                   <button
@@ -1858,11 +1865,6 @@ export function Panel(props: PanelProps): ReactElement {
                     </span>
                   </button>
                 </div>
-                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" data-motion={!reducedMotion} onClick={event => onOpenMarket('utility', event.currentTarget, event.detail === 0 || event.currentTarget.matches(':focus-visible'))} aria-label={`${MARKET_TITLE}：走势与三次入场`}>
-                  <MarketMiniatureIcon />
-                  <strong style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><span>{MARKET_ENTRY_PARTS[0]}</span><i aria-hidden="true" style={{ width: '3px', height: '3px', flexShrink: 0, borderRadius: '50%', background: 'currentColor', opacity: .6 }} /><span>{MARKET_ENTRY_PARTS[1]}</span></strong><span data-liangxiang-utility-market-caption="">走势、仓位一处看</span>
-                  <span data-liangxiang-utility-market-arrow="" aria-hidden="true">›</span>
-                </button>}
                 {!onOpenMarket && <button
                   type="button"
                   data-liangxiang-utility-action="bars"
@@ -1877,20 +1879,19 @@ export function Panel(props: PanelProps): ReactElement {
                     <span style={{ fontSize: '9px', color: color.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{UTILITY_BARS_HINT}</span>
                   </span>
                 </button>}
-                <details style={{ marginTop: '7px', fontSize: '9px', color: color.textSecondary }}>
-                  <summary style={{ cursor: 'pointer' }}>显示异常？</summary>
-                  <button type="button" data-liangxiang-utility-action="reconcile" disabled={offline} onClick={onReconcileAsk}
-                    style={{ display: 'block', width: '100%', boxSizing: 'border-box', minHeight: 0, marginTop: '5px', border: `1px solid ${color.border}`, borderRadius: '6px', background: color.bgSubtle, color: color.textSecondary, padding: '4px 7px', font: `10px ${font.family}`, lineHeight: 1.5, cursor: 'pointer' }}>
-                    {UTILITY_RECONCILE_LABEL} · {UTILITY_RECONCILE_HINT}
-                  </button>
-                </details>
+                <button type="button" data-liangxiang-utility-action="reconcile" disabled={offline} onClick={onReconcileAsk}
+                  style={{ display: 'block', width: '100%', boxSizing: 'border-box', minHeight: 0, marginTop: '10px', border: 0,
+                    background: 'none', color: mainColor.sub, padding: '4px 0', font: `10px ${font.family}`, lineHeight: 1.5, cursor: 'pointer' }}>
+                  显示异常？ · {UTILITY_RECONCILE_LABEL}
+                </button>
                 {reconcilePending && (
                   <div
                     role="alertdialog"
                     aria-label={RECONCILE_CONFIRM_PROMPT}
                     data-liangxiang-reconcile-confirm=""
-                    style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${color.border}` }}
+                    style={{ position: 'absolute', inset: 0, zIndex: 5, padding: '18px 12px', borderRadius: '12px', boxSizing: 'border-box', background: mainColor.paper, overflow: 'auto' }}
                   >
+                    <strong style={{ display: 'block', fontSize: '12px', marginBottom: '10px', color: mainColor.ink }}>{UTILITY_RECONCILE_LABEL}</strong>
                     <span style={{ display: 'block', fontSize: '10px', color: color.warn, lineHeight: 1.45 }}>
                       {RECONCILE_CONFIRM_PROMPT}
                     </span>
@@ -1905,7 +1906,7 @@ export function Panel(props: PanelProps): ReactElement {
                     role="alertdialog"
                     aria-label={modePrompt}
                     data-liangxiang-mode-confirm=""
-                    style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid ${color.border}` }}
+                    style={{ position: 'absolute', inset: 0, zIndex: 5, padding: '18px 12px', borderRadius: '12px', boxSizing: 'border-box', background: mainColor.paper, overflow: 'auto' }}
                   >
                     <span style={{ display: 'block', fontSize: '10px', color: color.warn, lineHeight: 1.45 }}>
                       {modePrompt}

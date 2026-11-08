@@ -22,3 +22,8 @@ RGBA pixel of this production PNG. Regeneration requires no image service.
 The optional final optimizer uses lossless WebP quality 100 / effort 6 / exact
 encoding. It compares every decoded RGBA byte before accepting a smaller
 encoding; portrait dimensions, color and pixels must not change.
+
+The approved pale-blue nan.png mirrors assets/main-nan.webp exactly. This one
+portrait is served through the bounded Host panel-art route to avoid embedding
+the larger new bitmap into client.js; the other six inline portraits retain
+their original pixels. The ring and figures do not determine wallet authority.

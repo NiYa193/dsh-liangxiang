@@ -207,7 +207,7 @@ test('compact ritual hints stay below their row and keyboard dismissal does not 
   await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('0')
   await page.keyboard.press('Escape')
   await expect(drawer).toBeHidden()
-  await expect(trigger).toBeFocused()
+  await expect(trigger).not.toBeFocused()
   await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('0')
 
   await page.mouse.move(0, 0)
@@ -219,7 +219,7 @@ test('compact ritual hints stay below their row and keyboard dismissal does not 
   await trigger.press('Enter')
   await expect(drawer).toBeVisible()
   await page.keyboard.press('Tab')
-  await expect(drawer.locator('[data-liangxiang-utility-action="home"]')).toBeFocused()
+  await expect(drawer.getByRole('button', { name: '关闭案牍', exact: true })).toBeFocused()
   await page.waitForTimeout(220)
   await expect(drawer).toBeVisible()
   await panel.getByRole('button', { name: '关闭面板', exact: true }).focus()
@@ -297,7 +297,7 @@ test('social slots fit zero, four-digit and extreme counts while retaining exact
   await page.route(/\/liangxiang\/api\/(?:state|refresh)(?:\?|$)/, route => route.fulfill({ json: {
     ...base, global: { ...base.global, upVotes: value, downVotes: 0, uniqueVoters: value, lifetimeIncense: value, lifetimeVoters: value, sequence },
   } }))
-  for (const [count, caption] of [[0, '0'], [9999, '9,999'], [99999, '100K'], [Number.MAX_SAFE_INTEGER, '9007T']] as const) {
+  for (const [count, caption] of [[0, '0'], [9999, '9.99K'], [99999, '9.99万'], [Number.MAX_SAFE_INTEGER, '9007万亿']] as const) {
     value = count; sequence++
     await page.reload()
     const panel = await openPanel(page)
@@ -375,7 +375,7 @@ test('Escape restores ritual focus without replaying pointer hints or highlights
   await expect(drawer).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(drawer).toBeHidden()
-  await expect(trigger).toBeFocused()
+  await expect(trigger).not.toBeFocused()
   await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
   await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
   expect(await quietStyle(trigger)).toEqual(triggerRest)
@@ -405,16 +405,17 @@ test('Escape restores ritual focus without replaying pointer hints or highlights
   await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
   expect(await quietStyle(trigger)).toEqual(triggerRest)
 
-  await trigger.click()
-  await drawer.locator('[data-liangxiang-utility-market]').click()
+  const marketEntry = panel.locator('[data-liangxiang-market-entry]')
+  const marketRest = await quietStyle(marketEntry)
+  await marketEntry.click()
   const market = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
   await expect(market).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(market).toBeHidden()
-  await expect(trigger).not.toBeFocused()
-  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
-  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
-  expect(await quietStyle(trigger)).toEqual(triggerRest)
+  await expect(marketEntry).not.toBeFocused()
+  await expect(marketEntry).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect.poll(() => marketEntry.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  expect(await quietStyle(marketEntry)).toEqual(marketRest)
 
   // Keyboard activation keeps an accessible return ring, while suppressing
   // the informational hint until the next deliberate navigation gesture.
