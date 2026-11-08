@@ -19,9 +19,10 @@ async function startSseHarness() {
   }, { now: () => Date.UTC(2026, 9, 19, 4) }, () => undefined)
   service.markReadyMemoryOnly('sse-test')
   let state = service.getWireState()
+  let wireReads = 0
   const listeners = new Set<() => void>()
   const routed: LiangHostService = Object.assign(service, {
-    getWireState: () => state,
+    getWireState: () => { wireReads += 1; return state },
     subscribe: (listener: () => void) => {
       listeners.add(listener)
       return () => { listeners.delete(listener) }
@@ -48,6 +49,7 @@ async function startSseHarness() {
     url: `http://127.0.0.1:${address.port}/liangxiang/api/events`,
     get state() { return state },
     get subscriptions() { return listeners.size },
+    get wireReads() { return wireReads },
     close: () => api.closeAllConnections(),
     heartbeat: () => { for (const callback of heartbeatCallbacks) callback() },
     update(next: Partial<LiangxiangWireState> = {}) {
@@ -91,8 +93,10 @@ describe('changed-state SSE delivery', () => {
     const host = await startSseHarness()
     const first = await openSse(host.url)
     const second = await openSse(host.url)
-    expect(host.subscriptions).toBe(2)
+    expect(host.subscriptions).toBe(1)
+    const readsBefore = host.wireReads
     for (let read = 0; read < 60; read += 1) host.update()
+    expect(host.wireReads - readsBefore).toBe(60)
     host.heartbeat()
     await expect.poll(() => [first.pings, second.pings]).toEqual([1, 1])
     expect(first.frames).toHaveLength(1)

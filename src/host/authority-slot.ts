@@ -81,6 +81,10 @@ export class AuthoritySlot implements LiangHostService {
   }
 
   cachedMarketState(): MarketState | null { return this.inner.cachedMarketState?.() ?? null }
+  marketForSubscription(): Promise<MarketState> {
+    if (this.inner.marketForSubscription !== undefined) return this.inner.marketForSubscription()
+    return this.market()
+  }
   marketCacheScope(): string | null { return this.inner.marketCacheScope?.() ?? null }
 
   vote(intent: WireVoteRequest): VoteOutcome | Promise<VoteOutcome> {

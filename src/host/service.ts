@@ -34,6 +34,7 @@ export interface LiangHostService {
   marketCandles?: (query?: MarketCandlesQuery) => Promise<MarketCandlesResponse>
   marketHistory?: (query?: MarketHistoryQuery) => Promise<MarketHistoryResponse>
   cachedMarketState?: () => MarketState | null
+  marketForSubscription?: () => Promise<MarketState>
   marketCacheScope?: () => string | null
   vote: (intent: WireVoteRequest) => VoteOutcome | Promise<VoteOutcome>
   /** Feed one cumulative DSH `tokenUsage` projection value (optional route model id). */

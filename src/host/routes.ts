@@ -42,7 +42,6 @@ export interface LiangxiangApi {
 interface SseConnection {
   channel: 'state' | 'market'
   res: ServerResponse
-  unsubscribe: () => void
   heartbeat: ReturnType<typeof setInterval>
   lastContent: string | null
 }
@@ -142,43 +141,43 @@ export function createLiangxiangApi(
 ): LiangxiangApi {
   const connections = new Set<SseConnection>()
   let art: Promise<Buffer> | null = null
+  let unsubscribeState: (() => void) | null = null
+  type SseFrame = { content: string, data: string } | null
 
   const dropConnection = (connection: SseConnection): void => {
     if (!connections.delete(connection)) return
-    connection.unsubscribe()
     clearInterval(connection.heartbeat)
+    if (connections.size === 0) { unsubscribeState?.(); unsubscribeState = null }
   }
 
-  const writeFrame = (connection: SseConnection): void => {
+  const captureFrame = (channel: SseConnection['channel']): SseFrame => {
+    if (channel === 'market') {
+      const state = service.cachedMarketState?.()
+      if (state == null) return null
+      const payload = { ...state, cache_scope: service.marketCacheScope?.() ?? null }
+      return { content: JSON.stringify({ ...payload, server_time: 0 }), data: `data: ${JSON.stringify(payload)}\n\n` }
+    }
+    const { revision, ...content } = service.getWireState()
+    const serialized = JSON.stringify(content)
+    return { content: serialized, data: `id: ${revision}\ndata: {"revision":${revision},${serialized.slice(1)}\n\n` }
+  }
+
+  const writeFrame = (connection: SseConnection, frames = new Map<SseConnection['channel'], SseFrame>()): void => {
     if (connection.res.writableLength > 256 * 1024) {
       dropConnection(connection)
       connection.res.end()
       return
     }
-    if (connection.channel === 'market') {
-      const state = service.cachedMarketState?.()
-      if (state == null) {
-        dropConnection(connection)
-        connection.res.end()
-        return
-      }
-      const payload = { ...state, cache_scope: service.marketCacheScope?.() ?? null }
-      const serialized = JSON.stringify({ ...payload, server_time: 0 })
-      if (serialized === connection.lastContent) return
-      connection.res.write(`data: ${JSON.stringify(payload)}\n\n`)
-      connection.lastContent = serialized
+    if (!frames.has(connection.channel)) frames.set(connection.channel, captureFrame(connection.channel))
+    const frame = frames.get(connection.channel)
+    if (frame == null) {
+      dropConnection(connection)
+      connection.res.end()
       return
     }
-    const state = service.getWireState()
-    // A successful authority read can advance revision without changing any
-    // delivered field. Keep cadence/recovery intact while avoiding identical
-    // full-state frames. Include every other field, especially epoch, authority
-    // availability, broadcast expiry and archive/configuration cursors.
-    const { revision, ...content } = state
-    const serialized = JSON.stringify(content)
-    if (serialized === connection.lastContent) return
-    connection.res.write(`id: ${revision}\ndata: {"revision":${revision},${serialized.slice(1)}\n\n`)
-    connection.lastContent = serialized
+    if (frame.content === connection.lastContent) return
+    connection.res.write(frame.data)
+    connection.lastContent = frame.content
   }
 
   const handleEvents = (req: IncomingMessage, res: ServerResponse, channel: 'state' | 'market' = 'state'): void => {
@@ -192,19 +191,24 @@ export function createLiangxiangApi(
       channel,
       res,
       lastContent: null,
-      unsubscribe: service.subscribe(() => {
-        try {
-          writeFrame(connection)
-        } catch (error) {
-          warn(`[dsh-liangxiang] SSE write failed: ${error instanceof Error ? error.message : String(error)}`)
-          dropConnection(connection)
-        }
-      }),
       heartbeat: setInterval(() => {
         res.write(': ping\n\n')
       }, SSE_HEARTBEAT_MS),
     }
     connections.add(connection)
+    if (unsubscribeState === null) unsubscribeState = service.subscribe(() => {
+      // One semantic notification captures each channel once for all tabs.
+      // This shares work only within this call, never across newer authority.
+      const frames = new Map<SseConnection['channel'], SseFrame>()
+      for (const current of connections) {
+        try { writeFrame(current, frames) }
+        catch (error) {
+          warn(`[dsh-liangxiang] SSE write failed: ${error instanceof Error ? error.message : String(error)}`)
+          dropConnection(current)
+          current.res.end()
+        }
+      }
+    })
     req.on('close', () => dropConnection(connection))
     writeFrame(connection)
   }
@@ -363,7 +367,7 @@ export function createLiangxiangApi(
         } else if (pathname === '/liangxiang/api/market/events') {
           if (url.search !== '') throw new Error('market events do not accept query parameters')
           if (service.market === undefined) throw new BackendClientError('community market unavailable in this mode', 404, 'market_unavailable')
-          await service.market()
+          await (service.marketForSubscription?.() ?? service.market())
           if (scope !== (service.marketCacheScope?.() ?? null)) throw new BackendClientError('authority changed during market read', 409, 'authority_changed')
           handleEvents(req, res, 'market')
           return

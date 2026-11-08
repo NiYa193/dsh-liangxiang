@@ -44,7 +44,7 @@ import { UsageProjection, type UsageProjectionSink } from './usage-projection.ts
 import type { DailyUsageRecord, SessionUsageWatermark } from './usage-ledger.ts'
 import { parseV1SnapshotResponse } from '../shared/backend-v1.ts'
 import { MARKET_LEGACY_CANDLE_INTERVAL_MS, type MarketCandlesResponse, type MarketHistoryResponse, type MarketPositionRequest, type MarketPositionResponse, type MarketState, type MarketStreamEvent, type MarketWallet } from '../shared/market-v1.ts'
-import type { MarketCandlesQuery, MarketHistoryQuery } from './market-query.ts'
+import { marketQuerySuffix, type MarketCandlesQuery, type MarketHistoryQuery } from './market-query.ts'
 
 const CLAIM_DEBOUNCE_MS = 1_000
 
@@ -112,6 +112,9 @@ export class BackendLiangService implements LiangHostService {
   private authorityAvailable = false
   private authorityReason: string | null = '尚未完成社区连接'
   private revision = 0
+  private readGeneration = 0
+  private notificationDepth = 0
+  private notificationPending = false
   private readonly hostEpoch = Date.now()
   private readonly listeners = new Set<() => void>()
 
@@ -139,6 +142,8 @@ export class BackendLiangService implements LiangHostService {
   /** Raw private snapshot revision, independent of the projected/held wallet. */
   private marketWalletVersion = -1
   private marketInFlight: Promise<MarketState> | null = null
+  private readonly candlesInFlight = new Map<string, Promise<MarketCandlesResponse>>()
+  private readonly receiptsInFlight = new Map<string, Promise<MarketHistoryResponse>>()
   private stopCloudStream: (() => void) | null = null
   private cloudStreamUnsupported = false
   private cloudConnected = false
@@ -199,6 +204,7 @@ export class BackendLiangService implements LiangHostService {
   attachIdentity(installationId: string): void {
     if (this.installationId === installationId) return
     const replacingIdentity = this.installationId !== null
+    this.readGeneration += 1
     this.stopCloudStream?.()
     this.stopCloudStream = null
     this.cloudStreamUnsupported = false
@@ -209,6 +215,8 @@ export class BackendLiangService implements LiangHostService {
     this.marketState = null
     this.marketWalletVersion = -1
     this.marketInFlight = null
+    this.candlesInFlight.clear()
+    this.receiptsInFlight.clear()
     this.pendingClaim = null
     this.deferredWalletVersion = 0
     this.personalInFlight = null
@@ -355,6 +363,7 @@ export class BackendLiangService implements LiangHostService {
     // authority is the claim, so a vote must never race ahead of a debounced
     // claim. The flush reports ledger + local suffix, not a restarted daily
     // total — repair reconciliation must not strand new tokens below the ratchet.
+    this.readGeneration += 1
     await this.flushClaim()
     let response: Awaited<ReturnType<BackendClient['vote']>>
     try {
@@ -562,22 +571,48 @@ export class BackendLiangService implements LiangHostService {
     const submit = this.client.marketPosition
     if (submit === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
     if (!this.authorityAvailable) throw new BackendClientError('community authority is temporarily unavailable', 503, 'authority_unavailable')
+    this.readGeneration += 1
     await this.flushClaim()
     const result = await submit(id, intent)
     if (!this.disposed && this.installationId === id) this.adoptMarketState(result.state)
     return result
   }
 
+  /** The explicit first-screen GET already calibrated authority. Attaching a
+   * local subscriber can use the live cloud projection without a second RPC.
+   * A disconnected/unsupported stream still takes the authenticated read path. */
+  async marketForSubscription(): Promise<MarketState> {
+    if (this.marketInFlight !== null) return this.marketInFlight
+    if (this.authorityAvailable && this.cloudConnected && this.cloudHasFrame
+      && Date.now() - this.cloudLastActivity < 70_000
+      && this.marketState !== null && this.marketState.market?.case_id === this.activeCase?.id) {
+      return this.cachedMarketState()!
+    }
+    return this.market()
+  }
+
   async marketCandles(query?: MarketCandlesQuery): Promise<MarketCandlesResponse> {
     const read = this.client.marketCandles
     if (read === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
-    return read(this.requireIdentity(), query)
+    const id = this.requireIdentity()
+    const key = `${id}:${this.readGeneration}:${this.revision}:${marketQuerySuffix(query ?? {})}`
+    const existing = this.candlesInFlight.get(key)
+    if (existing !== undefined) return existing
+    const run = read(id, query).finally(() => { if (this.candlesInFlight.get(key) === run) this.candlesInFlight.delete(key) })
+    if (this.candlesInFlight.size < 64) this.candlesInFlight.set(key, run)
+    return run
   }
 
   async marketHistory(query?: MarketHistoryQuery): Promise<MarketHistoryResponse> {
     const read = this.client.marketHistory
     if (read === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
-    return read(this.requireIdentity(), query)
+    const id = this.requireIdentity()
+    const key = `${id}:${this.readGeneration}:${this.revision}:${marketQuerySuffix(query ?? {})}`
+    const existing = this.receiptsInFlight.get(key)
+    if (existing !== undefined) return existing
+    const run = read(id, query).finally(() => { if (this.receiptsInFlight.get(key) === run) this.receiptsInFlight.delete(key) })
+    if (this.receiptsInFlight.size < 64) this.receiptsInFlight.set(key, run)
+    return run
   }
 
   private adoptWallet(wallet: MarketWallet): void {
@@ -660,33 +695,42 @@ export class BackendLiangService implements LiangHostService {
   private adoptCloudEvent(event: MarketStreamEvent): void {
     const response = event.snapshot === undefined ? null : parseV1SnapshotResponse(event.snapshot)
     if (event.epoch === this.cloudEpoch && event.revision <= this.cloudRevision) return
-    this.cloudEpoch = event.epoch
-    this.cloudRevision = event.revision
-    this.cloudLastActivity = Date.now()
-    this.cloudHasFrame = true
-    this.serverOffset = event.server_time - this.clock.now()
-    if (response !== null) {
-      if (response.business_date !== this.businessDate || response.active_case.id !== this.activeCase?.id) {
-        void this.refreshBootstrap()
-      } else if (this.applySnapshotIfNewer(response.global_snapshot)) {
-        this.activeCase = response.active_case
-        this.broadcast = response.broadcast
-        const archiveMoved = response.archive_version > this.archiveVersion
-        this.archiveVersion = response.archive_version
-        const snapshot = response.global_snapshot
-        if (this.marketState !== null && this.marketState.market?.case_id === snapshot.case_id) this.marketState = { ...this.marketState, server_time: event.server_time,
-          current_point: { case_id: snapshot.case_id, at: snapshot.captured_at, up_votes: snapshot.up_votes,
-            down_votes: snapshot.down_votes, sequence: snapshot.sequence } }
-        if (archiveMoved) void this.refreshHistory()
+    this.notificationDepth += 1
+    try {
+      this.cloudEpoch = event.epoch
+      this.cloudRevision = event.revision
+      this.cloudLastActivity = Date.now()
+      this.cloudHasFrame = true
+      this.serverOffset = event.server_time - this.clock.now()
+      if (response !== null) {
+        if (response.business_date !== this.businessDate || response.active_case.id !== this.activeCase?.id) {
+          void this.refreshBootstrap()
+        } else if (this.applySnapshotIfNewer(response.global_snapshot)) {
+          this.activeCase = response.active_case
+          this.broadcast = response.broadcast
+          const archiveMoved = response.archive_version > this.archiveVersion
+          this.archiveVersion = response.archive_version
+          const snapshot = response.global_snapshot
+          if (this.marketState !== null && this.marketState.market?.case_id === snapshot.case_id) this.marketState = { ...this.marketState, server_time: event.server_time,
+            current_point: { case_id: snapshot.case_id, at: snapshot.captured_at, up_votes: snapshot.up_votes,
+              down_votes: snapshot.down_votes, sequence: snapshot.sequence } }
+          if (archiveMoved) void this.refreshHistory()
+          this.bump()
+        }
+      }
+      if (event.market_state !== undefined) this.adoptMarketState(event.market_state)
+      if (event.candle !== undefined && this.marketState !== null
+        && this.marketState.market?.case_id === (response?.active_case.id ?? this.activeCase?.id)) {
+        this.marketState = { ...this.marketState, server_time: event.server_time, current_candle: event.candle,
+          candle_interval_ms: event.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS }
         this.bump()
       }
-    }
-    if (event.market_state !== undefined) this.adoptMarketState(event.market_state)
-    if (event.candle !== undefined && this.marketState !== null
-      && this.marketState.market?.case_id === (response?.active_case.id ?? this.activeCase?.id)) {
-      this.marketState = { ...this.marketState, server_time: event.server_time, current_candle: event.candle,
-        candle_interval_ms: event.candle_interval_ms ?? MARKET_LEGACY_CANDLE_INTERVAL_MS }
-      this.bump()
+    } finally {
+      this.notificationDepth -= 1
+      if (this.notificationDepth === 0 && this.notificationPending) {
+        this.notificationPending = false
+        this.bump()
+      }
     }
   }
 
@@ -786,6 +830,8 @@ export class BackendLiangService implements LiangHostService {
 
   dispose(): void {
     this.disposed = true
+    this.candlesInFlight.clear()
+    this.receiptsInFlight.clear()
     this.stopCloudStream?.()
     this.stopCloudStream = null
     if (this.claimTimer !== null) {
@@ -897,6 +943,7 @@ export class BackendLiangService implements LiangHostService {
       return
     }
     if (pending === null && target <= this.lastClaimSent) return
+    this.readGeneration += 1
     const attempt: PendingClaim = pending ?? { installationId, target, businessDate, localThrough: locallyObserved,
       baselineBefore: this.displayBaseline, ledgerBefore: ledger }
     this.pendingClaim = attempt
@@ -1088,6 +1135,10 @@ export class BackendLiangService implements LiangHostService {
   }
 
   private bump(): void {
+    if (this.notificationDepth > 0) {
+      this.notificationPending = true
+      return
+    }
     this.revision += 1
     for (const listener of this.listeners) {
       try {

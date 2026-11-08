@@ -1,5 +1,5 @@
 import { createServer } from 'node:http'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BackendLiangService } from '../src/host/backend-service.ts'
 import { createBackendClient, type BackendClient } from '../src/host/backend-client.ts'
 import { FakeAuthoritativeLiangService } from '../src/host/fake-service.ts'
@@ -55,6 +55,84 @@ async function hostHarness() {
 }
 
 describe('cumulative wallet Host authority', () => {
+
+  it('applies every part of a cloud frame before notifying any browser', async () => {
+    const { service, fixture, handlers, initial } = await hostHarness()
+    const market = fixture.service.marketState(ID)
+    const candle = { at: initial.server_time, open: 0.4, high: 0.6, low: 0.3, close: 0.5, up_votes: 9, down_votes: 9, volume: 18 }
+    const snapshot = fixture.service.snapshotResponse()
+    const observed: Array<{ wire: ReturnType<typeof service.getWireState>, market: MarketState | null }> = []
+    const unsubscribe = service.subscribe(() => observed.push({ wire: service.getWireState(), market: service.cachedMarketState() }))
+    handlers[0]!.onEvent({ schema_version: 1, epoch: 'complete-frame', revision: 1, server_time: initial.server_time,
+      snapshot, market_state: { ...market, wallet: WALLET }, candle, candle_interval_ms: 60_000 })
+    expect(observed).toHaveLength(1)
+    for (const revision of [2, 3]) handlers[0]!.onEvent({ schema_version: 1, epoch: 'complete-frame', revision,
+      server_time: initial.server_time, market_state: { ...market, wallet: WALLET },
+      candle: { ...candle, volume: 17 + revision }, candle_interval_ms: 60_000 })
+    unsubscribe()
+    expect(observed.map(frame => frame.market?.current_candle?.volume)).toEqual([18, 19, 20])
+    expect(observed[0]!.market).toMatchObject({ wallet: WALLET, current_candle: candle, candle_interval_ms: 60_000 })
+    expect(observed[0]!.wire.global.sequence).toBe(snapshot.global_snapshot.sequence)
+    expect(observed[0]!.wire.businessDate).toBe(snapshot.business_date)
+  })
+
+  it('shares only concurrent cold reads with the same query and authority revision', async () => {
+    const { service, client } = await hostHarness()
+    let resolve!: (value: { schema_version: 1, receipts: [], next_cursor: null }) => void
+    const read = vi.fn(() => new Promise<{ schema_version: 1, receipts: [], next_cursor: null }>(r => { resolve = r }))
+    client.marketHistory = read
+    const first = service.marketHistory({ limit: 20 })
+    const second = service.marketHistory({ limit: 20 })
+    expect(read).toHaveBeenCalledTimes(1)
+    resolve({ schema_version: 1, receipts: [], next_cursor: null })
+    expect(await first).toEqual(await second)
+    const next = service.marketHistory({ limit: 20 })
+    expect(read).toHaveBeenCalledTimes(2)
+    resolve({ schema_version: 1, receipts: [], next_cursor: null }); await next
+  })
+
+  it('does not attach a post-write query to an older in-flight read', async () => {
+    const { service, client } = await hostHarness()
+    const resolvers: Array<(value: { schema_version: 1, receipts: [], next_cursor: null }) => void> = []
+    const read = vi.fn(() => new Promise<{ schema_version: 1, receipts: [], next_cursor: null }>(r => resolvers.push(r)))
+    client.marketHistory = read
+    const older = service.marketHistory({ limit: 20 })
+    await service.marketPosition(POSITION)
+    const newer = service.marketHistory({ limit: 20 })
+    const pageTwo = service.marketHistory({ cursor: '2', limit: 20 })
+    expect(read).toHaveBeenCalledTimes(3)
+    for (const resolve of resolvers) resolve({ schema_version: 1, receipts: [], next_cursor: null })
+    await Promise.all([older, newer, pageTwo])
+  })
+
+  it('retries a failed cold read and preserves candle query boundaries', async () => {
+    const { service, client } = await hostHarness()
+    const page = { schema_version: 1 as const, case_id: 'case-a', business_date: '2026-08-16', interval_ms: 60_000 as const, candles: [], next_cursor: null }
+    const read = vi.fn(async () => page)
+    read.mockRejectedValueOnce(new Error('temporary history outage'))
+    client.marketCandles = read
+    await expect(service.marketCandles({ case_id: 'case-a' })).rejects.toThrow('temporary history outage')
+    await Promise.all([service.marketCandles({ case_id: 'case-a' }), service.marketCandles({ case_id: 'case-b' }),
+      service.marketCandles({ case_id: 'case-a', interval_ms: 300_000 })])
+    expect(read).toHaveBeenCalledTimes(4)
+  })
+
+  it('reuses a healthy cloud market for subscription but keeps explicit reads and outage calibration', async () => {
+    const { service, client, fixture, handlers, initial } = await hostHarness()
+    const state = { ...fixture.service.marketState(ID), wallet: WALLET }
+    const read = vi.fn(async () => state)
+    client.market = read
+    const stream = handlers[0]!
+    stream.onStatus('connected')
+    stream.onEvent({ schema_version: 1, epoch: 'subscription', revision: 1, server_time: initial.server_time, market_state: state })
+    await service.market()
+    expect(await service.marketForSubscription()).toEqual(service.cachedMarketState())
+    expect(read).toHaveBeenCalledTimes(1)
+    await service.market(); expect(read).toHaveBeenCalledTimes(2)
+    stream.onStatus('disconnected')
+    await service.marketForSubscription(); expect(read).toHaveBeenCalledTimes(3)
+  })
+
   it('binds market query strings and position bodies to the installation signature', async () => {
     const identity = generateCommunityKeypair(null)
     const verified: string[] = []

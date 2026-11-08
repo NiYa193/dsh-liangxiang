@@ -107,3 +107,27 @@ it('does not void a two-sided batch using the pool from a rolled-back withdrawal
   expect(state.wallet.frozen_incense).toBe(13)
   expect(f.service.marketState(b).wallet.frozen_incense).toBe(10)
 })
+
+
+it('encodes complete independent states losslessly across owners, candles and market changes', () => {
+  const f = fixture(), a = 'stream-owner-a', b = 'stream-owner-b'
+  const market = f.service.marketState(a).market!
+  f.service.setMarketPosition(a, { market_id: market.id, batch: 1, side: 'long', amount: 7, request_id: 'encode-long' })
+  f.service.setMarketPosition(b, { market_id: market.id, batch: 1, side: 'short', amount: 13, request_id: 'encode-short' })
+  f.service.vote(a, { case_id: market.case_id, vote_type: 'up', request_id: 'encode-vote', count: 3 })
+  const frame = f.service.prepareMarketStreamFrame()
+  const first = frame(a), second = frame(b)
+  expect(JSON.parse(frame.serialize(first))).toEqual(first)
+  expect(JSON.parse(frame.serialize(second))).toEqual(second)
+  expect(JSON.parse(frame.serialize(second)).market.batches[0].position.amount).toBe(13)
+  expect(JSON.parse(frame.serialize(first)).market.batches[0].position.amount).toBe(7)
+  const independent = f.service.marketState(a)
+  expect(JSON.parse(frame.serialize(independent))).toEqual(independent)
+  f.service.setMarketPosition(a, { market_id: market.id, batch: 1, side: 'short', amount: 7, request_id: 'encode-switch' })
+  const next = f.service.prepareMarketStreamFrame(), updated = next(a, first)
+  expect(JSON.parse(next.serialize(updated))).toEqual(updated)
+  expect(updated.market?.batches[0]).toMatchObject({ long_incense: 0, short_incense: 20, position: { side: 'short', amount: 7 } })
+  f.clock.advance(24 * 60 * 60 * 1000); f.service.tick()
+  const tomorrow = f.service.prepareMarketStreamFrame(), rolled = tomorrow(a, updated)
+  expect(JSON.parse(tomorrow.serialize(rolled))).toEqual(rolled)
+})

@@ -217,6 +217,8 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
     state?: MarketState
   }
   const streams = new Set<Stream>()
+  const streamCounts = new Map<string, number>()
+  const encodedEpoch = JSON.stringify(epoch)
   let streamTimer: ReturnType<typeof setInterval> | undefined
   let fanout: ReturnType<typeof setImmediate> | undefined
   let pumping = false
@@ -227,10 +229,14 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
     return { at: Date.now(), snapshot, candle,
       global: JSON.stringify({ snapshot: { ...snapshot, server_time: 0 }, candle }),
       marketVersion: service.marketGlobalStreamVersion(),
+      snapshotJSON: JSON.stringify(snapshot), candleJSON: JSON.stringify(candle),
       state: service.prepareMarketStreamFrame(snapshot.server_time) }
   }
   const closeStream = (stream: Stream, destroy = false): void => {
     if (!streams.delete(stream)) return
+    const remaining = (streamCounts.get(stream.installation) ?? 1) - 1
+    if (remaining === 0) streamCounts.delete(stream.installation)
+    else streamCounts.set(stream.installation, remaining)
     if (destroy) stream.res.destroy()
     else stream.res.end()
     if (streams.size === 0) {
@@ -268,7 +274,11 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       }
       if (stream.personal !== personal) event.market_state = initial ?? frame.state(stream.installation, stream.state)
       if (event.snapshot !== undefined || event.market_state !== undefined) {
-        const text = `id: ${epoch}:${event.revision}\nevent: state\ndata: ${JSON.stringify(event)}\n\n`
+        let data = `{"schema_version":1,"epoch":${encodedEpoch},"revision":${event.revision},"server_time":${event.server_time}`
+        if (event.snapshot !== undefined) data += `,"snapshot":${frame.snapshotJSON}`
+        if (event.candle !== undefined) data += `,"candle":${frame.candleJSON},"candle_interval_ms":${MARKET_CANDLE_INTERVAL_MS}`
+        if (event.market_state !== undefined) data += `,"market_state":${frame.state.serialize(event.market_state)}`
+        const text = `id: ${epoch}:${event.revision}\nevent: state\ndata: ${data}}\n\n`
         if (!stream.res.write(text)) stream.blockedAt = now
         stream.revision = event.revision
         stream.global = frame.global
@@ -307,10 +317,12 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         }
         // Yield between bounded chunks so new connections and signed actions
         // are accepted while broadcasting. Never queue a second whole fanout.
+        const started = performance.now()
         for (let n = 0; n < 64; n += 1) {
           const next = pending.next()
           if (next.done) { pumping = false; return }
           sendStream(next.value, frame)
+          if (performance.now() - started >= 4) break
         }
         if (streams.size === 0) { pumping = false; return }
         fanout = setImmediate(chunk)
@@ -701,7 +713,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         writeError(res, 400, 'invalid_request', 'event stream does not accept query parameters')
         return
       }
-      if (streams.size >= 2_000 || [...streams].filter(s => s.installation === installationId).length >= 3) {
+      if (streams.size >= 2_000 || (streamCounts.get(installationId) ?? 0) >= 3) {
         writeError(res, 429, 'identity_rate_limited', 'event stream connection capacity reached')
         return
       }
@@ -712,6 +724,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       res.flushHeaders()
       const stream: Stream = { installation: installationId, res, revision: 0, global: '', personal: '', heartbeat: Date.now(), blockedAt: null }
       streams.add(stream)
+      streamCounts.set(installationId, (streamCounts.get(installationId) ?? 0) + 1)
       res.once('close', () => closeStream(stream))
       res.on('drain', () => { stream.blockedAt = null })
       // Initial state targets only the new subscriber, not every existing one.

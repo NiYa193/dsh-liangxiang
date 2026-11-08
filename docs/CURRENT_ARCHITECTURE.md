@@ -4,8 +4,8 @@
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.10`，`SERVER_BUILD=1.3.0-alpha.10-u1`。
-当前源码为 **1.3.0-alpha.10 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.11`，`SERVER_BUILD=1.3.0-alpha.11-u1`。
+当前源码为 **1.3.0-alpha.11 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定梁与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **14**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
@@ -52,7 +52,7 @@ DSH 最终请求用量
 | 凝香 | Pro ×1；Flash、其他及未知 ×0.5；按每个请求最终用量结算。V4.1 路由与重试/迁移边界见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)、[`PR7_REVIEW.md`](PR7_REVIEW.md) |
 | 拍梁子 | 单击 200ms 判定开合；双击/连拍保持面板状态。主面板固定，独立三行短句下落渐隐，见 [`PR6_FEEDBACK_REDESIGN.md`](PR6_FEEDBACK_REDESIGN.md) |
 | 定时上香 | 默认关闭，满 500 炷后每 10 分钟按限额上香，23:59 再收尾一次；复用原开关/方向，旧开关需重新开启，手动优先、意图持久化且不跨日补投，见 [`DAY_END_INCENSE.md`](DAY_END_INCENSE.md) |
-| 连接 | 候选优先每 Host 一条云 SSE；健康时低频校准、旧后台或故障回退 cadence；浏览器复用本机 SSE。已发布版的原轮询基线见 [`CONNECTION_EFFICIENCY.md`](CONNECTION_EFFICIENCY.md) |
+| 连接 | 候选优先每 Host 一条云 SSE；健康时低频校准、旧后台或故障回退 cadence；浏览器复用本机 SSE。alpha11 在同一条云帧内完整应用后通知、本机多页共享编码、同条件在途冷读合并；后端共享公共编码并按时间片公平发送，字段与实时节拍不变。已发布版的原轮询基线见 [`CONNECTION_EFFICIENCY.md`](CONNECTION_EFFICIENCY.md) |
 | 更新说明 | 仅展示当前版相对上次正式版的一份说明，不补播历史；最高已读版本防止旧版自动弹出，可从案牍主动重看。保留首次指导、QQ 二维码及鸣谢 |
 | 本机观察数据 | 保留 Host 每秒采样、1 分钟成桶、按日存储和只读出图接口；缺口不补、换案断开。本机观察不混入市场官方数据或结算；案牍统一进入香火交易。数据契约与旧独立界面说明见 [`LIANGXIANG_BARS.md`](LIANGXIANG_BARS.md) |
 

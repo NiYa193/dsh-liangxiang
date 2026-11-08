@@ -12,6 +12,7 @@ import { businessDayEndsAt, createBusinessDateProvider } from '../shared/busines
 import { WireError } from '../shared/wire.ts'
 import type { BackendStore, CaseRow, IncenseRow, StatsRow } from './store.ts'
 import { BackendConfigError } from './config.ts'
+import { createMarketStreamEncoder, type MarketStreamStateFactory } from './stream-encoding.ts'
 
 interface WalletRow { installation_id: string, available: number, frozen: number, token_remainder: number, token_per_incense: number, version: number }
 interface CursorRow { claimed_tokens: number, minted_incense: number }
@@ -235,14 +236,16 @@ export class MarketLedger {
   }
 
   /** Capture public data once; private data is always selected by installation. */
-  streamStateFactory(caseRow: CaseRow, now: number): (installation: string, previous?: MarketState) => MarketState {
+  streamStateFactory(caseRow: CaseRow, now: number): MarketStreamStateFactory {
     const row = this.marketForCase(caseRow.id)
     const market = row === undefined ? null : this.view(row, null)
     const candle = this.currentCandle(caseRow.id)
     const common: Omit<MarketState, 'wallet' | 'market'> = { schema_version: 1, server_time: now, soft_trust: true,
       candle_interval_ms: MARKET_CANDLE_INTERVAL_MS, current_point: this.point(caseRow.id, now),
       ...(candle === undefined ? {} : { current_candle: candle }) }
-    return (installation, previous) => {
+    const encode = createMarketStreamEncoder(common, market)
+    const owned = new WeakSet<MarketState>()
+    const create = (installation: string, previous?: MarketState): MarketState => {
       const wallet = this.wallet(installation)
       // The previous state is private to this subscription. Position changes
       // (including same-amount direction changes) also increment wallet.version.
@@ -256,8 +259,10 @@ export class MarketLedger {
       const state: MarketState = { ...common, wallet, market: market === null ? null : { ...market,
         batches: market.batches.map(b => ({ ...b, position: positions?.find(p => p.batch === b.batch)?.position ?? null })) } }
       this.stateOwners.set(state, installation)
+      owned.add(state)
       return state
     }
+    return Object.assign(create, { serialize: (state: MarketState): string => owned.has(state) ? encode(state) : JSON.stringify(state) })
   }
 
   setPosition(installation: string, request: MarketPositionRequest, caseRow: CaseRow, now: number): MarketPositionResponse {
