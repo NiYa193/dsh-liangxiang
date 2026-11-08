@@ -188,7 +188,7 @@ describe('four visual regions', () => {
     const qqCard = findByAttr(tree, 'data-liangxiang-welcome-qq')[0]
     const qrCode = findByAttr(tree, 'data-liangxiang-welcome-qq-qrcode')[0]
     expect(qqCard && textContent([qqCard])).toContain(RELEASE_NOTES_QQ)
-    expect(qrCode?.props.alt).toBe('梁相 QQ 群 453683905 二维码')
+    expect(qrCode?.props.alt).toBe('梁相上香QQ群453683905二维码')
     expect(qrCode?.props.src).toMatch(/^data:image\/jpeg;base64,/)
     expect(qrCode?.props.width).toBe(72)
     expect(qrCode?.props.height).toBe(72)
@@ -240,7 +240,7 @@ describe('four visual regions', () => {
     const notes = findByAttr(updated, 'data-liangxiang-release-notes')[0]
     expect(notes?.props['aria-label']).toBe(RELEASE_NOTES_TITLE)
     expect(notes?.props.autoFocus).toBe(true)
-    expect(textContent(notes === undefined ? [] : [notes])).toContain(RELEASE_NOTES_QQ)
+    expect(textContent(notes === undefined ? [] : [notes])).toContain('梁相上香QQ群453683905')
     expect(textContent(notes === undefined ? [] : [notes])).toContain(RELEASE_NOTES_THANKS)
     expect(textContent(notes === undefined ? [] : [notes])).not.toContain('上次正式版以来')
     const updateQqCard = findByAttr(updated, 'data-liangxiang-qq-card')[0]
@@ -249,8 +249,11 @@ describe('four visual regions', () => {
     expect(findByAttr(updated, 'data-liangxiang-release-notes-qq-qrcode')).toHaveLength(1)
     expect(updateQrCode?.props.src).toBe(welcomeQrCode?.props.src)
     expect(updateQrCode?.props.alt).toBe(welcomeQrCode?.props.alt)
-    expect(styleOf(updateQqCard).border).toBe(styleOf(welcomeQqCard).border)
-    expect(styleOf(updateQqCard).background).toBe(styleOf(welcomeQqCard).background)
+    expect(updateQqCard?.props['aria-label']).toBe(RELEASE_NOTES_QQ)
+    expect(updateQqCard?.props.className).toBe('u-community-row')
+    expect(welcomeQqCard?.props['data-liangxiang-qq-card']).toBe('')
+    expect(updateQrCode?.props.width).toBe(78)
+    expect(updateQrCode?.props.height).toBe(78)
     const close = findByAttr(updated, 'data-liangxiang-release-notes-close')[0]
     expect(close?.props.autoFocus).toBeUndefined()
     const onClick = close?.props.onClick as (() => void) | undefined

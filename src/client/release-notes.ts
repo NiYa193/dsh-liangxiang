@@ -6,16 +6,22 @@
  * This is cosmetic localStorage only and never participates in authority.
  */
 export const RELEASE_NOTES_VERSION = '2.0.0-alpha.2'
-export const RELEASE_NOTES_TITLE = `梁相 v${RELEASE_NOTES_VERSION} 更新`
-export const RELEASE_NOTES_ITEMS = [
-  '在线香火能攒了：余额与收益跨日保留，可用与冻结一目了然。',
-  '三次入场，一起收盘：每盘四小时，做多做空都有翻盘机会。',
-  '梁股香火市场：直达行情，持仓香池一眼看清，大肥鱼陪你聊着玩。',
-  '梁相焕新：水波随香而满，游鱼吐泡，凝香与倾炉更灵动。',
+export const RELEASE_NOTES_DISPLAY_VERSION = RELEASE_NOTES_VERSION.split('-')[0]!
+export const RELEASE_NOTES_TITLE = `梁相${RELEASE_NOTES_DISPLAY_VERSION}更新介绍`
+export const RELEASE_NOTES_SLOGAN = '在大A受的伤，让梁股为你抚平。'
+export const RELEASE_NOTES_HIGHLIGHTS = [
+  { icon: 'wallet', title: '在线钱包', copy: '香火收益，跨日保留。' },
+  { icon: 'market', title: '梁股三盘', copy: '做多做空，午夜揭晓。' },
+  { icon: 'waves', title: '全新水景', copy: '余香化水，游鱼相伴。' },
 ] as const
-export const RELEASE_NOTES_QQ = '梁相 QQ 群：453683905'
+export const RELEASE_NOTES_ITEMS = RELEASE_NOTES_HIGHLIGHTS.map(item => `${item.title}　${item.copy}`)
+export const RELEASE_NOTES_GROUP_NAME = '梁相上香QQ群'
+export const RELEASE_NOTES_GROUP_NUMBER = '453683905'
+export const RELEASE_NOTES_QQ = `${RELEASE_NOTES_GROUP_NAME}：${RELEASE_NOTES_GROUP_NUMBER}`
 export const RELEASE_NOTES_QQ_INVITE = '来群里一起出梁案、晒梁位、催更新，第一批梁友等你入席。'
-export const RELEASE_NOTES_THANKS = '鸣谢 @stuffed-cat、@XChen446、@Ritanlisa、@xunxiaoQ，以及每位社区贡献者。'
+export const RELEASE_NOTES_CONTRIBUTORS = ['@stuffed-cat', '@XChen446', '@xunxiaoQ', '@Ritanlisa'] as const
+export const RELEASE_NOTES_THANKS = RELEASE_NOTES_CONTRIBUTORS.join('、')
+export const RELEASE_NOTES_THANKS_SUFFIX = '以及每一位社区贡献者与香客。'
 
 const RELEASE_NOTES_KEY_PREFIX = 'liangxiang:release-notes:'
 export const RELEASE_NOTES_LATEST_SEEN_KEY = `${RELEASE_NOTES_KEY_PREFIX}latest-seen`

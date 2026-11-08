@@ -378,6 +378,10 @@ export function LiangxiangBadge(): ReactElement {
     if (!open || welcomeVisible || !releaseNotesVisible) return
     const dialog = anchorRef.current?.querySelector<HTMLElement>('[data-liangxiang-release-notes]') ?? null
     const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      // The compact sheet owns its multiple controls and enlarged-QR focus.
+      // Capture only keys originating outside it; never force internal Tab
+      // to the former one-button footer or close the sheet behind the QR.
+      if (event.target instanceof Node && dialog?.contains(event.target)) return
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
@@ -387,7 +391,7 @@ export function LiangxiangBadge(): ReactElement {
       if (event.key !== 'Tab') return
       event.preventDefault()
       event.stopPropagation()
-      dialog?.querySelector<HTMLButtonElement>('[data-liangxiang-release-notes-close]')?.focus()
+      dialog?.querySelector<HTMLButtonElement>('.u-close')?.focus()
     }
     document.addEventListener('keydown', onKeyDown, true)
     const frame = requestAnimationFrame(() => {
