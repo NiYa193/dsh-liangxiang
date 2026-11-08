@@ -4,8 +4,8 @@
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.8`，`SERVER_BUILD=1.3.0-alpha.8-u2`。
-当前源码为 **1.3.0-alpha.8 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.9`，`SERVER_BUILD=1.3.0-alpha.9-u1`。
+当前源码为 **1.3.0-alpha.9 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定线与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **14**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
@@ -47,7 +47,7 @@ DSH 最终请求用量
 | 功能 | 最终规则与资料 |
 |---|---|
 | 累计钱包（候选） | 可用/冻结分离、余额与 Token 余量跨日；新版协商累计钱包，旧版保留真实日账和日额度、共享唯一钱包。混用与降级限制见 [`MARKET_WALLET.md`](MARKET_WALLET.md) |
-| 香火交易（候选） | 案牍统一入口；每日三批延迟定线、午夜共同收盘。默认官方分钟数据聚合烛线，全天持续记录；浅灰待开梁区从当前时间线开始，顶部细带标记投入时段。单一时间窗随缩放变化，自动匹配真实粒度；潮汐、分列读数、缩放／平移／全屏保留，确认与撤回同栏，大肥鱼按操作及每分钟播报。新场12／17／22定线，旧场保留原时点。现行视觉见 [`MARKET_UI_COMPARISON.md`](MARKET_UI_COMPARISON.md) |
+| 香火交易（候选） | 案牍统一入口；每日三批延迟定线、午夜共同收盘。默认官方分钟数据聚合烛线，全天持续记录；浅灰待开梁区从当前时间线开始，顶部细带标记投入时段。单一时间窗随缩放变化，自动匹配真实粒度；潮汐、分列读数、缩放／平移／全屏保留，确认与撤回同栏，大肥鱼按操作及每分钟播报。新场07–11／12–16／17–21各四小时投入、12／17／22定线，旧v1/v2场保留原时点。现行视觉见 [`MARKET_UI_COMPARISON.md`](MARKET_UI_COMPARISON.md) |
 | 小难梁 | 有票且梁位 <25%；25%–<50% 为梁工。旧梁案和档案保留原规则，见 [`ISSUE2_IMPLEMENTATION.md`](ISSUE2_IMPLEMENTATION.md) |
 | 凝香 | Pro ×1；Flash、其他及未知 ×0.5；按每个请求最终用量结算。V4.1 路由与重试/迁移边界见 [`INCENSE_POLICY.md`](INCENSE_POLICY.md)、[`PR7_REVIEW.md`](PR7_REVIEW.md) |
 | 拍梁子 | 单击 200ms 判定开合；双击/连拍保持面板状态。主面板固定，独立三行短句下落渐隐，见 [`PR6_FEEDBACK_REDESIGN.md`](PR6_FEEDBACK_REDESIGN.md) |
@@ -86,6 +86,7 @@ DSH侧栏默认280px、梁相外框256px的实现与实测见 [`DSH_LAYOUT_WIDTH
 当前交易候选的验证证据集中记录在 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)，
 隔离演示步骤见 [`MARKET_LOCAL_TEST.md`](MARKET_LOCAL_TEST.md)，香港备服专用部署与加速签名演练见 [`MARKET_REHEARSAL.md`](MARKET_REHEARSAL.md)。
 多客户端人工测试另用真实业务时钟、独立身份/数据库和出口IP白名单，固定部署及隔离规则见 [`INTERNAL_TEST.md`](INTERNAL_TEST.md)。
+最新实际安装、人工环境及旧版原位升级的独立验收见 [`INTERNAL_TEST_READINESS.md`](INTERNAL_TEST_READINESS.md)；两分钟一天的演练不改真实时钟内测实例。
 当前alpha8入口、回滚缓存故障注入及新12客户端三批派彩见 [`MARKET_REHEARSAL_ALPHA8.md`](MARKET_REHEARSAL_ALPHA8.md)；alpha7旧协议证据见 [`MARKET_REHEARSAL_ALPHA7.md`](MARKET_REHEARSAL_ALPHA7.md)；alpha5的DSH手工收盘历史保留在 [`MARKET_REHEARSAL_REPORT.md`](MARKET_REHEARSAL_REPORT.md)，均不作为并发容量结论。
 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md) 仅保留 1.2 发布验收记录，不能代替当前候选检查。
 

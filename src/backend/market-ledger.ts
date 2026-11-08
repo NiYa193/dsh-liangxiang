@@ -146,7 +146,7 @@ export class MarketLedger {
     // A same-day operator replacement ends the one daily game, never starts a second.
     if (this.prepare('SELECT 1 FROM liang_market WHERE business_date=?').get(caseRow.business_date) !== undefined) return
     const date = caseRow.business_date
-    const opens = marketBusinessHour(date, this.timezone, 9)
+    const opens = marketBusinessHour(date, this.timezone, MARKET_BATCH_HOURS[0][0])
     const dates = createBusinessDateProvider(this.timezone)
     const closes = businessDayEndsAt(dates, marketBusinessHour(date, this.timezone, 12))
     const id = `market-${caseRow.id}`

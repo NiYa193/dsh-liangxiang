@@ -67,6 +67,9 @@ jobs:
         run: |
           node --test scripts/ci/check-pr-base.test.mjs scripts/ci/deploy-ssh.test.mjs scripts/ci/deploy-permissions.test.mjs
           pnpm run verify
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            node scripts/ci/check-rehearsal-entry.mjs
+          fi
       - name: Summarize the required check
         if: always()
         env:

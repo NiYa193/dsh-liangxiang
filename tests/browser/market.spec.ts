@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import type { MarketState, MarketPositionRequest, MarketCandle, MarketCandlesResponse } from '../../src/shared/market-v1.ts'
+import type { MarketState, MarketPositionRequest, MarketCandle, MarketCandlesResponse, MarketReceipt } from '../../src/shared/market-v1.ts'
 import { MARKET_CACHE_MAX_BYTES } from '../../src/shared/market-v1.ts'
 import { bootInstalledLiangxiang, openPanel } from './helpers.ts'
 
@@ -621,6 +621,65 @@ test('receipt and rules remain visible controls and use overlays without shiftin
   }
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+})
+
+test('receipt pages scroll inside the overlay, keep controls visible and reopen at the latest twenty', async ({ page }) => {
+  const receipts: MarketReceipt[] = Array.from({ length: 100 }, (_, i) => {
+    const n = 100 - i
+    return { id: `receipt-${n}`, market_id: `receipt-market-${n}`,
+      business_date: new Date(DAY - i * 86_400_000).toISOString().slice(0, 10), settled_at: DAY + n,
+      invested_incense: n, returned_incense: n + 1, pnl_incense: 1, close_point: null,
+      batches: [{ batch: 1, side: 'long', amount: n, payout: n + 1, result: 'long', reference: null }] }
+  })
+  let requests = 0
+  await page.route('**/liangxiang/api/market/history?*', async route => {
+    requests++
+    const query = new URL(route.request().url()).searchParams
+    expect(query.get('limit')).toBe('20')
+    const before = Number(query.get('cursor') ?? 101)
+    const remaining = receipts.filter(row => row.settled_at < DAY + before), rows = remaining.slice(0, 20)
+    await route.fulfill({ json: { schema_version: 1, receipts: rows,
+      next_cursor: remaining.length > rows.length ? String(rows.at(-1)!.settled_at - DAY) : null },
+    headers: { 'x-liangxiang-cache-scope': 'browser-market-scope' } })
+  })
+  let dialog = await openMarket(page)
+  const bounds = (await dialog.boundingBox())!
+  await dialog.getByRole('button', { name: '我的回执', exact: true }).click()
+  const popover = dialog.locator('[data-liangxiang-market-popover="history"]')
+  const nav = popover.getByRole('navigation', { name: '回执分页' })
+  for (let number = 1; number <= 5; number++) {
+    await expect(nav).toContainText(`第${number}页`)
+    await expect(popover.locator('details')).toHaveCount(20)
+    await expect(popover.locator('summary').first()).toContainText(receipts[(number - 1) * 20]!.business_date)
+    expect(await popover.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true)
+    await popover.evaluate(element => { element.scrollTop = element.scrollHeight })
+    const box = (await popover.boundingBox())!
+    for (const button of [popover.getByRole('button', { name: '关闭回执' }), nav.getByRole('button', { name: '更早回执' })]) {
+      const control = (await button.boundingBox())!
+      expect(control.y).toBeGreaterThanOrEqual(box.y)
+      expect(control.y + control.height).toBeLessThanOrEqual(box.y + box.height + 1)
+    }
+    if (number < 5) {
+      await nav.getByRole('button', { name: '更早回执' }).click()
+      await expect.poll(() => popover.evaluate(element => element.scrollTop)).toBe(0)
+    }
+  }
+  await expect(nav.getByRole('button', { name: '更早回执' })).toBeDisabled()
+  for (let number = 4; number >= 1; number--) {
+    await nav.getByRole('button', { name: '较新回执' }).click()
+    await expect(nav).toContainText(`第${number}页`)
+    await expect(popover.locator('summary').first()).toContainText(receipts[(number - 1) * 20]!.business_date)
+  }
+  await expect(nav.getByRole('button', { name: '较新回执' })).toBeDisabled()
+  expect((await dialog.boundingBox())!.height).toBe(bounds.height)
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('liangxiang.market.cache.v1')!).receipts.length)).toBe(30)
+  const beforeReopen = requests
+  await dialog.getByRole('button', { name: '关闭香火交易', exact: true }).click()
+  dialog = await openMarket(page)
+  await dialog.getByRole('button', { name: '我的回执', exact: true }).click()
+  await expect(dialog.getByRole('navigation', { name: '回执分页' })).toContainText('第1页')
+  await expect(dialog.locator('details')).toHaveCount(20)
+  expect(requests).toBe(beforeReopen + 1)
 })
 
 test('a delayed position receipt preserves its submitted draft through older ordinary frames', async ({ page }) => {

@@ -82,16 +82,16 @@ describe('real minute candles and preserved legacy history', () => {
   })
 
   it('records before opening and after position cutoff, then changes case at midnight without moving settlement', () => {
-    const f = boot(), id = 'minute-participant', maker = 'minute-maker'
+    const f = boot(6), id = 'minute-participant', maker = 'minute-maker'
     f.grantIncense(id, 10); f.grantIncense(maker, 10)
     const market = f.service.marketState(id).market!
     expect(f.service.setMarketPosition(id, { market_id: market.id, batch: 1, side: 'long', amount: 1, request_id: 'before-open-position' }).accepted).toBe(false)
     const vote = (side: 'up' | 'down', request: string) => f.service.vote(maker, { case_id: market.case_id, vote_type: side, request_id: request })
-    vote('up', 'minute-eight-up')
-    f.clock.set(at(8, 1)); vote('down', 'minute-eight-down')
+    vote('up', 'minute-before-open-up')
+    f.clock.set(at(6, 1)); vote('down', 'minute-before-open-down')
     const early = f.service.marketCandles().candles
     expect(early).toHaveLength(2)
-    expect(early[1]).toMatchObject({ at: at(8, 1), open: 1, high: 1, low: .5, close: .5, volume: 1 })
+    expect(early[1]).toMatchObject({ at: at(6, 1), open: 1, high: 1, low: .5, close: .5, volume: 1 })
     f.clock.set(at(23, 30)); f.service.tick()
     expect(f.service.marketState(id).current_candle).toMatchObject({ at: at(23, 30), close: .5, volume: 0 })
     expect(f.service.setMarketPosition(id, { market_id: market.id, batch: 3, side: 'short', amount: 1, request_id: 'after-lock-position' }).accepted).toBe(false)

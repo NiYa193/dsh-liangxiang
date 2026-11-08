@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createRehearsalClock, parseRehearsalClock, startRehearsal, validateRehearsalEnvironment } from '../src/backend/rehearsal.ts'
+import { createRehearsalClock, parseRehearsalClock, rehearsalTickMs, startRehearsal, validateRehearsalEnvironment } from '../src/backend/rehearsal.ts'
 
 const paths: string[] = []
 function fixture() {
@@ -17,9 +18,38 @@ function fixture() {
     LIANGXIANG_BUSINESS_TZ: 'Asia/Shanghai', LIANGXIANG_ADMISSION_INVENTORY_TARGET: '20' }
   return { root, clockFile, epoch, env }
 }
-afterEach(() => { for (const path of paths.splice(0)) rmSync(path, { force: true, recursive: true }) })
+afterEach(() => { vi.useRealTimers(); for (const path of paths.splice(0)) rmSync(path, { force: true, recursive: true }) })
 
 describe('private rehearsal boundaries', () => {
+  it('defaults to the previous cadence and bounds private high-frequency sampling before creating a database', () => {
+    expect(rehearsalTickMs(undefined)).toBe(200)
+    for (const interval of [20, 40, 200, 1_000]) expect(rehearsalTickMs(String(interval))).toBe(interval)
+    const f = fixture()
+    for (const value of ['', '0', '19', '1001', '-20', '40.5', 'NaN', 'Infinity', '1e2', ' 40', '40ms']) {
+      expect(() => startRehearsal({ ...f.env, LIANGXIANG_REHEARSAL_TICK_MS: value })).toThrow(/Rehearsal tick/)
+      expect(existsSync(f.env.LIANGXIANG_BACKEND_DB)).toBe(false)
+    }
+  })
+  it.each([
+    { interval: 40, expected: [0, 1, 2, 3, 4, 5] },
+    { interval: 200, expected: [2, 4] },
+  ])('samples actual minute buckets at 720x with $interval ms ticks without filling missing history', async ({ interval, expected }) => {
+    const f = fixture()
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(1_000)
+    writeFileSync(f.clockFile, JSON.stringify({ epoch_ms: f.epoch, anchor_wall_ms: 1_000, rate: 720 }))
+    const runtime = startRehearsal({ ...f.env, LIANGXIANG_REHEARSAL_TICK_MS: String(interval) })
+    try {
+      await vi.advanceTimersByTimeAsync(480)
+      const db = new DatabaseSync(f.env.LIANGXIANG_BACKEND_DB, { readOnly: true })
+      try {
+        const rows = db.prepare('SELECT at,volume,up_votes,down_votes FROM liang_market_minute_candle ORDER BY at').all() as { at: number; volume: number; up_votes: number; down_votes: number }[]
+        expect(rows.map(row => (row.at - f.epoch) / 60_000)).toEqual(expected)
+        expect(rows.every(row => row.volume === 0 && row.up_votes === 0 && row.down_votes === 0)).toBe(true)
+        expect(db.prepare('SELECT COUNT(*) AS count FROM incense_wallet_entry').get()?.count).toBe(0)
+      } finally { db.close() }
+    } finally { await runtime.close() }
+  })
   it('advances only the injected business clock, clamps backwards controls and retains elapsed time after restart', () => {
     const f = fixture(); let wall = 1000
     const clock = createRehearsalClock(f.clockFile, () => wall)

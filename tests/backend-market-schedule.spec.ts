@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { LiangxiangBackendService } from '../src/backend/service.ts'
 import { openBackendStore } from '../src/backend/store.ts'
 import { resolveBackendConfig } from '../src/backend/config.ts'
-import { MARKET_BATCH_HOURS, MARKET_LEGACY_RULE_VERSION, MARKET_RULE_VERSION, parseMarketState } from '../src/shared/market-v1.ts'
+import { MARKET_BATCH_HOURS, MARKET_LEGACY_RULE_VERSION, MARKET_PREVIOUS_RULE_VERSION, MARKET_RULE_VERSION, parseMarketState } from '../src/shared/market-v1.ts'
 import { emptyMarketCache, readMarketCache, writeMarketCache } from '../src/client/market/market-cache.ts'
 import { createBackendFixture, createMutableClock } from './helpers/backend.ts'
 
@@ -29,16 +29,20 @@ function put(service: LiangxiangBackendService, id: string, batch: 1 | 2 | 3, am
     side: id === A ? 'long' : 'short', amount, request_id: request })
 }
 
-it('opens new v2 batches at 09/12/17, locks at 11/16/21 and fixes 12/17/22 before boundary votes', () => {
-  const f = createBackendFixture({}, at(9))
+it('opens new v3 batches at 07/12/17 for four hours and fixes 12/17/22 before boundary votes', () => {
+  const f = createBackendFixture({}, at(6, 59))
   try {
     fund(f.service)
     vote(f.service, 'up', 'schedule-seed-up'); vote(f.service, 'down', 'schedule-seed-down')
     const initial = parseMarketState(f.service.marketState(A)).market!
     expect(initial.rule_version).toBe(MARKET_RULE_VERSION)
+    expect(initial.opens_at).toBe(at(7))
+    expect(initial.batches.every(batch => batch.locks_at - batch.opens_at === 4 * 3_600_000)).toBe(true)
     expect(initial.batches.map(b => [b.opens_at, b.locks_at, b.reference_at]))
       .toEqual(MARKET_BATCH_HOURS.map(hours => hours.map(hour => at(hour))))
     expect(initial.closes_at).toBe(at(0, 0, 17))
+    expect(put(f.service, A, 1, 10, 'schedule-p1-too-early').reason).toBe('batch_not_open')
+    f.clock.set(at(7))
     for (const id of [A, B]) expect(put(f.service, id, 1, 10, `schedule-p1-${id}`).accepted).toBe(true)
     f.clock.set(at(11))
     expect(put(f.service, A, 1, 11, 'schedule-p1-too-late').reason).toBe('batch_not_open')
@@ -68,7 +72,39 @@ it('opens new v2 batches at 09/12/17, locks at 11/16/21 and fixes 12/17/22 befor
   } finally { f.close() }
 })
 
-it('reopens a persisted v1 market without changing its old deadlines or frozen funds, then opens v2 tomorrow', () => {
+it('keeps an existing v2 early cutoff and frozen position across restart, then starts v3 at seven tomorrow', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'liangxiang-schedule-v2-')), filename = join(directory, 'schedule.sqlite')
+  const config = resolveBackendConfig({ LIANGXIANG_BACKEND_DB: filename, LIANGXIANG_STARTER_INCENSE: '0', LIANGXIANG_ADMISSION_INVENTORY_TARGET: '0' })
+  const clock = createMutableClock(at(6, 59))
+  let store = openBackendStore(filename)
+  try {
+    let service = new LiangxiangBackendService({ store, config, clock, warn: () => undefined })
+    const id = service.marketState(A).market!.id
+    store.database.prepare('UPDATE liang_market SET rule_version=?,opens_at=? WHERE id=?').run(MARKET_PREVIOUS_RULE_VERSION, at(9), id)
+    store.database.prepare('UPDATE liang_market_batch SET opens_at=? WHERE market_id=? AND batch=1').run(at(9), id)
+    store.close(); store = openBackendStore(filename)
+    service = new LiangxiangBackendService({ store, config, clock, warn: () => undefined })
+    fund(service)
+    clock.set(at(7))
+    expect(put(service, A, 1, 12, 'previous-too-early').reason).toBe('batch_not_open')
+    clock.set(at(9))
+    expect(put(service, A, 1, 12, 'previous-position').accepted).toBe(true)
+    const wallet = service.marketState(A).wallet
+    store.close(); store = openBackendStore(filename)
+    service = new LiangxiangBackendService({ store, config, clock, warn: () => undefined })
+    expect(parseMarketState(service.marketState(A)).market).toMatchObject({ rule_version: MARKET_PREVIOUS_RULE_VERSION, opens_at: at(9) })
+    expect(service.marketState(A).wallet).toEqual(wallet)
+    expect(service.marketState(A).market!.batches[0]).toMatchObject({ opens_at: at(9), locks_at: at(11), reference_at: at(12), position: { amount: 12 } })
+    clock.set(at(11))
+    expect(put(service, A, 1, 13, 'previous-too-late').reason).toBe('batch_not_open')
+    clock.set(at(0, 0, 17)); service.tick()
+    expect(service.marketHistory(A).receipts[0]).toMatchObject({ rule_version: MARKET_PREVIOUS_RULE_VERSION, invested_incense: 12, returned_incense: 12 })
+    expect(service.marketState(A).market).toMatchObject({ rule_version: MARKET_RULE_VERSION, opens_at: at(7, 0, 17) })
+    expect(store.database.prepare('SELECT rule_version,opens_at FROM liang_market WHERE id=?').get(id)).toMatchObject({ rule_version: MARKET_PREVIOUS_RULE_VERSION, opens_at: at(9) })
+  } finally { store.close(); rmSync(directory, { recursive: true, force: true }) }
+})
+
+it('reopens a persisted v1 market without changing its old deadlines or frozen funds, then opens v3 tomorrow', () => {
   const directory = mkdtempSync(join(tmpdir(), 'liangxiang-schedule-restart-')), filename = join(directory, 'schedule.sqlite')
   const config = resolveBackendConfig({ LIANGXIANG_BACKEND_DB: filename, LIANGXIANG_STARTER_INCENSE: '0', LIANGXIANG_ADMISSION_INVENTORY_TARGET: '0' })
   const clock = createMutableClock(at(9)), legacyHours = [[9, 11, 12], [12, 17, 18], [18, 20, 21]] as const
@@ -77,8 +113,8 @@ it('reopens a persisted v1 market without changing its old deadlines or frozen f
     let service = new LiangxiangBackendService({ store, config, clock, warn: () => undefined })
     const marketId = service.marketState(A).market!.id
     // Fixture representing a pre-upgrade v1 database. Current code must read
-    // these exact persisted deadlines rather than replacing them with v2.
-    store.database.prepare('UPDATE liang_market SET rule_version=? WHERE id=?').run(MARKET_LEGACY_RULE_VERSION, marketId)
+    // these exact persisted deadlines rather than replacing them with v3.
+    store.database.prepare('UPDATE liang_market SET rule_version=?,opens_at=? WHERE id=?').run(MARKET_LEGACY_RULE_VERSION, at(9), marketId)
     for (let i = 0; i < legacyHours.length; i++) {
       const hours = legacyHours[i]!
       store.database.prepare('UPDATE liang_market_batch SET opens_at=?,locks_at=?,reference_at=? WHERE market_id=? AND batch=?')

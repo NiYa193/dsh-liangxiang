@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  MARKET_CACHE_MAX_BYTES, MARKET_CANDLE_INTERVAL_MS, MARKET_RULE_VERSION, MARKET_LEGACY_RULE_VERSION, MARKET_BATCH_HOURS,
+  MARKET_CACHE_MAX_BYTES, MARKET_CANDLE_INTERVAL_MS, MARKET_RULE_VERSION, MARKET_LEGACY_RULE_VERSION, MARKET_PREVIOUS_RULE_VERSION, MARKET_BATCH_HOURS,
   parseMarketCandlesResponse, parseMarketHistoryResponse, parseMarketPositionRequest,
   parseMarketState, parseMarketWallet, type MarketState,
 } from '../src/shared/market-v1.ts'
@@ -13,7 +13,7 @@ function state(): MarketState {
     current_point: { case_id: 'case-example', at: start + 10 * 3600000, up_votes: 50, down_votes: 50, sequence: 3 },
     market: {
       id: 'market-example', case_id: 'case-example', business_date: '2026-01-01', timezone: 'UTC', rule_version: MARKET_RULE_VERSION,
-      opens_at: start + 9 * 3600000, closes_at: start + 24 * 3600000, status: 'open', close_point: null,
+      opens_at: start + 7 * 3600000, closes_at: start + 24 * 3600000, status: 'open', close_point: null,
       batches: ([1, 2, 3] as const).map((batch, i) => ({
         batch, opens_at: start + MARKET_BATCH_HOURS[i]![0] * 3600000,
         locks_at: start + MARKET_BATCH_HOURS[i]![1] * 3600000, reference_at: start + MARKET_BATCH_HOURS[i]![2] * 3600000,
@@ -27,9 +27,15 @@ function state(): MarketState {
 
 describe('market wire authority and transfer boundaries', () => {
   it('keeps each supported recorded rule instead of relabelling old markets with the current rule', () => {
-    expect(parseMarketState(state()).market!.rule_version).toBe('liangxiang-market-v2')
+    expect(parseMarketState(state()).market!.rule_version).toBe('liangxiang-market-v3')
+    const previous = state()
+    previous.market!.rule_version = MARKET_PREVIOUS_RULE_VERSION
+    previous.market!.opens_at += 2 * 3_600_000
+    previous.market!.batches[0]!.opens_at += 2 * 3_600_000
+    expect(parseMarketState(previous).market).toMatchObject({ rule_version: MARKET_PREVIOUS_RULE_VERSION, opens_at: previous.market!.opens_at })
     const legacy = state()
     legacy.market!.rule_version = MARKET_LEGACY_RULE_VERSION
+    legacy.market!.opens_at += 2 * 3_600_000
     const day = Date.UTC(2026, 0, 1)
     const hours = [[9, 11, 12], [12, 17, 18], [18, 20, 21]] as const
     legacy.market!.batches = legacy.market!.batches.map((batch, i) => ({ ...batch,

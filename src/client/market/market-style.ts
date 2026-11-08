@@ -115,8 +115,9 @@ export const MARKET_DIALOG_CSS = marketCss(`
 [data-~dialog] .~footer>button{min-height:27px;padding:3px 5px;font-size:11px;color:var(--~sub)}
 .~connection{margin-left:auto;white-space:nowrap;font-variant-numeric:tabular-nums}
 .~connection i{display:inline-block;width:5px;height:5px;margin-right:5px;border-radius:50%;background:var(--~blue);vertical-align:middle}
-.~popover{position:absolute;z-index:8;left:0;bottom:38px;width:min(430px,100%);max-height:min(430px,calc(100dvh - 145px));padding:13px 15px;overflow:auto;border:1px solid var(--~border);border-radius:13px;background:var(--~paper);color:var(--~ink);box-shadow:0 7px 24px #081d4630}
-.~popover-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:28px;font-size:14px}
+.~popover{position:absolute;z-index:8;left:0;bottom:38px;width:min(430px,100%);max-height:min(430px,calc(100dvh - 145px));padding:13px 15px;overflow:auto;overscroll-behavior:contain;border:1px solid var(--~border);border-radius:13px;background:var(--~paper);color:var(--~ink);box-shadow:0 7px 24px #081d4630}
+.~popover-heading{position:sticky;top:0;z-index:1;display:flex;justify-content:space-between;align-items:center;gap:8px;min-height:28px;font-size:14px;background:var(--~paper)}
+.~history-nav{position:sticky;bottom:0;display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:8px;background:var(--~paper)}
 [data-~dialog] .~popover-heading button{display:grid;place-items:center;min-width:27px;min-height:27px;padding:0;font-size:19px}
 .~popover p{margin:6px 0;font-size:12px;line-height:1.65}
 .~howto{list-style:none;counter-reset:steps;margin:9px 0;padding:0;display:grid;gap:12px}

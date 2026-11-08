@@ -66,6 +66,10 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
   const [clock, setClock] = useState(() => Date.now())
   const [selection, setSelection] = useState(() => ({ marketId: view.state?.market?.id ?? '', batch: preferredBatch(view.state) }))
   const dialog = useRef<HTMLDivElement>(null), clockSync = useRef({ server: 0, received: 0 })
+  useEffect(() => {
+    const history = dialog.current?.querySelector<HTMLElement>('[data-liangxiang-market-popover="history"]')
+    if (history) history.scrollTop = 0
+  }, [view.historyPage])
   const lifecycle = useRef({ started: false, disposeTimer: null as number | null })
   const closeRef = useRef(onClose); closeRef.current = onClose
   useEffect(() => {
@@ -212,11 +216,15 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
         <footer className={marketClass('footer')}>
           <button type="button" data-fish-action="history" data-liangxiang-market-popover-trigger="history" aria-expanded={popover === 'history'} aria-controls="liangxiang-market-history" onClick={() => setPopover(popover === 'history' ? null : 'history')}><span aria-hidden="true">▤ </span>我的回执</button>
           <button type="button" data-fish-action="rules" data-liangxiang-market-popover-trigger="rules" aria-expanded={popover === 'rules'} aria-controls="liangxiang-market-rules" onClick={() => setPopover(popover === 'rules' ? null : 'rules')}><span aria-hidden="true">ⓘ </span>玩法</button>
-          <section id="liangxiang-market-history" className={marketClass('popover')} data-liangxiang-market-popover="history" aria-label="我的结算回执" hidden={popover !== 'history'}>
+          <section id="liangxiang-market-history" className={marketClass('popover')} data-liangxiang-market-popover="history" aria-label="我的结算回执" aria-busy={view.historyLoading} hidden={popover !== 'history'}>
             <div className={marketClass('popover-heading')}><strong>我的收盘回执</strong><button type="button" aria-label="关闭回执" onClick={() => setPopover(null)}>×</button></div>
             {view.receipts.length === 0 && <p>{view.historyLoading ? '正在读取…' : '第一份回执，收盘后见。'}</p>}
             {view.receipts.map(receipt => <Receipt key={receipt.id} receipt={receipt} />)}
-            {view.nextCursor && <button type="button" onClick={() => { void session.loadHistory(true) }} disabled={view.historyLoading}>{view.historyLoading ? '读取中…' : '更早回执'}</button>}
+            {(view.receipts.length > 0 || view.historyPage > 1) && <nav className={marketClass('history-nav')} aria-label="回执分页">
+              <button type="button" onClick={() => { void session.loadHistory('newer') }} disabled={view.historyLoading || view.historyPage === 1}>较新回执</button>
+              <small aria-live="polite">{view.historyLoading ? '读取中…' : `第${view.historyPage}页`}</small>
+              <button type="button" onClick={() => { void session.loadHistory(true) }} disabled={view.historyLoading || !view.nextCursor}>更早回执</button>
+            </nav>}
           </section>
           <section id="liangxiang-market-rules" className={marketClass('popover')} data-liangxiang-market-popover="rules" aria-label="交易玩法" hidden={popover !== 'rules'}>
             <div className={marketClass('popover-heading')}><strong>30秒看懂梁股</strong><button type="button" aria-label="关闭玩法" onClick={() => setPopover(null)}>×</button></div>

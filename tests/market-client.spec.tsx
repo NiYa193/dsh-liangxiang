@@ -155,6 +155,81 @@ describe('market transport state machine', () => {
     expect(f.closed()).toBe(1)
     expect(f.disposed()).toBe(true)
   })
+  function historyFixture(storage = memoryStorage()) {
+    const f = fixture(), historyCalls: string[] = []
+    const request = f.transport.request.bind(f.transport)
+    f.transport.request = async (path, intent) => {
+      if (!path.startsWith('/history')) return request(path, intent)
+      historyCalls.push(path)
+      const before = Number(new URLSearchParams(path.split('?')[1]).get('cursor') ?? 101)
+      const remaining = Array.from({ length: 100 }, (_, i) => 100 - i).filter(index => index < before)
+      const indices = remaining.slice(0, 20)
+      return { scope: 'identity-a', body: { schema_version: 1, receipts: indices.map(receipt),
+        next_cursor: remaining.length > indices.length ? String(indices.at(-1)) : null } }
+    }
+    return { ...f, historyCalls, storage, session: createMarketSession(f.transport, storage) }
+  }
+  it('pages through a hundred receipts in both directions while retaining only a page and thirty cached receipts', async () => {
+    const f = historyFixture()
+    await f.session.start()
+    for (let page = 1; page <= 5; page++) {
+      expect(f.session.getSnapshot()).toMatchObject({ historyPage: page })
+      expect(f.session.getSnapshot().receipts.map(row => row.id))
+        .toEqual(Array.from({ length: 20 }, (_, i) => `receipt-${101 - (page - 1) * 20 - i - 1}`))
+      if (page < 5) await f.session.loadHistory(true)
+    }
+    expect(f.session.getSnapshot().nextCursor).toBeNull()
+    for (let page = 4; page >= 1; page--) {
+      await f.session.loadHistory('newer')
+      expect(f.session.getSnapshot()).toMatchObject({ historyPage: page })
+      expect(f.session.getSnapshot().receipts[0]!.id).toBe(`receipt-${100 - (page - 1) * 20}`)
+    }
+    const calls = f.historyCalls.length
+    await f.session.loadHistory('newer')
+    expect(f.historyCalls).toHaveLength(calls)
+    expect(readMarketCache(f.storage, 'identity-a').receipts.map(row => row.id))
+      .toEqual(Array.from({ length: 30 }, (_, i) => `receipt-${100 - i}`))
+    f.session.dispose()
+  })
+  it('reopens at the newest single page instead of traversing all persisted or previously viewed history', async () => {
+    const storage = memoryStorage(), first = historyFixture(storage)
+    await first.session.start()
+    for (let i = 0; i < 4; i++) await first.session.loadHistory(true)
+    first.session.dispose()
+    const reopened = historyFixture(storage)
+    await reopened.session.start()
+    expect(reopened.historyCalls).toEqual(['/history?limit=20'])
+    expect(reopened.session.getSnapshot()).toMatchObject({ historyPage: 1 })
+    expect(reopened.session.getSnapshot().receipts).toHaveLength(20)
+    expect(reopened.session.getSnapshot().receipts[0]!.id).toBe('receipt-100')
+    reopened.session.dispose()
+  })
+  it('discards a slow old-identity history page without clearing the new identity loading state', async () => {
+    const f = fixture(), storage = memoryStorage(), request = f.transport.request.bind(f.transport)
+    let scope = 'identity-a', started!: () => void, finishOld!: (value: MarketResponse) => void,
+      finishNew!: (value: MarketResponse) => void
+    const requested = new Promise<void>(resolve => { started = resolve })
+    f.transport.request = (path, intent) => {
+      if (!path.startsWith('/history')) return request(path, intent)
+      if (scope === 'identity-a') return new Promise(resolve => { finishOld = resolve; started() })
+      return new Promise(resolve => { finishNew = resolve })
+    }
+    const session = createMarketSession(f.transport, storage), starting = session.start()
+    await requested
+    scope = 'identity-b'
+    f.feed({ ...f.current, wallet: { ...f.current.wallet, version: 2 } }, scope)
+    expect(session.getSnapshot().scope).toBe('identity-b')
+    await expect.poll(() => typeof finishNew).toBe('function')
+    finishOld({ scope: 'identity-a', body: { schema_version: 1, receipts: [receipt(100)], next_cursor: null } })
+    await starting
+    expect(session.getSnapshot()).toMatchObject({ scope: 'identity-b', historyLoading: true })
+    expect(session.getSnapshot().receipts).toEqual([])
+    finishNew({ scope: 'identity-b', body: { schema_version: 1, receipts: [receipt(200)], next_cursor: null } })
+    await expect.poll(() => session.getSnapshot().historyLoading).toBe(false)
+    expect(session.getSnapshot().receipts).toEqual([receipt(200)])
+    expect(readMarketCache(storage, 'identity-b').receipts).toEqual([receipt(200)])
+    session.dispose()
+  })
   it('persists uncertainty and retries the exact request, never a fresh id', async () => {
     const f = fixture(), storage = memoryStorage(), session = createMarketSession(f.transport, storage)
     await session.start(); f.setUncertain()
@@ -243,7 +318,7 @@ describe('market transport state machine', () => {
 describe('market dialog rendering', () => {
   it('exposes frozen funds, direction controls, motion toggle and readable pool semantics', () => {
     const s = state()
-    const view: MarketView = { state: s, status: 'live', candles: [], receipts: [], nextCursor: null, pending: null, sending: false, historyLoading: false, error: null, chartError: null, scope: 'identity-a' }
+    const view: MarketView = { state: s, status: 'live', candles: [], receipts: [], historyPage: 1, nextCursor: null, pending: null, sending: false, historyLoading: false, error: null, chartError: null, scope: 'identity-a' }
     const session: MarketSession = { getSnapshot: () => view, subscribe: () => () => undefined, start: async () => {}, submit: async () => {}, retryPending: async () => {}, loadHistory: async () => {}, dispose: () => {} }
     const html = renderToStaticMarkup(<MarketDialog reducedMotion online onClose={() => {}} session={session} />)
     expect(html).toContain('aria-modal="true"')

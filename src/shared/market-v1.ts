@@ -1,6 +1,6 @@
 /** Community game contract. The Linux ledger is authoritative; usage remains soft trust. */
 import { isMarketRuleVersion, type MarketRuleVersion } from '../domain/market.ts'
-export { MARKET_RULE_VERSION, MARKET_LEGACY_RULE_VERSION, MARKET_BATCH_HOURS, type MarketRuleVersion } from '../domain/market.ts'
+export { MARKET_RULE_VERSION, MARKET_LEGACY_RULE_VERSION, MARKET_PREVIOUS_RULE_VERSION, MARKET_BATCH_HOURS, type MarketRuleVersion } from '../domain/market.ts'
 export const MARKET_SCHEMA_VERSION = 1 as const
 export const MARKET_CANDLE_INTERVAL_MS = 60_000
 export const MARKET_LEGACY_CANDLE_INTERVAL_MS = 300_000

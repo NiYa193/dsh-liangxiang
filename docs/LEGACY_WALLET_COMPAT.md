@@ -12,6 +12,10 @@
 
 旧二进制无法显示“可用／冻结／累计”三种概念，也无法诚实表示“今天生成10炷但消费了昨天的20炷”。旧界面收到412后可能只显示网络错误并重连，**不能承诺其会显示新的中文升级说明**。这只限制已混用新功能且日账无法表示的身份；没有使用新钱包功能的旧用户不会仅因后端升级或跨日结余而被整体阻断。
 
+未发布的alpha8市场客户端只识别v1/v2，不认识新v3交易日程；参与v3新场需安装alpha9。
+alpha9仍读取已保存的v1/v2场次及回执，不改其冻结资金或时点。这一候选市场兼容边界
+不等于强制正式1.2用户升级：1.2没有市场，基础接口仍按上表过渡。
+
 ## 单一账本与能力协商
 
 新Host在HTTP及SSE请求发送 `x-liangxiang-wallet: cumulative-v1`，与梁子称呼的展示策略头独立。没有该值或值未知的个人HTTP响应，按真实日账投影：
@@ -46,4 +50,7 @@ remainder = claimed % token_per_incense
 
 该组当前7项通过；连同相关Backend HTTP／Client回归4文件52项通过。完整候选门禁在 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md) 统一记录。日账升级用例验证同一身份及余额／用量水位，不把共用SQLite测试库误称为完整旧部署；schema10到14的真实副本迁移证据另见 [`MARKET_REHEARSAL_REPORT.md`](MARKET_REHEARSAL_REPORT.md)。
 
-候选代码没有部署到生产或香港实例；兼容协议变更需要后续独立部署和验证。
+候选尚未部署到生产。香港专用演练实例已有旧新协议验证，见
+[`MARKET_REHEARSAL_ALPHA7.md`](MARKET_REHEARSAL_ALPHA7.md)；当前独立人工测试实例使用
+真实业务时钟、隔离账本及入口白名单，见 [`INTERNAL_TEST.md`](INTERNAL_TEST.md)。
+协议回归与真实DSH同Profile安装升级是两项不同证据，不能互相替代。

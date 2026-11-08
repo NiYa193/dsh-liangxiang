@@ -20,6 +20,7 @@ export interface MarketView {
   candles: MarketCandle[]
   candleIntervalMs?: MarketCandleIntervalMs
   receipts: MarketReceipt[]
+  historyPage: number
   nextCursor: string | null
   pending: MarketPositionRequest | null
   sending: boolean
@@ -34,7 +35,7 @@ export interface MarketSession {
   start(): Promise<void>
   submit(intent: Omit<MarketPositionRequest, 'request_id'>): Promise<void>
   retryPending(): Promise<void>
-  loadHistory(more?: boolean): Promise<void>
+  loadHistory(more?: boolean | 'newer'): Promise<void>
   dispose(): void
 }
 
@@ -75,9 +76,10 @@ export function browserMarketTransport(): MarketTransport {
 }
 
 export function createMarketSession(transport: MarketTransport = browserMarketTransport(), storage: MarketStorage | null = browserMarketStorage()): MarketSession {
-  let view: MarketView = { state: null, status: 'loading', candles: [], candleIntervalMs: MARKET_LEGACY_CANDLE_INTERVAL_MS, receipts: [], nextCursor: null, pending: null, sending: false, historyLoading: false, error: null, chartError: null, scope: '' }
+  let view: MarketView = { state: null, status: 'loading', candles: [], candleIntervalMs: MARKET_LEGACY_CANDLE_INTERVAL_MS, receipts: [], historyPage: 1, nextCursor: null, pending: null, sending: false, historyLoading: false, error: null, chartError: null, scope: '' }
   let cache: MarketCache = emptyMarketCache('')
   let disposed = false, source: { close(): void } | null = null, chartKey = '', chartLoading = false, chartQueued = false, lastCacheSave = 0
+  let historyCursors: Array<string | undefined> = [undefined], historyIndex = 0, historyGeneration = 0
   const listeners = new Set<() => void>()
   const update = (patch: Partial<MarketView>): void => {
     if (disposed) return
@@ -97,7 +99,8 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
   const adoptScope = (scope: string): void => {
     if (!scope || scope === view.scope) return
     cache = readMarketCache(storage, scope)
-    update({ scope, receipts: cache.receipts, pending: cache.pending, candles: [], candleIntervalMs: MARKET_LEGACY_CANDLE_INTERVAL_MS, nextCursor: null })
+    historyCursors = [undefined]; historyIndex = 0; historyGeneration++
+    update({ scope, receipts: cache.receipts, pending: cache.pending, candles: [], candleIntervalMs: MARKET_LEGACY_CANDLE_INTERVAL_MS, nextCursor: null, historyPage: 1, historyLoading: false })
     chartKey = ''
   }
   const loadCandles = async (): Promise<void> => {
@@ -187,7 +190,7 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
         chartKey = key
         void loadCandles()
       }
-      if (old?.market && (old.market.id !== market.id || (old.market.status === 'open' && market.status !== 'open'))) void session.loadHistory()
+      if (identityChanged || (old?.market && (old.market.id !== market.id || (old.market.status === 'open' && market.status !== 'open')))) void session.loadHistory()
     }
   }
   const send = async (intent: MarketPositionRequest): Promise<void> => {
@@ -233,19 +236,26 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
     },
     async retryPending() { if (view.pending) await send(view.pending) },
     async loadHistory(more = false) {
-      if (disposed || view.historyLoading || (more && !view.nextCursor)) return
+      if (disposed || view.historyLoading || (more === true && !view.nextCursor) || (more === 'newer' && historyIndex === 0)) return
+      const scope = view.scope, generation = historyGeneration
+      const current = (): boolean => !disposed && view.scope === scope && historyGeneration === generation
+      const index = more === true ? historyIndex + 1 : more === 'newer' ? historyIndex - 1 : 0
+      const cursor = more === true ? view.nextCursor! : more === 'newer' ? historyCursors[index] : undefined
       update({ historyLoading: true })
       try {
         const query = new URLSearchParams({ limit: '20' })
-        if (more && view.nextCursor) query.set('cursor', view.nextCursor)
+        if (cursor !== undefined) query.set('cursor', cursor)
         const response = await transport.request(`/history?${query}`)
-        adoptScope(response.scope)
+        if (!current()) return
+        if (response.scope && response.scope !== scope) throw new Error('history identity changed')
         const page = parseMarketHistoryResponse(response.body)
-        const receipts = [...(more ? view.receipts : []), ...page.receipts].filter((receipt, i, all) => all.findIndex(other => other.id === receipt.id) === i).slice(-60)
+        if (page.next_cursor !== null && (page.receipts.length === 0 || page.next_cursor === cursor)) throw new Error('repeated history cursor')
+        // Retain only this page; the cursor trail lets older history stay on the server.
+        historyCursors[index] = cursor; historyCursors.length = index + 1; historyIndex = index
         cache.receipts = [...page.receipts, ...cache.receipts]; save()
-        update({ receipts, nextCursor: page.next_cursor })
-      } catch { update({ error: '历史回执暂未更新，已确认的钱包不受影响。' }) }
-      finally { update({ historyLoading: false }) }
+        update({ receipts: page.receipts, nextCursor: page.next_cursor, historyPage: index + 1 })
+      } catch { if (current()) update({ error: '历史回执暂未更新，已确认的钱包不受影响。' }) }
+      finally { if (current()) update({ historyLoading: false }) }
     },
     dispose() { save(); disposed = true; source?.close(); transport.dispose(); listeners.clear() },
   }
