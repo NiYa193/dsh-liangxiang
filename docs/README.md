@@ -36,7 +36,7 @@
 - 连接消息去重与保留的实时性边界：`CONNECTION_EFFICIENCY.md`。
 - 累计钱包与交易候选：`MARKET_WALLET.md`、`MARKET_UI_COMPARISON.md`；当前验收证据为 `MARKET_VALIDATION.md`。
 - 新旧客户端过渡、真实日账和混用／降级限制：`LEGACY_WALLET_COMPAT.md`。
-- 香港专用隔离演练：`MARKET_REHEARSAL.md`；当前alpha7旧协议、12客户端与重启核账为 `MARKET_REHEARSAL_ALPHA7.md`，alpha5手工收盘历史为 `MARKET_REHEARSAL_REPORT.md`。
+- 香港专用隔离演练：`MARKET_REHEARSAL.md`；当前UI／回滚缓存／12客户端为 `MARKET_REHEARSAL_ALPHA8.md`，alpha7旧协议为 `MARKET_REHEARSAL_ALPHA7.md`，alpha5手工收盘历史为 `MARKET_REHEARSAL_REPORT.md`。
 - `npm-readme.md` 是发布 README 输入；必须由现行权威校验，不能反向定义产品。
 
 参考文件若仍出现旧名称、旧 Phase、旧端点或“future/占位”描述，以当前源码、测试、

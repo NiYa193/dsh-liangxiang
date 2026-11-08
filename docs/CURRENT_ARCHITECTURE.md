@@ -85,7 +85,7 @@ DSH侧栏默认280px、梁相外框256px的实现与实测见 [`DSH_LAYOUT_WIDTH
 `smoke:browser-clean-profile`，权威/API 变化运行 `smoke:online`，提交和推送必须通过隐私门禁。
 当前交易候选的验证证据集中记录在 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)，
 隔离演示步骤见 [`MARKET_LOCAL_TEST.md`](MARKET_LOCAL_TEST.md)，香港备服专用部署与加速签名演练见 [`MARKET_REHEARSAL.md`](MARKET_REHEARSAL.md)。
-当前alpha7旧协议、12客户端真实重启与三批派彩证据见 [`MARKET_REHEARSAL_ALPHA7.md`](MARKET_REHEARSAL_ALPHA7.md)；alpha5的DSH手工收盘历史保留在 [`MARKET_REHEARSAL_REPORT.md`](MARKET_REHEARSAL_REPORT.md)，均不作为并发容量结论。
+当前alpha8入口、回滚缓存故障注入及新12客户端三批派彩见 [`MARKET_REHEARSAL_ALPHA8.md`](MARKET_REHEARSAL_ALPHA8.md)；alpha7旧协议证据见 [`MARKET_REHEARSAL_ALPHA7.md`](MARKET_REHEARSAL_ALPHA7.md)；alpha5的DSH手工收盘历史保留在 [`MARKET_REHEARSAL_REPORT.md`](MARKET_REHEARSAL_REPORT.md)，均不作为并发容量结论。
 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md) 仅保留 1.2 发布验收记录，不能代替当前候选检查。
 
 个人 fork 从最新社区 main 开发并向 main 提 PR；三平台锁定依赖、隐私与完整安装、
