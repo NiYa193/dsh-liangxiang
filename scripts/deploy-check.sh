@@ -8,6 +8,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 case "${LIANGXIANG_DEPLOY_MODE:-standard}" in
   standard) ;;
   rehearsal) exec bash "$ROOT/scripts/deploy-rehearsal-check.sh" "$@" ;;
+  internal-test) exec bash "$ROOT/scripts/deploy-internal-test.sh" check "$@" ;;
   *) echo "refusing deploy: unsupported LIANGXIANG_DEPLOY_MODE" >&2; exit 1 ;;
 esac
 # shellcheck source=load-deploy-target.sh

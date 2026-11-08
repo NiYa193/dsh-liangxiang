@@ -81,3 +81,29 @@ it('grants a continuously connected account its next-day gift once and discards 
   expect(frame(id, current).wallet).toEqual(current.wallet)
   expect(current.market?.batches.every(b => b.position === null)).toBe(true)
 })
+
+it('does not void a two-sided batch using the pool from a rolled-back withdrawal', () => {
+  const f = fixture(), a = 'stream-owner-a', b = 'stream-owner-b'
+  const market = f.service.marketState(a).market!
+  const order = (id: string, side: 'long' | 'short' | null, amount: number, request_id: string) =>
+    f.service.setMarketPosition(id, { market_id: market.id, batch: 1, side, amount, request_id })
+  order(a, 'long', 10, 'pool-lock-long')
+  order(b, 'short', 10, 'pool-lock-short')
+  const transaction = f.store.transaction.bind(f.store)
+  f.store.transaction = <T>(body: () => T): T => transaction(() => {
+    const result = body()
+    if ((result as { request_id?: string })?.request_id === 'rollback-withdrawal') {
+      throw new Error('injected withdrawal commit failure')
+    }
+    return result
+  })
+  expect(() => order(a, null, 0, 'rollback-withdrawal')).toThrow('injected withdrawal commit failure')
+  f.store.transaction = transaction
+  order(a, 'long', 13, 'pool-lock-replacement')
+  f.clock.set(Date.UTC(2026, 7, 16, 3))
+  f.service.tick()
+  const state = f.service.marketState(a)
+  expect(state.market?.batches[0]).toMatchObject({ status: 'locked', long_incense: 13, short_incense: 10 })
+  expect(state.wallet.frozen_incense).toBe(13)
+  expect(f.service.marketState(b).wallet.frozen_incense).toBe(10)
+})

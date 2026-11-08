@@ -82,6 +82,7 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 `smoke:browser-clean-profile`，权威/API 变化运行 `smoke:online`，提交和推送必须通过隐私门禁。
 当前交易候选的验证证据集中记录在 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)，
 隔离演示步骤见 [`MARKET_LOCAL_TEST.md`](MARKET_LOCAL_TEST.md)，香港备服专用部署与加速签名演练见 [`MARKET_REHEARSAL.md`](MARKET_REHEARSAL.md)。
+多客户端人工测试另用真实业务时钟、独立身份/数据库和出口IP白名单，固定部署及隔离规则见 [`INTERNAL_TEST.md`](INTERNAL_TEST.md)。
 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md) 仅保留 1.2 发布验收记录，不能代替当前候选检查。
 
 个人 fork 从最新社区 main 开发并向 main 提 PR；三平台锁定依赖、隐私与完整安装、
