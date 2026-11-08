@@ -63,7 +63,7 @@ import { createBusinessDateProvider, systemClock, type BusinessDateProvider, typ
 import { SNAPSHOT_HISTORY_LIMIT, type BackendConfig } from './config.ts'
 import { CASE_BANK, nextCycledCaseTitle } from './case-bank.ts'
 import { CommunityAuthError } from './community-auth.ts'
-import { legacyDailyPersonal } from './legacy-wallet.ts'
+import { LegacyWalletUpgradeRequiredError, legacyDailyPersonal } from './legacy-wallet.ts'
 import {
   isUniqueConstraintError,
   type BackendStore,
@@ -199,6 +199,7 @@ export class LiangxiangBackendService {
     const active = this.store.transaction(() => {
       // Seal old references/close counts BEFORE any rollover or new accepted vote.
       this.marketLedger.advance(now)
+      if (this.archiveCheckedBusinessDate !== businessDate) this.marketLedger.expireDailyWallets(businessDate, now)
       this.store.closeCasesBefore(businessDate, now)
       if (this.archiveCheckedBusinessDate !== businessDate) this.finalizeArchivesInTransaction(businessDate, now)
       const raced = this.store.activeCaseFor(businessDate)
@@ -582,9 +583,9 @@ export class LiangxiangBackendService {
     })
   }
 
-  bootstrap(installationId: string, now = this.clock.now()): V1Bootstrap {
+  bootstrap(installationId: string, now = this.clock.now(), cumulative = true): V1Bootstrap {
     const caseRow = this.ensureActiveCase(now)
-    this.store.transaction(() => this.ensureRow(installationId, caseRow, now))
+    this.store.transaction(() => this.ensureRow(installationId, caseRow, now, cumulative))
     return {
       schema_version: BACKEND_SCHEMA_VERSION,
       authority_mode: this.config.authorityMode,
@@ -618,14 +619,15 @@ export class LiangxiangBackendService {
     installationId: string,
     claim: V1TokenClaimRequest,
     now = this.clock.now(),
+    cumulative = true,
   ): V1PersonalStateResponse {
     const caseRow = this.ensureActiveCase(now)
-    this.store.transaction(() => this.ensureRow(installationId, caseRow, now))
+    this.store.transaction(() => this.ensureRow(installationId, caseRow, now, cumulative))
     let applied = false
     let claimNotice: V1PersonalStateResponse['claim_notice']
     if (claim.claim_business_date === caseRow.business_date) {
       const outcome = this.store.transaction(() => {
-        this.ensureRow(installationId, caseRow, now)
+        this.ensureRow(installationId, caseRow, now, cumulative)
         const row = this.requireRow(installationId, caseRow.business_date)
         const requested = claim.claimed_effective_tokens
         // Monotonic ratchet only: the claim is a host observation (A3 soft
@@ -673,9 +675,9 @@ export class LiangxiangBackendService {
     }
   }
 
-  dailyState(installationId: string, now = this.clock.now()): V1PersonalStateResponse {
+  dailyState(installationId: string, now = this.clock.now(), cumulative = true): V1PersonalStateResponse {
     const caseRow = this.ensureActiveCase(now)
-    this.store.transaction(() => this.ensureRow(installationId, caseRow, now))
+    this.store.transaction(() => this.ensureRow(installationId, caseRow, now, cumulative))
     return {
       schema_version: BACKEND_SCHEMA_VERSION,
       business_date: caseRow.business_date,
@@ -1074,7 +1076,7 @@ export class LiangxiangBackendService {
     legacyDaily = false,
   ): V1VoteResponse {
     const activeCase = this.ensureActiveCase(now)
-    this.store.transaction(() => this.ensureRow(installationId, activeCase, now))
+    this.store.transaction(() => this.ensureRow(installationId, activeCase, now, !legacyDaily))
     let result: V1VoteResult
     try {
       result = this.store.transaction(() => {
@@ -1177,7 +1179,7 @@ export class LiangxiangBackendService {
       )
     }
 
-    this.ensureRow(installationId, target, now)
+    this.ensureRow(installationId, target, now, !legacyDaily)
     // Read before the insert: after it, this installation always has a vote.
     const firstVoteForCase = !this.store.hasVotedForCase(installationId, target.id)
     const remaining = legacyDaily
@@ -1363,8 +1365,11 @@ export class LiangxiangBackendService {
     return result
   }
 
-  private ensureRow(installationId: string, caseRow: CaseRow, now: number): void {
-    this.marketLedger.ensureWallet(installationId, caseRow.business_date, caseRow.token_per_incense, now)
+  private ensureRow(installationId: string, caseRow: CaseRow, now: number, cumulative = true): void {
+    const wallet = this.marketLedger.ensureWallet(installationId, caseRow.business_date, caseRow.token_per_incense, now)
+    // Opt-in is durable. An old binary may neither reset this wallet at
+    // midnight nor spend funds it cannot represent, even after unfreezing.
+    if (!cumulative && wallet.cumulative_since !== null) throw new LegacyWalletUpgradeRequiredError()
     this.store.ensureIncenseRow(
       installationId,
       caseRow.business_date,
@@ -1374,6 +1379,7 @@ export class LiangxiangBackendService {
     )
     this.tryGrantStarter(installationId, caseRow, now)
     this.marketLedger.syncClaim(this.requireRow(installationId, caseRow.business_date), now)
+    if (cumulative && wallet.cumulative_since === null) this.marketLedger.enableCumulative(installationId, now)
   }
 
   /**

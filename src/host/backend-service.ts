@@ -29,7 +29,7 @@ import type {
   V1VoteResult,
 } from '../shared/backend-v1.ts'
 import { businessDayEndsAt, createBusinessDateProvider, type Clock } from '../shared/business-date.ts'
-import { DEFAULT_CASE_TITLE, PLUGIN_PACKAGE_NAME } from '../shared/index.ts'
+import { DEFAULT_CASE_TITLE, PLUGIN_PACKAGE_NAME, WALLET_CLIENT_UPGRADE_HINT } from '../shared/index.ts'
 import {
   emptyHistoryArchive,
   historyArchiveToV1,
@@ -1108,6 +1108,7 @@ function authorityFailureReason(error: unknown): string {
       case 'device_conflict': return '本设备已绑定另一份梁相身份'
       case 'rekey_cooldown': return '身份刚刚使用过，请在重置冷却结束后重试'
       case 'wallet_has_assets': return '原身份仍有香火，请恢复原身份凭据后连接；资产已保留'
+      case 'wallet_upgrade_required': return WALLET_CLIENT_UPGRADE_HINT
       case 'invalid_signature': return '身份签名未通过'
       default:
         if (error.status === null) return '网络不可达或请求超时，正在自动重连'

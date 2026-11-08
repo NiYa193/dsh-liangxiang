@@ -20,7 +20,7 @@ import { generateCommunityKeypair, signRequest, type CommunityKeypair } from '..
 import { DayEndService } from '../src/host/day-end-service.ts'
 import {
   DEVICE_HEADER, INSTALLATION_HEADER, LIANGZI_POLICY_HEADER, PUBLIC_KEY_HEADER,
-  SIGNATURE_HEADER, TIMESTAMP_HEADER, parseV1VoteResponse, type V1VoteRequest,
+  SIGNATURE_HEADER, TIMESTAMP_HEADER, WALLET_CAPABILITY_HEADER, WALLET_CAPABILITY_VERSION, parseV1VoteResponse, type V1VoteRequest,
 } from '../src/shared/backend-v1.ts'
 import { LIANGZI_POLICY_VERSION } from '../src/domain/index.ts'
 import { DEFAULT_DAY_END, type DayEndState } from '../src/shared/day-end.ts'
@@ -92,6 +92,7 @@ async function harness(now = WINDOW_START, maxSockets = 128) {
     return { body, headers: {
       'content-type': 'application/json', 'content-length': String(Buffer.byteLength(body)),
       [LIANGZI_POLICY_HEADER]: LIANGZI_POLICY_VERSION,
+      [WALLET_CAPABILITY_HEADER]: WALLET_CAPABILITY_VERSION,
       [INSTALLATION_HEADER]: identity.installationId, [PUBLIC_KEY_HEADER]: identity.publicKey,
       [TIMESTAMP_HEADER]: String(timestamp), [DEVICE_HEADER]: identity.deviceFingerprint ?? '',
       [SIGNATURE_HEADER]: signRequest({ privateKeyPem: identity.privateKeyPem,

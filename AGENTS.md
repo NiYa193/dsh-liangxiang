@@ -17,6 +17,17 @@ remain date-scoped. `remaining_incense` means wallet **available** incense,
 excluding frozen orders; today's used incense may exceed today's earned amount.
 Legacy/offline daily accounting stays isolated and never funds community trades.
 
+Approved 2026-11-08 compatibility correction: a daily-only installation does
+not accumulate funds or fractional usage across dates. Expire them using the
+backend business clock, including offline users and restart. First authenticated
+cumulative-client use enables the wallet once, preserving ONLY that day's actual
+remaining funds and fractional progress, never summing historical daily rows.
+Once enabled, old requests require client >=2.0.0 before any personal mutation;
+they never revert its wallet to daily mode or touch frozen positions/settlement.
+Schema-14 candidate wallets already held cumulative assets: preserve them during
+schema-15 migration. Released 1.2 ignores server error prose; only a client patch
+can add a specific on-screen upgrade explanation. Never claim otherwise.
+
 New v3 markets accept positions at 07:00–11:00 / 12:00–16:00 / 17:00–21:00,
 lock at 11:00/16:00/21:00, fix raw-count reference points at 12:00/17:00/22:00
 and share the old case's midnight close. Existing v1/v2 markets retain all

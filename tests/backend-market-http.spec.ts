@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ServerResponse } from 'node:http'
 import { createBackendHttpApi } from '../src/backend/http.ts'
 import { generateCommunityKeypair, signRequest, type CommunityKeypair } from '../src/host/community-keys.ts'
-import { DEVICE_HEADER, INSTALLATION_HEADER, PUBLIC_KEY_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER } from '../src/shared/backend-v1.ts'
+import { DEVICE_HEADER, INSTALLATION_HEADER, PUBLIC_KEY_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, WALLET_CAPABILITY_HEADER, WALLET_CAPABILITY_VERSION } from '../src/shared/backend-v1.ts'
 import { parseMarketState, parseMarketStreamEvent, type MarketStreamEvent } from '../src/shared/market-v1.ts'
 import { createBackendFixture } from './helpers/backend.ts'
 
@@ -32,9 +32,9 @@ async function setup(signed = false) {
   return { ...fixture, api, base, enroll }
 }
 function headers(id: string | CommunityKeypair, method = 'GET', path = '/v1/market', body = ''): Record<string, string> {
-  if (typeof id === 'string') return { [INSTALLATION_HEADER]: id, 'content-type': 'application/json' }
+  if (typeof id === 'string') return { [INSTALLATION_HEADER]: id, [WALLET_CAPABILITY_HEADER]: WALLET_CAPABILITY_VERSION, 'content-type': 'application/json' }
   const timestamp = Date.now()
-  return { [INSTALLATION_HEADER]: id.installationId, [PUBLIC_KEY_HEADER]: id.publicKey,
+  return { [WALLET_CAPABILITY_HEADER]: WALLET_CAPABILITY_VERSION, [INSTALLATION_HEADER]: id.installationId, [PUBLIC_KEY_HEADER]: id.publicKey,
     [TIMESTAMP_HEADER]: String(timestamp), [DEVICE_HEADER]: id.deviceFingerprint ?? '',
     [SIGNATURE_HEADER]: signRequest({ privateKeyPem: id.privateKeyPem, method, path,
       timestamp, body, installationId: id.installationId }), 'content-type': 'application/json' }

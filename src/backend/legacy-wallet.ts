@@ -4,9 +4,12 @@
  */
 import type { V1Bootstrap, V1PersonalState, V1PersonalStateResponse, V1VoteResponse } from '../shared/backend-v1.ts'
 
+export const WALLET_MIN_CLIENT_VERSION = '2.0.0'
+export const WALLET_UPGRADE_MESSAGE = '请升级至梁相2.0.0及以上版本后使用在线钱包；余额、冻结香火和梁股结算均已保留。'
+
 export class LegacyWalletUpgradeRequiredError extends Error {
   constructor() {
-    super('This installation has used cumulative or frozen assets. Update Liangxiang to continue with this wallet; its funds and identity are preserved.')
+    super(WALLET_UPGRADE_MESSAGE)
     this.name = 'LegacyWalletUpgradeRequiredError'
   }
 }

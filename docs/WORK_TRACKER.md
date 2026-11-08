@@ -89,3 +89,15 @@
 | ☑ | 小鱼与两侧泡泡远离香火环 | 移到数字与水草间；两侧各外移约10px，三主题同动作／前景升泡长大破泡及清理通过 |
 | ☑ | alpha.2验证与3999原位更新 | 1021项源码及相关实包范围通过，最终9项三主题复验全过；七个运行资源与最终包相同，原身份／游标／设置／437可用／0冻结／钱包版本129保持 |
 | ☑ | alpha.2个人fork备份 | cb4bb91已推个人fork的codex/main-blue-water，隐私门禁通过；不提社区PR、不部署后台、不公开发布 |
+
+
+## Wallet activation compatibility correction
+
+- [x] Daily-only funds/progress expire; cumulative activation imports only the live day.
+- [x] One-way activation, pre-write downgrade guard, capability checks and explicit minimum-version feedback.
+- [x] Frozen funds, restart, idempotency, lock/reference/midnight settlement and SQL audits on isolated databases.
+- [x] 1030 source checks, three real-package theme checks and isolated online smoke.
+- [x] Migration plan retains the test machine and cleans ECS test material only after formal acceptance.
+- [ ] Integrate the candidate into the final release; no production deployment or publication in this change.
+
+Evidence and the unpatchable released-1.2 display boundary: [validation](WALLET_ACTIVATION_VALIDATION.md).

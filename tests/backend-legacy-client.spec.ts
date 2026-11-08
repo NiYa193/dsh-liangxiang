@@ -4,6 +4,7 @@ import { createServer, type Server } from 'node:http'
 import { createBackendHttpApi } from '../src/backend/http.ts'
 import { LiangxiangBackendService } from '../src/backend/service.ts'
 import { authenticateCommunityRequest } from '../src/backend/community-auth.ts'
+import { MarketLedger } from '../src/backend/market-ledger.ts'
 import { resolveBackendConfig } from '../src/backend/config.ts'
 import { openBackendStore, type BackendStore } from '../src/backend/store.ts'
 import { BackendLiangService } from '../src/host/backend-service.ts'
@@ -12,7 +13,6 @@ import { generateCommunityKeypair, type CommunityKeypair } from '../src/host/com
 import { DEVICE_HEADER, INSTALLATION_HEADER, PUBLIC_KEY_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER,
   WALLET_CAPABILITY_HEADER, WALLET_CAPABILITY_VERSION } from '../src/shared/backend-v1.ts'
 import { createBackendClient as createLegacyClient } from './fixtures/legacy-1.2/backend-client.ts'
-import { parseV1PersonalState as parseLegacyPersonal } from './fixtures/legacy-1.2/backend-v1.ts'
 import { LiangxiangBackendService as LegacyBackendService } from './fixtures/legacy-1.2/backend-service.ts'
 import { createBackendFixture, createMutableClock } from './helpers/backend.ts'
 
@@ -41,7 +41,8 @@ async function modernServer() {
   const legacy = createLegacyClient({ baseUrl, signer: () => key })
   const modern = createBackendClient({ baseUrl, signer: () => key })
   cleanups.push(() => { legacy.dispose(); modern.dispose() })
-  return { ...f, api, key, legacy, modern, baseUrl }
+  const ledger = new MarketLedger(f.store, 'Asia/Shanghai')
+  return { ...f, api, key, legacy, modern, baseUrl, ledger }
 }
 
 /** Frozen 1.2 service behind its original basic routes; unknown market/SSE stay 404. */
@@ -105,26 +106,33 @@ describe('published 1.2 clients during cumulative-wallet rollout', () => {
     expect(h.service.marketState(id).wallet.available_incense).toBe(11)
   })
 
-  it('preserves cumulative funds and fractional credit while old clients keep their honest daily view', async () => {
+  it('expires old daily funds/progress and imports only the upgrade day, without historical catch-up', async () => {
     const h = await modernServer(), id = h.key.installationId
     const first = await h.legacy.bootstrap(id)
     await h.legacy.submitClaim(id, 525_000, first.business_date)
     h.clock.advance(DAY)
+    h.service.tick()
+    expect(h.ledger.wallet(id)).toMatchObject({ available_incense: 0, token_remainder: 0 })
     const next = await h.legacy.bootstrap(id)
     expect(next.authoritative_personal_state).toMatchObject({ claimed_effective_tokens: 500_000, earned_incense: 10,
       used_incense: 0, remaining_incense: 10, token_remainder: 0 })
-    const canonical = h.service.dailyState(id).authoritative_personal_state
-    expect(canonical.wallet).toMatchObject({ available_incense: 20, token_remainder: 25_000 })
-    expect(() => parseLegacyPersonal(canonical)).toThrow()
     await h.legacy.submitClaim(id, 525_000, next.business_date)
-    expect(h.service.marketState(id).wallet).toMatchObject({ available_incense: 21, token_remainder: 0 })
-    const accepted = await h.legacy.vote(id, { case_id: next.active_case.id, vote_type: 'down', count: 500, request_id: 'legacy-daily-cap' })
-    expect(accepted.result).toMatchObject({ status: 'accepted', spent_incense: 10, remaining_incense: 0 })
-    expect(accepted.authoritative_personal_state).toMatchObject({ claimed_effective_tokens: 525_000, earned_incense: 10,
-      used_incense: 10, remaining_incense: 0, token_remainder: 25_000 })
-    expect((await h.modern.bootstrap(id)).authoritative_personal_state.wallet).toMatchObject({ available_incense: 11, token_remainder: 0 })
+    expect(h.ledger.wallet(id)).toMatchObject({ available_incense: 10, token_remainder: 25_000 })
+    const accepted = await h.legacy.vote(id, { case_id: next.active_case.id, vote_type: 'down', count: 7, request_id: 'legacy-before-opt-in' })
+    expect(accepted.result).toMatchObject({ status: 'accepted', spent_incense: 7, remaining_incense: 3 })
+    const upgrade = await h.modern.bootstrap(id)
+    expect(upgrade.authoritative_personal_state.wallet).toMatchObject({ available_incense: 3, token_remainder: 25_000 })
+    await h.modern.bootstrap(id)
+    expect(h.ledger.wallet(id).available_incense).toBe(3)
+    h.clock.advance(DAY)
+    const carried = await h.modern.bootstrap(id)
+    expect(carried.authoritative_personal_state.wallet).toMatchObject({ available_incense: 13, token_remainder: 25_000 })
+    await h.modern.submitClaim(id, 525_000, carried.business_date)
+    expect(h.ledger.wallet(id)).toMatchObject({ available_incense: 14, token_remainder: 0 })
+    const journal = h.store.database.prepare('SELECT SUM(available_delta) AS available,SUM(frozen_delta) AS frozen FROM incense_wallet_entry WHERE installation_id=?').get(id)
+    expect(journal).toMatchObject({ available: 14, frozen: 0 })
     expect(h.store.database.prepare('SELECT COUNT(*) AS n FROM community_identity').get()!.n).toBe(1)
-    expect(h.store.database.prepare('SELECT COUNT(*) AS n FROM starter_incense_grant').get()!.n).toBe(2)
+    expect(h.store.database.prepare('SELECT COUNT(*) AS n FROM starter_incense_grant').get()!.n).toBe(3)
   })
 
   it('serializes two old requests for the last daily stick without spending carried funds', async () => {
@@ -136,12 +144,26 @@ describe('published 1.2 clients during cumulative-wallet rollout', () => {
       { case_id: boot.active_case.id, vote_type: 'down', count: 500, request_id })))
     expect(results.filter(row => row.result.status === 'accepted')).toHaveLength(1)
     expect(results.filter(row => row.result.status === 'rejected')).toHaveLength(1)
-    expect(h.service.marketState(id).wallet.available_incense).toBe(10)
+    expect(h.ledger.wallet(id).available_incense).toBe(0)
     expect((await h.legacy.dailyState(id)).authoritative_personal_state).toMatchObject({ used_incense: 10, remaining_incense: 0 })
     expect((await h.legacy.snapshot()).global_snapshot.total_incense).toBe(10)
   })
 
-  it('rejects only an incompatible mixed/frozen identity, without spending or falsifying its claims', async () => {
+  it('spends the last daily stick only once while a new client activates the same identity', async () => {
+    const h = await modernServer(), id = h.key.installationId
+    const boot = await h.legacy.bootstrap(id)
+    await h.legacy.vote(id, { case_id: boot.active_case.id, vote_type: 'up', count: 9, request_id: 'activation-race-nine' })
+    const intents = ['activation-race-modern', 'activation-race-old'].map(request_id => ({
+      case_id: boot.active_case.id, vote_type: 'down' as const, count: 500, request_id }))
+    const results = await Promise.allSettled([h.modern.vote(id, intents[0]!), h.legacy.vote(id, intents[1]!)])
+    const accepted = results.filter(result => result.status === 'fulfilled' && result.value.result.status === 'accepted')
+    expect(accepted).toHaveLength(1)
+    expect(h.ledger.wallet(id)).toMatchObject({ available_incense: 0, frozen_incense: 0 })
+    expect((await h.modern.snapshot()).global_snapshot.total_incense).toBe(10)
+    await expect(h.legacy.bootstrap(id)).rejects.toMatchObject({ status: 412, code: 'wallet_upgrade_required' })
+  })
+
+  it('gates downgraded requests before writes while preserving the opted-in wallet and frozen assets', async () => {
     const h = await modernServer(), id = h.key.installationId
     await h.modern.bootstrap(id)
     const state = await h.modern.market!(id)
@@ -152,18 +174,17 @@ describe('published 1.2 clients during cumulative-wallet rollout', () => {
       .rejects.toMatchObject({ status: 412, code: 'wallet_upgrade_required' })
     expect(h.service.marketState(id).wallet).toEqual(before)
     expect(h.service.dailyState(id).authoritative_personal_state).toMatchObject({ claimed_effective_tokens: 500_000, used_incense: 0 })
-    // A claim acknowledged only by the ledger remains a monotonic claim,
-    // even when the old response cannot represent the frozen wallet.
+    // The incompatible binary cannot mutate claims, gift state or money.
     await expect(h.legacy.submitClaim(id, 510_000, state.market!.business_date))
       .rejects.toMatchObject({ status: 412, code: 'wallet_upgrade_required' })
     const afterClaim = h.service.dailyState(id).authoritative_personal_state
-    expect(afterClaim).toMatchObject({ claimed_effective_tokens: 510_000, used_incense: 0 })
-    expect(afterClaim.wallet).toMatchObject({ available_incense: 2, frozen_incense: 8, token_remainder: 10_000 })
+    expect(afterClaim).toMatchObject({ claimed_effective_tokens: 500_000, used_incense: 0 })
+    expect(afterClaim.wallet).toMatchObject({ available_incense: 2, frozen_incense: 8, token_remainder: 0 })
     await expect(h.legacy.submitClaim(id, 510_000, state.market!.business_date))
       .rejects.toMatchObject({ status: 412, code: 'wallet_upgrade_required' })
     expect(h.service.dailyState(id).authoritative_personal_state.wallet).toEqual(afterClaim.wallet)
     await h.modern.marketPosition!(id, { market_id: state.market!.id, batch: 1, side: null, amount: 0, request_id: 'legacy-unfreeze-eight' })
-    expect((await h.legacy.bootstrap(id)).authoritative_personal_state.remaining_incense).toBe(10)
+    await expect(h.legacy.bootstrap(id)).rejects.toMatchObject({ status: 412, code: 'wallet_upgrade_required' })
     h.clock.advance(DAY)
     const current = await h.modern.bootstrap(id)
     await h.modern.vote(id, { case_id: current.active_case.id, vote_type: 'up', count: 11, request_id: 'modern-spends-carry' })
@@ -183,10 +204,22 @@ describe('published 1.2 clients during cumulative-wallet rollout', () => {
       return fetch(input, { ...init, headers })
     } })
     cleanups.push(() => unknown.dispose())
-    const response = await unknown.bootstrap(id)
-    expect(response.authoritative_personal_state.wallet).toBeUndefined()
-    expect(response.authoritative_personal_state.remaining_incense).toBe(10)
+    await expect(unknown.bootstrap(id)).rejects.toMatchObject({ status: 412, code: 'wallet_upgrade_required' })
     expect(h.service.marketState(id).wallet.available_incense).toBe(20)
+  })
+
+  it('does not silently enable a daily account through a market or stream request without wallet capability', async () => {
+    const h = await modernServer(), id = h.key.installationId
+    await h.legacy.bootstrap(id)
+    const oldTransport = createBackendClient({ baseUrl: h.baseUrl, signer: () => h.key, fetchImpl: (input, init) => {
+      const headers = new Headers(init?.headers); headers.delete(WALLET_CAPABILITY_HEADER)
+      return fetch(input, { ...init, headers })
+    } })
+    cleanups.push(() => oldTransport.dispose())
+    await expect(oldTransport.market!(id)).rejects.toMatchObject({ status: 412, code: 'wallet_upgrade_required' })
+    expect(h.store.database.prepare('SELECT cumulative_since FROM incense_wallet WHERE installation_id=?').get(id)!.cumulative_since).toBeNull()
+    expect((await h.legacy.bootstrap(id)).authoritative_personal_state.remaining_incense).toBe(10)
+    expect(h.ledger.wallet(id).available_incense).toBe(10)
   })
 
   it('upgrades the same daily identity and exact claim watermark once without duplicating gifts or funds', async () => {
@@ -197,9 +230,12 @@ describe('published 1.2 clients during cumulative-wallet rollout', () => {
     const service = h.upgrade()
     expect((await h.modern.bootstrap(id)).authoritative_personal_state.wallet).toMatchObject({ available_incense: 9, token_remainder: 25_000 })
     await h.modern.submitClaim(id, 750_000, boot.business_date)
-    await h.legacy.submitClaim(id, 625_000, boot.business_date)
+    await expect(h.legacy.submitClaim(id, 625_000, boot.business_date)).rejects.toMatchObject({ code: 'wallet_upgrade_required' })
     expect(service.marketState(id).wallet).toMatchObject({ available_incense: 12, token_remainder: 0 })
-    expect((await h.legacy.bootstrap(id)).authoritative_personal_state).toMatchObject({ claimed_effective_tokens: 750_000, earned_incense: 15, used_incense: 3, remaining_incense: 12 })
+    const replay = await h.modern.vote(id, { case_id: boot.active_case.id, vote_type: 'up', count: 3, request_id: 'legacy-before-upgrade' })
+    expect(replay.result).toMatchObject({ status: 'accepted', replayed: true, spent_incense: 0 })
+    expect(service.marketState(id).wallet.available_incense).toBe(12)
+    await expect(h.legacy.bootstrap(id)).rejects.toMatchObject({ code: 'wallet_upgrade_required' })
     expect(h.store.database.prepare('SELECT COUNT(*) AS n FROM community_identity').get()!.n).toBe(1)
     expect(h.store.database.prepare('SELECT COUNT(*) AS n FROM starter_incense_grant').get()!.n).toBe(1)
   })

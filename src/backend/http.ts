@@ -25,7 +25,7 @@ import { isIP } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import { MARKET_CANDLE_INTERVAL_MS, parseMarketCandleInterval, parseMarketPositionRequest, type MarketStreamEvent, type MarketState } from '../shared/market-v1.ts'
 import { legacyLiangziView, legacyLiangziHistory } from './liangzi-compat.ts'
-import { LegacyWalletUpgradeRequiredError, legacyWalletView } from './legacy-wallet.ts'
+import { LegacyWalletUpgradeRequiredError, WALLET_MIN_CLIENT_VERSION, legacyWalletView } from './legacy-wallet.ts'
 import { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 import { formatLiangPosition } from '../domain/index.ts'
 import { PLUGIN_VERSION, SERVER_BUILD } from '../shared/index.ts'
@@ -680,9 +680,16 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
       return
     }
 
+    if ((path === `${BACKEND_API_PREFIX}/events` || path.startsWith(`${BACKEND_API_PREFIX}/market/`)
+      || path === `${BACKEND_API_PREFIX}/market`)
+      && headerValue(req, WALLET_CAPABILITY_HEADER) !== WALLET_CAPABILITY_VERSION) {
+      writeValidationError(res, new LegacyWalletUpgradeRequiredError())
+      return
+    }
+
     if (path === `${BACKEND_API_PREFIX}/bootstrap`) {
       try {
-        const response = service.bootstrap(installationId)
+        const response = service.bootstrap(installationId, undefined, headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION)
         const bootstrap = headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION ? response : legacyWalletView(response)
         writeJson(res, 200, headerValue(req, LIANGZI_POLICY_HEADER) === LIANGZI_POLICY_VERSION ? bootstrap : legacyLiangziView(bootstrap))
       } catch (error) { writeValidationError(res, error) }
@@ -691,7 +698,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
     }
     if (path === `${BACKEND_API_PREFIX}/me/daily-state`) {
       try {
-        const response = service.dailyState(installationId)
+        const response = service.dailyState(installationId, undefined, headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION)
         writeJson(res, 200, headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION ? response : legacyWalletView(response))
       } catch (error) { writeValidationError(res, error) }
       return
@@ -794,7 +801,7 @@ export function createBackendHttpApi(options: BackendHttpOptions): BackendHttpAp
         const priorEarned = prior === undefined
           ? 0
           : Math.floor(prior.claimed_effective_tokens / prior.token_per_incense)
-        const response = service.applyTokenClaim(installationId, claim)
+        const response = service.applyTokenClaim(installationId, claim, undefined, headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION)
         writeJson(res, 200, headerValue(req, WALLET_CAPABILITY_HEADER) === WALLET_CAPABILITY_VERSION ? response : legacyWalletView(response))
         const earned = response.authoritative_personal_state.earned_incense
         const have = response.authoritative_personal_state.claimed_effective_tokens
@@ -930,7 +937,8 @@ function writeValidationError(res: ServerResponse, error: unknown): void {
   if (error instanceof LegacyWalletUpgradeRequiredError) {
     // Old vote clients treat every 409 as a complete business receipt. A
     // capability precondition uses 412 so they retain the actual error code.
-    writeError(res, 412, 'wallet_upgrade_required', error.message)
+    writeJson(res, 412, { error: { code: 'wallet_upgrade_required', message: error.message,
+      min_client_version: WALLET_MIN_CLIENT_VERSION } })
     return
   }
   if (error instanceof WireError) {

@@ -1,5 +1,5 @@
 /**
- * SQLite schema (v14) for the Liangxiang backend.
+ * SQLite schema (v15) for the Liangxiang backend.
  *
  * Design notes that matter for the frozen invariants:
  *
@@ -30,7 +30,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { VOTE_COUNT_MAX } from '../domain/index.ts'
 
-export const BACKEND_SCHEMA_USER_VERSION = 14
+export const BACKEND_SCHEMA_USER_VERSION = 15
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS daily_liang_case (
@@ -445,6 +445,20 @@ export function migrate(db: DatabaseSync): void {
       db.exec("ALTER TABLE liang_market ADD COLUMN rule_version TEXT NOT NULL DEFAULT 'liangxiang-market-v1'")
     }
     if (current < 14) db.exec(DDL_V14_MINUTE_CANDLES)
+    if (current < 15) {
+      if (!tableColumns(db, 'incense_wallet').includes('cumulative_since')) {
+        db.exec(`ALTER TABLE incense_wallet ADD COLUMN cumulative_since INTEGER;
+          UPDATE incense_wallet SET cumulative_since=created_at;`)
+      }
+      if (!tableColumns(db, 'incense_wallet').includes('daily_business_date')) {
+        db.exec("ALTER TABLE incense_wallet ADD COLUMN daily_business_date TEXT NOT NULL DEFAULT ''")
+      }
+      db.exec(`CREATE INDEX IF NOT EXISTS ix_wallet_daily_expiry ON incense_wallet(daily_business_date)
+        WHERE cumulative_since IS NULL;`)
+      // Existing candidate wallets already owned cumulative assets, including
+      // frozen positions. Preserve them exactly. A daily-only production
+      // database has no wallet rows here; its users opt in individually later.
+    }
     if (current !== BACKEND_SCHEMA_USER_VERSION) {
       db.exec(`PRAGMA user_version = ${BACKEND_SCHEMA_USER_VERSION}`)
     }

@@ -13,7 +13,7 @@ import { WireError } from '../shared/wire.ts'
 import type { BackendStore, CaseRow, IncenseRow, StatsRow } from './store.ts'
 import { BackendConfigError } from './config.ts'
 
-interface WalletRow { installation_id: string, available: number, frozen: number, token_remainder: number, token_per_incense: number, version: number }
+interface WalletRow { installation_id: string, available: number, frozen: number, token_remainder: number, token_per_incense: number, version: number, cumulative_since: number | null, daily_business_date: string }
 interface CursorRow { claimed_tokens: number, minted_incense: number }
 interface MarketRow { id: string, case_id: string, business_date: string, timezone: string, opens_at: number, closes_at: number, status: DailyMarket['status'], close_point: string | null, created_at: number, settled_at: number | null, version: number, rule_version: string }
 interface BatchRow { market_id: string, batch: MarketBatchId, opens_at: number, locks_at: number, reference_at: number, status: MarketBatch['status'], reference_point: string | null, result: MarketResult | null }
@@ -65,9 +65,32 @@ export class MarketLedger {
   /** Eagerly import ONLY the live cutover day, including users currently offline. */
   initializeWallets(businessDate: string, now: number): void {
     this.store.transaction(() => {
+      this.expireDailyWallets(businessDate, now)
       const rows = this.prepare('SELECT * FROM daily_incense_state WHERE business_date = ?').all(businessDate) as unknown as IncenseRow[]
       for (const row of rows) this.ensureWallet(row.installation_id, businessDate, row.token_per_incense, now)
     })
+  }
+
+  /** Called in the business-date transaction, including on restart/offline days. */
+  expireDailyWallets(date: string, now: number): void {
+    const rows = this.prepare(`SELECT * FROM incense_wallet
+      WHERE cumulative_since IS NULL AND daily_business_date<?`).all(date) as unknown as WalletRow[]
+    for (const row of rows) {
+      // Never erase an unexpected reservation. Old protocols cannot create
+      // one; migrated candidate wallets were marked cumulative by schema 15.
+      if (row.frozen !== 0) throw new Error('daily wallet has frozen assets; explicit repair required')
+      this.prepare(`UPDATE incense_wallet SET available=0,token_remainder=0,
+        daily_business_date=?,version=version+1,updated_at=? WHERE installation_id=?`)
+        .run(date, now, row.installation_id)
+      if (row.available > 0) this.entry(row.installation_id, `expire:${row.daily_business_date}`,
+        'daily_expiry', -row.available, 0, row.daily_business_date, now)
+    }
+  }
+
+  /** One-way opt-in. It preserves only the live day's actual funds/progress. */
+  enableCumulative(installation: string, now: number): void {
+    this.prepare('UPDATE incense_wallet SET cumulative_since=? WHERE installation_id=? AND cumulative_since IS NULL')
+      .run(now, installation)
   }
 
   /** Caller owns the transaction. Historical expired days are never summed. */
@@ -79,8 +102,8 @@ export class MarketLedger {
     const earned = Math.floor(claimed / threshold)
     const available = Math.max(0, earned - (old?.used_incense ?? 0))
     this.prepare(`INSERT INTO incense_wallet
-      (installation_id,available,frozen,token_remainder,token_per_incense,version,created_at,updated_at)
-      VALUES (?,?,0,?,?,0,?,?)`).run(installation, available, claimed % threshold, threshold, now, now)
+      (installation_id,available,frozen,token_remainder,token_per_incense,version,created_at,updated_at,daily_business_date)
+      VALUES (?,?,0,?,?,0,?,?,?)`).run(installation, available, claimed % threshold, threshold, now, now, date)
     this.prepare(`INSERT INTO incense_wallet_cursor(installation_id,business_date,claimed_tokens,minted_incense)
       VALUES (?,?,?,?)`).run(installation, date, claimed, earned)
     this.entry(installation, 'opening', 'opening', available, 0, date, now)

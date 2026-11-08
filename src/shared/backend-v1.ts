@@ -379,7 +379,7 @@ export const V1_ERROR_CODES = [
 export type V1ErrorCode = (typeof V1_ERROR_CODES)[number]
 
 export interface V1ErrorBody {
-  error: { code: V1ErrorCode, message: string, field?: string }
+  error: { code: V1ErrorCode, message: string, field?: string, min_client_version?: string }
 }
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{8,128}$/
