@@ -30,8 +30,12 @@ One compact `香火交易` entry sits below the utility drawer's 2×2 tiles and
 opens the unified chart/trading view; do not add a second `梁位走势` entry or
 restore the retired window from old browser preferences. Keep official minute candles distinct from the retained Host-local observation API.
 Legacy five-minute records retain their true grain and are never subdivided. The whale stays
-in the header between the title/wallet and window controls, outside the plot; stage backgrounds are subtle, future time
-reads `待打梁`, and the footer reads `24:00后一起揭晓`. One noninteractive time-window text beside the zoom controls shows the actual zoomed span.
+in the header between the title/wallet and window controls, outside the plot.
+The same restrained gray future region in both charts starts at the actual
+business clock, with a clear current-time boundary and left-aligned `待开梁`
+caption. Thin stage strips distinguish investment windows without stacking
+full-height backgrounds; missing historical data remains a gap. The footer
+reads `24:00后一起揭晓`. One noninteractive time-window text beside the zoom controls shows the actual zoomed span.
 Wheel zoom is continuous and pointer-anchored; +/− step through 24/12/6/3/1 hours and 30 minutes; candle grain is automatic,
 never a separate interval selector, and cannot exceed the real source resolution. Record the active case all
 business day, including before trading opens; phase shading never hides prices. The normal window and order ticket stay compact. The header whale uses action-specific local motion and readable speech. It reports the selected batch's actual cutoff and pool once per minute, below operation/error priority; clicking it reports on demand.

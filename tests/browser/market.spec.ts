@@ -533,11 +533,11 @@ test('tide uses smooth real anchors over the full day, leaves gaps and future op
     ? ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
     : ['00:00', '08:00', '16:00', '24:00'])
   const future = chart.locator('[data-liangxiang-market-future]')
-  await expect(future).toContainText('待打梁')
+  await expect(future).toContainText('待开梁')
   const futureX = Number(await future.locator('rect').getAttribute('x'))
   expect(geometry.every(segment => segment.x + segment.width <= futureX + .02)).toBe(true)
   await future.hover()
-  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('待打梁')
+  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('待开梁')
   const volume = chart.locator('[data-liangxiang-market-volume]')
   expect(await volume.count()).toBeGreaterThan(0)
   await volume.first().hover()

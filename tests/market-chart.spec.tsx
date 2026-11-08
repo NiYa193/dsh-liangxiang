@@ -64,7 +64,7 @@ describe('readable official market chart, independent of the header illustration
     expect(html).toContain(`data-liangxiang-market-until="${DAY + 24 * HOUR}"`)
     for (const label of ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']) expect(html).toContain(`>${label}</text>`)
     expect(html).toContain('data-liangxiang-market-future=""')
-    expect(html).toContain('待打梁')
+    expect(html).toContain('待开梁')
     expect(html).toContain('data-liangxiang-market-chart-mode="candles"')
     expect(html).toContain('data-liangxiang-market-interval="900000"')
     expect(html).toContain('data-liangxiang-market-phase="before"')
@@ -76,6 +76,48 @@ describe('readable official market chart, independent of the header illustration
     expect(html).not.toContain('data-liangxiang-market-whale-art')
     s.server_time = DAY + 25 * HOUR
     expect(renderToStaticMarkup(<MarketChart state={s} candles={candles} animated={false} />)).not.toContain('data-liangxiang-market-future')
+  })
+
+  it('splits future time at the business clock rather than the last known candle and keeps phases as thin strips', () => {
+    const s = state(), now = DAY + 13 * HOUR + 26 * 60_000
+    s.server_time = now
+    s.current_point = { ...s.current_point!, at: DAY + 10 * HOUR }
+    s.market!.batches = s.market!.batches.map(batch => ({ ...batch, reference: null }))
+    const candles = [10, 18].map(hour => ({ at: DAY + hour * HOUR, open: .4, high: .5, low: .4, close: .5, up_votes: 10, down_votes: 10, volume: 2 }))
+    const html = renderToStaticMarkup(<MarketChart state={s} candles={candles} animated={false} />)
+    const future = html.match(/<g data-liangxiang-market-future=""[^>]*>([\s\S]*?)<\/g>/)![1]!
+    const boundary = html.match(/<line data-liangxiang-market-current-time=""[^>]*>/)![0]!
+    const value = (markup: string, name: string) => Number(markup.match(new RegExp(`\\b${name}="([^"]+)"`))![1])
+    const rect = future.match(/<rect[^>]*>/)![0]!, label = future.match(/<text[^>]*>/)![0]!
+    const expectedX = 12 + (now - DAY) / (24 * HOUR) * 684
+    expect(value(rect, 'x')).toBeCloseTo(expectedX)
+    expect(value(boundary, 'x1')).toBeCloseTo(expectedX)
+    expect(value(boundary, 'x2')).toBeCloseTo(expectedX)
+    expect(value(boundary, 'data-at')).toBe(now)
+    expect(boundary).not.toContain('stroke-dasharray')
+    expect(value(label, 'x')).toBeCloseTo(expectedX + 8)
+    expect(label).toContain('text-anchor="start"')
+    expect(rect).toContain('fill="var(--liangxiang-market-future-bg, #edf0f3)"')
+    expect(html.match(/data-liangxiang-market-candle=/g)).toHaveLength(1)
+    expect(html.match(/<circle data-liangxiang-market-current-point=""[^>]*>/)![0]).toContain(`data-at="${DAY + 10 * HOUR + 60_000}"`)
+    const phases = html.match(/<rect[^>]*data-liangxiang-market-phase=[^>]*>/g)!
+    expect(phases).toHaveLength(8)
+    expect(phases.every(phase => value(phase, 'height') === 3)).toBe(true)
+  })
+
+  it('shows only the time boundary for zero-vote future time, and no current marker on an elapsed business day', () => {
+    const s = state()
+    s.current_point = null
+    s.market!.batches = s.market!.batches.map(batch => ({ ...batch, reference: null }))
+    const empty = renderToStaticMarkup(<MarketChart state={s} candles={[]} animated={false} />)
+    expect(empty).toContain('待开梁')
+    expect(empty).toContain('data-liangxiang-market-current-time')
+    expect(empty).not.toContain('data-liangxiang-market-current-point')
+    expect(empty).not.toContain('50.000000%')
+    s.server_time = DAY + 25 * HOUR
+    const historical = renderToStaticMarkup(<MarketChart state={s} candles={[]} animated={false} />)
+    expect(historical).not.toContain('data-liangxiang-market-current-time')
+    expect(historical).not.toContain('data-liangxiang-market-future')
   })
 
   it('separates the four OHLC values and numeric price axis from decorative content', () => {

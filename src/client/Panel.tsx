@@ -574,6 +574,14 @@ const PANEL_CSS = `
   box-shadow: inset 0 0 0 1px ${color.brand}, 0 4px 10px rgba(0, 0, 0, 0.12);
   transform: translateY(-1px);
 }
+/* Transform gives each button a stacking context. A visible pointer hint must
+   also clear an adjacent keyboard hint; suppressed hints never raise a layer. */
+[data-~ritual]:focus-visible:not([data-~ritual-resting]):not([data-~hint-suppressed]) {
+  z-index: 1;
+}
+[data-~ritual]:hover:not(:disabled):not([data-~ritual-resting]):not([data-~hint-suppressed]) {
+  z-index: 2;
+}
 [data-~utility-drawer] {
   animation: liangxiang-panel-enter 120ms cubic-bezier(.2,.8,.2,1) both;
 }

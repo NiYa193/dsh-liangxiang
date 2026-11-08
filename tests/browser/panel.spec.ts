@@ -228,6 +228,50 @@ test('utility short hints point toward the opposite ritual row and keyboard dism
   await expect(panel).toBeVisible()
 })
 
+test('utility hint paints over the calendar button while leaving its overlapping area clickable', async ({ page }) => {
+  const panel = await openPanel(page)
+  const trigger = panel.locator('[data-liangxiang-utility-trigger]')
+  const entry = panel.locator('[data-liangxiang-liangci-entry]')
+  const hint = trigger.locator('[data-liangxiang-hint]')
+  // Merely hovering another control does not clear an existing keyboard ring.
+  // The pointer hint must still paint above that later sibling's context.
+  await page.mouse.move(0, 0)
+  await page.keyboard.press('Tab')
+  await entry.focus()
+  await expect.poll(() => entry.evaluate(element => element.matches(':focus-visible'))).toBe(true)
+  await trigger.hover()
+  await expect.poll(() => entry.evaluate(element => element.matches(':focus-visible'))).toBe(true)
+  await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+
+  const overlap = await hint.evaluate(element => {
+    const entry = element.closest('[data-liangxiang-panel]')!.querySelector('[data-liangxiang-liangci-entry]')!
+    const hintRect = element.getBoundingClientRect(), entryRect = entry.getBoundingClientRect()
+    const left = Math.max(hintRect.left, entryRect.left), right = Math.min(hintRect.right, entryRect.right)
+    const top = Math.max(hintRect.top, entryRect.top), bottom = Math.min(hintRect.bottom, entryRect.bottom)
+    const x = (left + right) / 2, y = (top + bottom) / 2
+    const passesThrough = entry.contains(document.elementFromPoint(x, y))
+    const pointerEvents = getComputedStyle(element).pointerEvents
+    // Hit testing normally skips this noninteractive hint. Temporarily make
+    // it eligible to inspect the real paint order, then restore immediately.
+    const oldPointerEvents = element.style.pointerEvents
+    let paintedOnTop = false
+    try {
+      element.style.pointerEvents = 'auto'
+      paintedOnTop = element.contains(document.elementFromPoint(x, y))
+    } finally {
+      element.style.pointerEvents = oldPointerEvents
+    }
+    return { x, y, width: right - left, height: bottom - top, pointerEvents, passesThrough, paintedOnTop }
+  })
+  expect(overlap.width).toBeGreaterThan(0)
+  expect(overlap.height).toBeGreaterThan(0)
+  expect(overlap.paintedOnTop).toBe(true)
+  expect(overlap.pointerEvents).toBe('none')
+  expect(overlap.passesThrough).toBe(true)
+  await page.mouse.click(overlap.x, overlap.y)
+  await expect(page.locator(liangciSelector)).toBeVisible()
+})
+
 test('Escape restores ritual focus without replaying pointer hints or highlights for the drawer, calendar, market and version notes', async ({ page }) => {
   const panel = await openPanel(page)
   const trigger = panel.locator('[data-liangxiang-utility-trigger]')

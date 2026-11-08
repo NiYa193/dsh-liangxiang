@@ -15,6 +15,7 @@ const WIDTH = 760, HEIGHT = 272, LEFT = 12, RIGHT = 64, TOP = 24
 const INK = 'var(--liangxiang-market-blue, #4d6bfe)'
 const LIGHT_INK = 'var(--liangxiang-market-chart-text, #8a8271)'
 const PAPER = 'var(--liangxiang-market-paper, var(--dsw-alias-bg-layer-2, #fffcf5))'
+const FUTURE = 'var(--liangxiang-market-future-bg, #edf0f3)'
 const BORDER = 'var(--liangxiang-market-border, rgba(74, 72, 55, .18))'
 const GOLD = 'var(--liangxiang-market-gold, #e2ae54)'
 const VERMILION = 'var(--liangxiang-market-vermilion, #d2503f)'
@@ -125,6 +126,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const { from, until } = viewport?.scope === scope ? viewport : base
   const observedUntil = base.observedUntil
   const futureFrom = observedUntil < until ? Math.max(from, observedUntil) : null
+  const currentTimeInRange = state.server_time >= from && state.server_time < until
   const ticks = from === day.from && until === day.until ? day.ticks : Array.from({ length: 5 }, (_, index) => {
     const at = from + (until - from) * index / 4
     return { at, label: at === day.until ? '24:00' : marketTime(at, timezone) }
@@ -135,7 +137,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const visible = useMemo(() => marketViewportCandles(display, from, until, observedUntil), [display, from, until, observedUntil])
   const rawVisible = useMemo(() => candles.filter(c => c.at + candlesIntervalMs > from && c.at < until && c.at <= observedUntil), [candles, from, until, observedUntil, candlesIntervalMs])
   const gaps = useMemo(() => marketTideGaps(candles, candlesIntervalMs).filter(gap => gap.until > from && gap.from < observedUntil).map(gap => ({ from: Math.max(from, gap.from), until: Math.min(observedUntil, gap.until) })), [candles, from, observedUntil, candlesIntervalMs])
-  const points = useMemo(() => [market?.close_point ?? state.current_point, ...(market?.batches.map(batch => batch.reference) ?? [])].filter(point => point && point.at >= from && point.at <= until), [market, state.current_point, from, until])
+  const points = useMemo(() => [market?.close_point ?? state.current_point, ...(market?.batches.map(batch => batch.reference) ?? [])].filter(point => point && point.at >= from && point.at <= until && point.at <= observedUntil), [market, state.current_point, from, until, observedUntil])
   const latest = useMemo(() => marketLatestChartPoint(candles, observedUntil, candlesIntervalMs, state.current_point, market?.close_point), [candles, observedUntil, candlesIntervalMs, state.current_point, market?.close_point])
   const latestInRange = latest !== null && latest.at >= from && latest.at <= until
   const latestLabel = latest ? `${latest.source === 'close' ? '收盘梁位' : latest.source === 'snapshot' ? '当前快照' : '最新行情'} · ${marketTime(latest.at, timezone)} · ${marketRatioLabel(latest.ratio)}` : ''
@@ -201,7 +203,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     const bounds = event.currentTarget.getBoundingClientRect()
     const at = from + ((event.clientX - bounds.left) / bounds.width * size.width - LEFT) / plotWidth * (until - from)
     if (at < from || at > until) return null
-    if (futureFrom !== null && at > futureFrom) { setSpecial('待打梁 · 等香火慢慢落下'); return null }
+    if (futureFrom !== null && at > futureFrom) { setSpecial('待开梁 · 等香火慢慢落下'); return null }
     const gap = gaps.find(g => at >= g.from && at < g.until)
     if (gap) { setSpecial(`${marketTime(at, timezone)} · 这段未记录，走势不连线`); return null }
     setSpecial(null)
@@ -276,23 +278,27 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
           <linearGradient id="liangxiang-market-tide-sheen" x1="0" y1="0" x2="1" y2="1"><stop stopColor="#fff" stopOpacity=".12" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
           <pattern id="liangxiang-market-gap-fill" width="10" height="10" patternTransform="rotate(45)" patternUnits="userSpaceOnUse"><path d="M0 0V10" stroke={LIGHT_INK} strokeOpacity=".2" strokeWidth="2" /></pattern>
         </defs>
+        {futureFrom !== null && <g data-liangxiang-market-future="" data-at={futureFrom} role="img" aria-label="待开梁：当前时间之后，不绘制未来走势">
+          <rect x={x(futureFrom)} y={TOP} width={Math.max(0, x(until) - x(futureFrom))} height={volumeY + volumeHeight - TOP} fill={FUTURE} />
+          {x(until) - x(futureFrom) >= 50 && <text x={x(futureFrom) + 8} y={TOP + Math.min(22, plotHeight - 3)} fill={LIGHT_INK} fontSize="11" textAnchor="start" paintOrder="stroke" stroke={FUTURE} strokeWidth="4" strokeLinejoin="round">待开梁</text>}
+        </g>}
         {Array.from({ length: size.height < 190 ? 3 : 5 }, (_, index) => {
           const ratio = range.max - (range.max - range.min) * index / (size.height < 190 ? 2 : 4), cy = y(ratio)
           return <g key={index} data-liangxiang-market-price-axis=""><line x1={LEFT} x2={LEFT + plotWidth} y1={cy} y2={cy} stroke={BORDER} strokeWidth=".8" /><text x={LEFT + plotWidth + 6} y={cy + 4} fill={LIGHT_INK} fontSize="11">{(ratio * 100).toFixed(2)}%</text></g>
         })}
+        {currentTimeInRange && <line data-liangxiang-market-current-time="" data-at={state.server_time} role="img" aria-label={`当前时间 ${marketTime(state.server_time, timezone)}`} x1={x(state.server_time)} x2={x(state.server_time)} y1={TOP} y2={volumeY + volumeHeight} stroke={LIGHT_INK} strokeWidth="1" strokeOpacity=".45" vectorEffect="non-scaling-stroke" />}
         <g clipPath="url(#liangxiang-market-price-clip)">
           {market && [
             { from: day.from, until: market.batches[0]!.opens_at, kind: 'before', label: '开盘前' },
             ...market.batches.flatMap(batch => [{ from: batch.opens_at, until: batch.locks_at, kind: 'open', label: `P${batch.batch}投入` }, { from: batch.locks_at, until: batch.reference_at, kind: 'locked', label: `P${batch.batch}锁仓定线` }]),
             { from: market.batches[2]!.reference_at, until: day.until, kind: 'closing', label: '尾盘打梁' },
-          ].filter(phase => phase.until > from && phase.from < until).map(phase => <rect key={`${phase.kind}-${phase.from}`} data-liangxiang-market-phase={phase.kind} role="img" aria-label={`${phase.label}：${marketTime(phase.from, timezone)}—${phase.until === day.until ? '24:00' : marketTime(phase.until, timezone)}`} x={x(Math.max(from, phase.from))} y={TOP} width={Math.max(0, x(Math.min(until, phase.until)) - x(Math.max(from, phase.from)))} height={plotHeight} fill={phase.kind === 'locked' || phase.kind === 'closing' ? GOLD : INK} fillOpacity={phase.kind === 'locked' ? '.065' : phase.kind === 'open' ? '.035' : '.018'} />)}
-          {futureFrom !== null && <g data-liangxiang-market-future="" role="img" aria-label="待打梁：未来时段，不绘制走势"><rect x={x(futureFrom)} y={TOP} width={Math.max(0, x(until) - x(futureFrom))} height={plotHeight} fill={PAPER} fillOpacity=".12" />{x(until) - x(futureFrom) >= 68 && <text x={(x(futureFrom) + x(until)) / 2} y={TOP + plotHeight / 2} fill={LIGHT_INK} fontSize="11" textAnchor="middle">待打梁</text>}</g>}
+          ].filter(phase => phase.until > from && phase.from < until).map(phase => <rect key={`${phase.kind}-${phase.from}`} data-liangxiang-market-phase={phase.kind} role="img" aria-label={`${phase.label}：${marketTime(phase.from, timezone)}—${phase.until === day.until ? '24:00' : marketTime(phase.until, timezone)}`} x={x(Math.max(from, phase.from))} y={TOP} width={Math.max(0, x(Math.min(until, phase.until)) - x(Math.max(from, phase.from)))} height="3" fill={phase.kind === 'open' ? INK : phase.kind === 'locked' ? GOLD : SLATE} fillOpacity={phase.kind === 'open' ? '.3' : phase.kind === 'locked' ? '.24' : '.12'} />)}
           {gaps.map(gap => <g key={gap.from} role="img" aria-label="此段未记录，走势不连线"><rect x={x(gap.from)} y={TOP} width={Math.max(0, x(gap.until) - x(gap.from))} height={plotHeight} fill="url(#liangxiang-market-gap-fill)" data-liangxiang-market-gap="" />{x(gap.until) - x(gap.from) >= 45 && <text x={(x(gap.from) + x(gap.until)) / 2} y={TOP + 18} textAnchor="middle" fill={LIGHT_INK} fontSize="11">未记录</text>}</g>)}
           {mode === 'tide' ? <TideLayer candles={rawVisible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} animated={animated} layout={layout} sourceIntervalMs={candlesIntervalMs} /> : <CandleLayer candles={visible} from={from} until={until} min={range.min} max={range.max} observedAt={observedUntil} layout={layout} sourceIntervalMs={candlesIntervalMs} />}
           {market?.batches.map(batch => {
             if (batch.reference_at < from || batch.reference_at > until) return null
             const reference = pointRatio(batch.reference), cx = x(batch.reference_at)
-            return <g key={batch.batch} data-liangxiang-market-reference={batch.batch}><line x1={cx} x2={cx} y1={TOP} y2={layout.bottom} stroke={INK} strokeDasharray="3 5" opacity={batch.batch === selectedBatch ? '.3' : '.14'} />{reference !== null && <circle cx={cx} cy={y(reference)} r={batch.batch === selectedBatch ? '3.5' : '2.5'} fill={INK} stroke={PAPER} strokeWidth="1.3" />}</g>
+            return <g key={batch.batch} data-liangxiang-market-reference={batch.batch}><line x1={cx} x2={cx} y1={TOP} y2={layout.bottom} stroke={INK} strokeDasharray="3 5" opacity={batch.batch === selectedBatch ? '.3' : '.14'} />{reference !== null && batch.reference_at <= observedUntil && <circle cx={cx} cy={y(reference)} r={batch.batch === selectedBatch ? '3.5' : '2.5'} fill={INK} stroke={PAPER} strokeWidth="1.3" />}</g>
           })}
           {latest && latestInRange && <circle data-liangxiang-market-current-point="" data-at={latest.at} data-ratio={latest.ratio} data-source={latest.source} cx={x(latest.at)} cy={y(latest.ratio)} r="3" fill={GOLD} stroke={PAPER} strokeWidth="1.4" role="img" aria-label={latestLabel}><title>{latestLabel}</title></circle>}
           {selected && (hover !== null || pinned !== null) && <line x1={x(midpoint(selected, observedUntil, candlesIntervalMs))} x2={x(midpoint(selected, observedUntil, candlesIntervalMs))} y1={TOP} y2={layout.bottom} stroke={INK} strokeDasharray="2 3" opacity=".6" />}

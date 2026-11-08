@@ -153,7 +153,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   await expect(chart.locator('[data-liangxiang-market-phase="open"]')).toHaveCount(3)
   await expect(chart.locator('[data-liangxiang-market-phase="locked"]')).toHaveCount(3)
   await expect(chart.locator('[data-liangxiang-market-phase="closing"]')).toHaveCount(1)
-  await expect(chart.locator('[data-liangxiang-market-future]')).toContainText('待打梁')
+  await expect(chart.locator('[data-liangxiang-market-future]')).toContainText('待开梁')
   const wicks = chart.locator('[data-liangxiang-market-wick]')
   expect(await wicks.count()).toBeGreaterThan(0)
   expect(await wicks.evaluateAll(nodes => nodes.every(node =>
@@ -371,6 +371,56 @@ test('the latest marker stays on the true forming-minute endpoint in tide and ag
   await expect(marker).toHaveAttribute('data-at', String(observed))
   const displayCenter = Number(await chart.locator('[data-liangxiang-market-candle]').last().getAttribute('data-liangxiang-market-candle-x'))
   expect(Number(await marker.getAttribute('cx'))).toBeGreaterThan(displayCenter)
+})
+
+test('both plot styles split future grey time at the actual business clock with a left-aligned label and quiet phase strips', async ({ page }, testInfo) => {
+  const state = chartFixture(), now = DAY + 13 * HOUR + 26 * MINUTE
+  state.server_time = now
+  state.current_point = { ...state.current_point!, at: DAY + 10 * HOUR }
+  const data = [...chartCandles(), { at: DAY + 18 * HOUR, open: .5, close: .5, high: .5, low: .5, up_votes: 700, down_votes: 700, volume: 2 }]
+  await page.route('**/liangxiang/api/market', route => route.fulfill({ json: state, headers: { 'x-liangxiang-cache-scope': 'browser-chart-scope' } }))
+  await page.route('**/liangxiang/api/market/candles?*', route => route.fulfill({ json: candlePage(route.request().url(), data) }))
+  const { dialog, chart } = await openChart(page)
+  const svg = chart.locator('svg[data-liangxiang-market-from]')
+  const future = chart.locator('[data-liangxiang-market-future]')
+  const boundary = chart.locator('[data-liangxiang-market-current-time]')
+  for (const mode of ['K 线', '潮汐']) {
+    await chart.getByRole('button', { name: mode, exact: true }).click()
+    await expect(boundary).toHaveAttribute('data-at', String(now))
+    await expect(future).toHaveAttribute('data-at', String(now))
+    await expect(future).toContainText('待开梁')
+    expect(await boundary.getAttribute('stroke-dasharray')).toBeNull()
+    const expectBoundary = async (): Promise<void> => {
+      const from = Number(await svg.getAttribute('data-liangxiang-market-from')), until = Number(await svg.getAttribute('data-liangxiang-market-until'))
+      const width = await svg.evaluate(element => (element as SVGSVGElement).viewBox.baseVal.width)
+      const expected = 12 + (now - from) / (until - from) * (width - 76)
+      expect(Number(await future.locator('rect').getAttribute('x'))).toBeCloseTo(expected, 4)
+      expect(Number(await boundary.getAttribute('x1'))).toBeCloseTo(expected, 4)
+      expect(Number(await boundary.getAttribute('x2'))).toBeCloseTo(expected, 4)
+      expect(Number(await future.locator('text').getAttribute('x'))).toBeCloseTo(expected + 8, 4)
+      await expect(future.locator('text')).toHaveAttribute('text-anchor', 'start')
+    }
+    await expectBoundary()
+    const paint = await future.locator('rect').evaluate(element => ({ fill: getComputedStyle(element).fill, paper: getComputedStyle(element.closest('[data-liangxiang-market-dialog]')!).backgroundColor }))
+    expect(paint.fill).not.toBe(paint.paper)
+    expect(paint.fill).not.toBe('none')
+    expect(await chart.locator('[data-liangxiang-market-phase]').evaluateAll(nodes => nodes.every(node => Number(node.getAttribute('height')) <= 3))).toBe(true)
+    await expect(chart.locator('[data-liangxiang-market-reference] > line')).toHaveCount(3)
+    const livePoint = chart.locator('[data-liangxiang-market-current-point]')
+    await expect(livePoint).toHaveAttribute('data-at', String(DAY + 10 * HOUR))
+    const futureX = Number(await boundary.getAttribute('x1'))
+    expect(Number(await livePoint.getAttribute('cx'))).toBeLessThan(futureX)
+    const visiblePoints = mode === '潮汐' ? chart.locator('[data-liangxiang-market-tide-end]') : chart.locator('[data-liangxiang-market-candle]')
+    expect(await visiblePoints.evaluateAll((nodes, end) => nodes.every(node => Number(node.getAttribute('cx') ?? node.getAttribute('data-liangxiang-market-candle-x')) <= end), futureX)).toBe(true)
+    await future.hover()
+    await expect(chart.locator('.liangxiang-market-chart-detail')).toContainText('待开梁')
+    await chart.getByRole('button', { name: '放大走势', exact: true }).click()
+    await expectBoundary()
+    await svg.focus()
+    await page.keyboard.press('0')
+    await expectBoundary()
+  }
+  await testInfo.attach('future-business-time-split', { body: await dialog.screenshot(), contentType: 'image/png' })
 })
 
 test('wheel zoom is continuous and cumulative around the pointer while the range stays a passive display', async ({ page }) => {
