@@ -465,7 +465,10 @@ describe('region 2: 香火 | 梁子 + 梁位 | 下一炷', () => {
     expect(styleOf(incenseValue).fontSize).toBe('17px')
     expect(styleOf(nextValueRow).color).toBe(mainColor.deep)
     expect(PERSONAL_INCENSE_CAPTION_CSS).toContain(`color:var(--liangxiang-main-deep, ${color.textPrimary})`)
-    expect(styleOf(nextValueRow).lineHeight).toBe('18px')
+    expect(styleOf(nextValueRow).lineHeight).toBe('20px')
+    const units = findByAttr(tree, 'data-liangxiang-personal-unit')
+    expect(units).toHaveLength(2)
+    expect(styleOf(units[0])).toEqual(styleOf(units[1]))
     expect(PERSONAL_INCENSE_CAPTION_CSS).toContain('[data-caption-amount] { font-weight:700;')
     expect(styleOf(nextValueRow).fontWeight).toBe(700)
     expect(textContent(findByAttr(tree, 'data-caption-label'))).toBe('今日凝香')
@@ -1157,7 +1160,7 @@ describe('梁相案牍', () => {
 
   it('asks for confirmation before the expensive sync', () => {
     let asks = 0, reconciles = 0, cancels = 0
-    const callbacks = { utilityOpen: true, onReconcileAsk: () => { asks++ }, onReconcileConfirm: () => { reconciles++ }, onReconcileCancel: () => { cancels++ } }
+    const callbacks = { utilityOpen: true, onOpenMarket: () => undefined, onReconcileAsk: () => { asks++ }, onReconcileConfirm: () => { reconciles++ }, onReconcileCancel: () => { cancels++ } }
     const resting = renderPanel(onlineState(), '', callbacks)
     const tree = renderPanel(onlineState(), '', { ...callbacks, reconcilePending: true })
     const confirm = findByAttr(tree, 'data-liangxiang-reconcile-confirm')[0]
@@ -1171,7 +1174,7 @@ describe('梁相案牍', () => {
     expect(styleOf(confirm)).toMatchObject({ position: 'absolute', inset: 0, zIndex: 5 })
     const restingDrawer = findByAttr(resting, 'data-liangxiang-utility-drawer')[0]
     const confirmDrawer = findByAttr(tree, 'data-liangxiang-utility-drawer')[0]
-    expect(styleOf(restingDrawer).height).toBe('208px')
+    expect(styleOf(restingDrawer).height).toBe('180px')
     expect(styleOf(confirmDrawer).height).toBe(styleOf(restingDrawer).height)
     const ask = repair?.props.onClick as () => void
     ask()

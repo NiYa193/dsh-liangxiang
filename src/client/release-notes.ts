@@ -5,7 +5,7 @@
  * test deliberately fails when a version bump forgets to refresh this copy.
  * This is cosmetic localStorage only and never participates in authority.
  */
-export const RELEASE_NOTES_VERSION = '2.0.0-alpha.1'
+export const RELEASE_NOTES_VERSION = '2.0.0-alpha.2'
 export const RELEASE_NOTES_TITLE = `梁相 v${RELEASE_NOTES_VERSION} 更新`
 export const RELEASE_NOTES_ITEMS = [
   '在线香火能攒了：余额与收益跨日保留，可用与冻结一目了然。',

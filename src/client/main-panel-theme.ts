@@ -1,6 +1,6 @@
-/** The approved blue pond palette, scoped to the panel and its docked entry. */
+/** The approved blue pond palette, scoped to the panel, dock and history dialog. */
 export const MAIN_PANEL_THEME_CSS = `
-[data-liangxiang-panel], [data-liangxiang-badge] {
+[data-liangxiang-panel], [data-liangxiang-badge], [data-liangci-dialog] {
   --liangxiang-main-paper: light-dark(#fbfdff, #202b3a);
   --liangxiang-main-soft: light-dark(#eff5fe, #2b3c55);
   --liangxiang-main-ink: light-dark(#293950, #e6eef9);

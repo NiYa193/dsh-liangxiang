@@ -56,11 +56,11 @@ export interface LiangAvatarProps {
 const AVATAR_MOTION_CSS = `
 [data-liangxiang-avatar],
 [data-liangci-dialog] {
-  --liangxiang-state-nan-text: #456a9e;
-  --liangxiang-state-gong-text: #496b82;
-  --liangxiang-state-shen-text: #5644cc;
-  --liangxiang-state-sheng-text: #745900;
-  --liangxiang-state-zu-text: #9d3328;
+  --liangxiang-state-nan-text: light-dark(#456a9e, #bed8ff);
+  --liangxiang-state-gong-text: light-dark(#496b82, #9bbbd1);
+  --liangxiang-state-shen-text: light-dark(#5644cc, #b8afff);
+  --liangxiang-state-sheng-text: light-dark(#745900, #e1c46a);
+  --liangxiang-state-zu-text: light-dark(#9d3328, #f0a093);
 }
 @keyframes liangxiang-avatar-pulse {
   0% { transform: scale3d(1, 1, 1); }
@@ -80,16 +80,6 @@ const AVATAR_MOTION_CSS = `
   [data-liangxiang-avatar-figure],
   [data-liangxiang-avatar] {
     animation: none !important;
-  }
-}
-@media (prefers-color-scheme: dark) {
-  [data-liangxiang-avatar],
-  [data-liangci-dialog] {
-    --liangxiang-state-nan-text: #bed8ff;
-    --liangxiang-state-gong-text: #9bbbd1;
-    --liangxiang-state-shen-text: #b8afff;
-    --liangxiang-state-sheng-text: #e1c46a;
-    --liangxiang-state-zu-text: #f0a093;
   }
 }
 `

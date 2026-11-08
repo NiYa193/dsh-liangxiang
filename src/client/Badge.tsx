@@ -80,10 +80,10 @@ const buttonStyle: CSSProperties = {
   width: `${BADGE_SIZE}px`,
   height: `${BADGE_SIZE}px`,
   padding: 0,
-  border: `1px solid color-mix(in srgb, ${mainColor.blue} 32%, ${mainColor.line})`,
-  borderRadius: '16px 17px 15px 15px',
-  background: `radial-gradient(ellipse at 50% 35%, color-mix(in srgb, ${mainColor.water} 16%, transparent), transparent 70%), ${mainColor.paper}`,
-  boxShadow: '0 8px 22px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.10)',
+  border: `1px solid color-mix(in srgb, ${mainColor.blue} 42%, ${mainColor.line})`,
+  borderRadius: '42% 43% 40% 42%',
+  background: `radial-gradient(ellipse at 50% 38%, color-mix(in srgb, ${mainColor.water} 20%, transparent), transparent 68%), color-mix(in srgb, ${mainColor.paper} 90%, transparent)`,
+  boxShadow: `0 7px 18px rgba(0, 0, 0, 0.16), 0 0 13px color-mix(in srgb, ${mainColor.water} 15%, transparent), inset 0 1px 0 color-mix(in srgb, ${mainColor.paper} 85%, transparent)`,
   color: '#ffffff',
   display: 'flex',
   alignItems: 'center',
@@ -118,7 +118,7 @@ ${MAIN_PANEL_THEME_CSS}
 [data-liangxiang-badge]:hover,
 [data-liangxiang-badge][aria-expanded="true"] {
   border-color: color-mix(in srgb, ${mainColor.blue} 66%, ${mainColor.line});
-  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.26), 0 0 0 3px color-mix(in srgb, ${mainColor.blue} 10%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18), 0 0 0 2px color-mix(in srgb, ${mainColor.blue} 8%, transparent), 0 0 18px color-mix(in srgb, ${mainColor.water} 20%, transparent), inset 0 1px 0 color-mix(in srgb, ${mainColor.paper} 85%, transparent);
 }
 [data-liangxiang-badge][data-dragging="true"] {
   cursor: grabbing;
@@ -197,10 +197,10 @@ export function BadgeButton({
         data-liangxiang-badge-halo=""
         style={{
           position: 'absolute',
-          inset: '4px',
-          borderRadius: '14px 15px 13px 13px',
-          background: `radial-gradient(circle, color-mix(in srgb, ${color.ritualGold} 18%, transparent) 0%, transparent 68%)`,
-          boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color.ritualGold} 18%, transparent)`,
+          inset: '3px',
+          borderRadius: 'inherit',
+          background: `radial-gradient(ellipse at 50% 42%, color-mix(in srgb, ${mainColor.water} 18%, transparent), transparent 72%)`,
+          boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${mainColor.blue} 22%, transparent), inset 0 0 10px color-mix(in srgb, ${mainColor.water} 9%, transparent)`,
           pointerEvents: 'none',
         }}
       />
@@ -920,8 +920,13 @@ export function LiangxiangBadge(): ReactElement {
     setModeConfirmOpen(false)
     setReconcilePending(true)
   }
+  const restoreUtilityActionFocus = (action: 'reconcile' | 'mode'): void => {
+    // The underlying tile stays mounted: focus it before its cancel is removed.
+    anchorRef.current?.querySelector<HTMLElement>(`[data-liangxiang-utility-action="${action}"]`)?.focus({ preventScroll: true })
+  }
   const onReconcileCancel = (): void => {
     setReconcilePending(false)
+    restoreUtilityActionFocus('reconcile')
   }
   const onReconcileConfirm = (): void => {
     setReconcilePending(false)
@@ -944,7 +949,10 @@ export function LiangxiangBadge(): ReactElement {
     setModeConfirmOpen(true)
   }
   const onModeCancel = (): void => {
-    if (!modeChanging) setModeConfirmOpen(false)
+    if (!modeChanging) {
+      setModeConfirmOpen(false)
+      restoreUtilityActionFocus('mode')
+    }
   }
   const onModeConfirm = (): void => {
     if (modeChanging) return

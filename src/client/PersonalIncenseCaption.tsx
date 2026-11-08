@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import { formatMainIncense } from './main-panel-presentation.ts'
-import { color } from './theme.ts'
+import { color, font } from './theme.ts'
+import { mainColor } from './main-panel-theme.ts'
+
+/** One unit style for both personal flanks, including transient receipt views. */
+export const PERSONAL_INCENSE_UNIT_STYLE: CSSProperties = {
+  fontFamily: font.family, fontSize: '9px', fontWeight: 500, lineHeight: '14px',
+  color: mainColor.deep, letterSpacing: 'normal',
+}
 
 export interface PersonalIncenseCaptionState {
   view: 'daily' | 'gain' | 'balance'
@@ -108,10 +115,10 @@ export function usePersonalIncenseCaption(input: PersonalIncenseCaptionInput): P
 
 export const PERSONAL_INCENSE_CAPTION_CSS = `
 [data-liangxiang-personal-caption] { width:52px; color:${color.textSecondary}; text-align:center; font-variant-numeric:tabular-nums; }
-[data-liangxiang-personal-caption] [data-caption-copy] { display:flex; flex-direction:column; align-items:center; width:52px; }
+[data-liangxiang-personal-caption] [data-caption-copy] { display:flex; flex-direction:column; align-items:center; gap:2px; width:52px; }
 [data-liangxiang-personal-caption] [data-caption-label] { font-size:10px; line-height:14px; white-space:nowrap; }
 [data-liangxiang-personal-caption] [data-caption-value] { display:flex; align-items:baseline; justify-content:center; gap:1px; width:52px; height:20px; line-height:20px; color:var(--liangxiang-main-deep, ${color.textPrimary}); }
-[data-liangxiang-personal-caption] [data-caption-unit] { flex:none; font-size:8.5px; font-weight:500; line-height:12px; }
+[data-liangxiang-personal-caption] [data-caption-unit] { flex:none; }
 [data-liangxiang-personal-caption] [data-caption-amount] { font-weight:700; white-space:nowrap; }
 [data-liangxiang-personal-caption][data-view=gain] [data-caption-copy] { animation:liangxiang-personal-gain 1.5s ease both; }
 [data-liangxiang-personal-caption][data-view=balance] [data-caption-copy] { animation:liangxiang-personal-balance 2.6s ease both; }
@@ -149,7 +156,7 @@ export function PersonalIncenseCaption({
         <span data-caption-label="">{label}</span>
         <strong data-caption-value="">
           <span data-caption-amount="" data-liangxiang-compact="incense" style={numberStyle}>{copy}</span>
-          <small data-caption-unit="">炷</small>
+          <small data-caption-unit="" data-liangxiang-personal-unit="" style={PERSONAL_INCENSE_UNIT_STYLE}>炷</small>
         </strong>
       </div>
     </div>

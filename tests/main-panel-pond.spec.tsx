@@ -6,7 +6,7 @@ import { findAll, findByAttr, renderDeep, styleOf } from './helpers/render.ts'
 describe('main panel decorative pond', () => {
   it('keeps water bounded, monotonic and independent from Token progress or global Liangzi', () => {
     expect(mainPondGeometry(0)).toEqual({ waterDrop: 128, waterDepth: 0, plantGrowth: 0, fishTop: 102, fishEligible: false })
-    expect(mainPondGeometry(1_000)).toEqual({ waterDrop: 0, waterDepth: 128, plantGrowth: 1, fishTop: 30, fishEligible: true })
+    expect(mainPondGeometry(1_000)).toEqual({ waterDrop: 0, waterDepth: 128, plantGrowth: 1, fishTop: 80, fishEligible: true })
     expect(mainPondGeometry(Number.MAX_SAFE_INTEGER)).toEqual(mainPondGeometry(1_000))
     for (const input of [-1, NaN, Infinity, -Infinity]) expect(mainPondGeometry(input)).toEqual(mainPondGeometry(0))
     let previousDepth = 0, previousGrowth = 0
@@ -18,6 +18,19 @@ describe('main panel decorative pond', () => {
       expect(current.plantGrowth).toBeLessThanOrEqual(1)
       previousDepth = current.waterDepth;previousGrowth = current.plantGrowth
     }
+  })
+
+  it('keeps the fish below the caption and under shallow water without touching the pond bottom', () => {
+    for (const stock of [101, 110, 150, 437, 1_000, 1_000_000]) {
+      const geometry = mainPondGeometry(stock)
+      expect(geometry.fishTop).toBeGreaterThanOrEqual(80)
+      expect(geometry.fishTop + 25).toBeLessThan(128)
+      // The actor layer begins at y=8; the shared puff rises at most 4px.
+      // Even its upper edge stays below the front wave's surface band.
+      expect(geometry.fishTop + 8 - 4).toBeGreaterThanOrEqual(geometry.waterDrop + 15)
+    }
+    expect(mainPondGeometry(437).fishTop).toBe(80)
+    expect(mainPondGeometry(101).fishTop).toBeGreaterThan(99)
   })
 
   it('grows a whole small plant from its root below 100 instead of clipping a tall plant', () => {

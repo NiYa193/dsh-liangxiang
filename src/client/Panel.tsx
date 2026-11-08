@@ -91,7 +91,7 @@ import { QqGroupCard } from './QqGroupCard.tsx'
 import { ReleaseNotesDialog } from './ReleaseNotesDialog.tsx'
 import { MAIN_PANEL_THEME_CSS, mainColor } from './main-panel-theme.ts'
 import { MainPanelPond } from './MainPanelPond.tsx'
-import { PersonalIncenseCaption, type PersonalIncenseCaptionState } from './PersonalIncenseCaption.tsx'
+import { PersonalIncenseCaption, PERSONAL_INCENSE_UNIT_STYLE, type PersonalIncenseCaptionState } from './PersonalIncenseCaption.tsx'
 import { formatMainIncense } from './main-panel-presentation.ts'
 
 const versionSuffixAt = PLUGIN_VERSION.search(/[-+]/)
@@ -360,14 +360,11 @@ const flankValueStyle: CSSProperties = {
   fontSize: '17px',
   fontWeight: 700,
   color: mainColor.deep,
-  lineHeight: '18px',
-}
-
-const flankUnitStyle: CSSProperties = {
-  fontSize: '9px',
-  fontWeight: 500,
-  color: color.textTertiary,
-  lineHeight: '14px',
+  lineHeight: '20px',
+  display: 'flex',
+  alignItems: 'baseline',
+  justifyContent: 'center',
+  gap: '1px',
 }
 
 const voteRowStyle: CSSProperties = {
@@ -1410,7 +1407,7 @@ export function Panel(props: PanelProps): ReactElement {
             >
               {formatCompactCount(displayTokensToNext, 0)}
             </span>
-            <span style={flankUnitStyle}>量</span>
+            <span data-liangxiang-personal-unit="" style={PERSONAL_INCENSE_UNIT_STYLE}>量</span>
           </span>
         </div>
       </div>
@@ -1786,7 +1783,7 @@ export function Panel(props: PanelProps): ReactElement {
                   bottom: 'calc(100% + 6px)',
                   zIndex: 3,
                   width: `${UTILITY_DRAWER_WIDTH}px`,
-                  height: '208px',
+                  height: onOpenMarket ? '180px' : '228px',
                   boxSizing: 'border-box',
                   padding: '10px',
                   borderRadius: '12px',
@@ -1880,8 +1877,8 @@ export function Panel(props: PanelProps): ReactElement {
                   </span>
                 </button>}
                 <button type="button" data-liangxiang-utility-action="reconcile" disabled={offline} onClick={onReconcileAsk}
-                  style={{ display: 'block', width: '100%', boxSizing: 'border-box', minHeight: 0, marginTop: '10px', border: 0,
-                    background: 'none', color: mainColor.sub, padding: '4px 0', font: `10px ${font.family}`, lineHeight: 1.5, cursor: 'pointer' }}>
+                  style={{ display: 'block', width: '100%', boxSizing: 'border-box', minHeight: 0, marginTop: '6px', border: 0,
+                    background: 'none', color: mainColor.sub, padding: '4px 0 2px', font: `10px ${font.family}`, lineHeight: 1.5, cursor: 'pointer' }}>
                   显示异常？ · {UTILITY_RECONCILE_LABEL}
                 </button>
                 {reconcilePending && (

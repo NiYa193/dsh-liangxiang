@@ -120,7 +120,7 @@ describe('LiangxiangBadge entry', () => {
     expect(String(style.background)).toContain('radial-gradient')
     expect(style.overflow).toBe('visible')
     expect(String(style.boxShadow)).toContain('rgba')
-    expect(style.borderRadius).toBe('16px 17px 15px 15px')
+    expect(style.borderRadius).toBe('42% 43% 40% 42%')
     expect(style.width).toBe(`${BADGE_SIZE}px`)
     expect(style.height).toBe(`${BADGE_SIZE}px`)
     expect(style.animation).toBeUndefined()

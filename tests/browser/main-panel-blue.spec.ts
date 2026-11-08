@@ -251,8 +251,12 @@ test('one real fish visit puffs identically on both sides and foreground bubbles
     expect(next.top).toBeLessThan(first.top)
     expect(next.scale).toBeGreaterThan(first.scale)
     const avatar = await fixture.panel.locator('[data-liangxiang-avatar]').boundingBox(), origin = await pond.boundingBox()
+    const ring = (await fixture.panel.locator('[data-liangxiang-ring]').boundingBox())!
     if (side === 'left') expect(origin!.x + first.x + 6).toBeLessThan(avatar!.x)
     else expect(origin!.x + first.x - 6).toBeGreaterThan(avatar!.x + avatar!.width)
+    // Keep even the fully grown orb outside the ring's rectangular footprint.
+    if (side === 'left') expect(origin!.x + first.x + 5).toBeLessThan(ring.x)
+    else expect(origin!.x + first.x - 5).toBeGreaterThan(ring.x + ring.width)
     await expect(bubble).toHaveAttribute('data-stage', 'pop', { timeout: 1_500 })
     const pop = await bubble.evaluate(element => {
       const pond = element.closest<HTMLElement>('[data-liangxiang-main-pond]')!

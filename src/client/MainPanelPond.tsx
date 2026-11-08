@@ -18,7 +18,10 @@ export function mainPondGeometry(remainingIncense: number): {
   // A complete small plant grows from the bottom. Clipping alone would expose
   // only the tips of a full-size plant in shallow water.
   const plantGrowth = Math.max(0, Math.min(1, Math.sqrt(stock / FISH_MIN), (depth - 5) / 27))
-  return { waterDrop, waterDepth: depth, plantGrowth, fishTop: Math.min(waterDrop + 30, 102), fishEligible: stock > FISH_MIN }
+  // Pass below the flank numbers, in the quiet band above the plant roots.
+  // Shallow water still lowers the whole fish beneath the moving surface.
+  const fishTop = Math.min(102, Math.max(POND_HEIGHT - 48, waterDrop + 12))
+  return { waterDrop, waterDepth: depth, plantGrowth, fishTop, fishEligible: stock > FISH_MIN }
 }
 
 export interface MainPanelPondProps {
@@ -201,7 +204,9 @@ export function attachMainPanelPond(root: HTMLDivElement, {
         stopVisit();void travel.offsetWidth
         visiting = true;seen.current = true;root.dataset.fish = 'true'
         const id = generation
-        later(() => puff('left', id), 1_420);later(() => puff('right', id), 3_920)
+        // The same head gesture emits farther outside the ring on each side.
+        // A 200ms travel shift moves each true head anchor outward by ~9.6px.
+        later(() => puff('left', id), 1_220);later(() => puff('right', id), 4_120)
         later(() => { stopVisit();schedule() }, VISIT_MS)
       }, seen.current ? 24_000 + Math.random() * 18_000 : 6_000 + Math.random() * 4_000)
     }
