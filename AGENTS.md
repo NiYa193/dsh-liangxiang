@@ -1279,6 +1279,18 @@ copy, rollback points, and every still-unapproved external action. Passing the
 gate never authorizes publication. Public `main`, production backend, npm,
 GitHub Release/Tag, and GitHub Pages actions wait for explicit user approval.
 
+Before a formal release, recheck the important DSH plugin markets, including
+previous submissions and new major discovery sources. Use
+`docs/PLUGIN_MARKET_DISTRIBUTION.md` for field origins, refresh rules and
+priority. Prioritize native Discover sources and the established dsh-market /
+awesome chain before secondary directories. Keep one release-matched set of
+main UI, Lianggu market and Liangci screenshots plus current product copy;
+verify both search cards and details, GitHub and packed npm READMEs, and any
+manually curated listing. Do not promise three images in a card that only
+supports an icon. Record pending external review/cache separately and verify
+actual public rendering after approved publication. Research/preparation never
+authorizes third-party submissions or public changes.
+
 Backend-only community server updates must not bump the npm / client number.
 Stamp `SERVER_BUILD` as `${PLUGIN_VERSION}-uN` (for example `1.0.0-u1`) and
 leave `package.json` / `PLUGIN_VERSION` alone so the plugin market stays on

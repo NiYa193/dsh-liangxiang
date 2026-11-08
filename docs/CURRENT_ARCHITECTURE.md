@@ -61,6 +61,7 @@ DSH 最终请求用量
 梁小号保留称号展示，不再响应点击、悬停或键盘聚焦弹出解释。
 
 Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxiang` 安装；命令行 WebUI 独立管理 Profile。安装图解、升级和卸载见 [`INSTALL.md`](INSTALL.md)。
+插件市场的搜索卡片／详情来源、主UI／梁股／梁祠三图准备与渠道优先级见 [`PLUGIN_MARKET_DISTRIBUTION.md`](PLUGIN_MARKET_DISTRIBUTION.md)；每次正式发布重新核实，不由README更新推断所有市场已同步。
 在线一直连不上时先排查 DSH Host 到社区的网络；部分地区可尝试代理，见 [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md)。
 
 ## 实现位置

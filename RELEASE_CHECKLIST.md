@@ -48,3 +48,11 @@
 - [ ] `scripts/deploy.sh` 部署并由 `scripts/deploy-check.sh` 确认 VERSION、服务名与当前提交一致
 - [ ] 本机 MacBook 与至少一台独立客户端先卸载旧 `dsh-liangxiang`，再安装新包；核对更新路径保留身份，真正清空存储的重装走正式入梁券/rekey
 - [ ] 输出 Final Go/No-Go 与遗留限制
+
+## 7. 插件市场展示（发布前准备，获批发布后复核）
+
+- [ ] 按 [`PLUGIN_MARKET_DISTRIBUTION.md`](docs/PLUGIN_MARKET_DISTRIBUTION.md) 复核既有及新增重要市场；优先DSH原生发现索引、dsh-market / awesome，其次1024及其他目录
+- [ ] 分别记录搜索卡片／详情的标题、介绍、图标、图片、版本来源与刷新方式；不把只支持图标的卡片当三图画廊
+- [ ] 同一正式版的主UI、梁股、梁祠三张真实图已准备，GitHub与包内README／详情、官网、人工目录文案对应；HTTPS图片可访问、清晰、无隐私或测试残留
+- [ ] 检查最终tarball而非仅源码README；预发布候选与当前正式公开展示分开，不提前宣称2.0已上线
+- [ ] 需要的第三方目录更新、公开素材部署和投稿已列入待批准动作；获批发布后复搜并打开详情，记录实际展示版本、核验时间和待刷新项
