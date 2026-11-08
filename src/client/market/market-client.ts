@@ -264,6 +264,6 @@ export function createMarketSession(transport: MarketTransport = browserMarketTr
 
 function rejectionCopy(reason: string | null): string {
   if (reason?.includes('balance') || reason?.includes('incense')) return '可用香火不足，冻结资金不能重复投入。'
-  if (reason?.includes('lock') || reason?.includes('closed')) return '本批已封盘，原仓位保持不变。'
+  if (reason?.includes('lock') || reason?.includes('closed')) return '本盘已封盘，原仓位保持不变。'
   return '本次调整未成交，请以当前服务器仓位为准。'
 }

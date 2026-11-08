@@ -72,3 +72,10 @@ export function marketTime(at: number, timezone: string): string {
   try { return new Intl.DateTimeFormat('zh-CN', { timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false }).format(at) }
   catch { return '--:--' }
 }
+
+/** Keep a transient point label inside the plot, including narrow touch screens. */
+export function marketTooltipPosition(point: { x: number; y: number; width: number; height: number }): { left: number; top: number; width: number } {
+  const width = Math.min(216, Math.max(0, point.width - 16))
+  return { width, left: Math.max(8, Math.min(point.width - width - 8, point.x + (point.x + width + 20 > point.width ? -width - 12 : 12))),
+    top: Math.max(8, Math.min(point.height - 88, point.y >= 92 ? point.y - 84 : point.y + 12)) }
+}

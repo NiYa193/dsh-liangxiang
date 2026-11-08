@@ -3,8 +3,8 @@ import type { ReactElement } from 'react'
 import { describe, expect, it } from 'vitest'
 import { CandleLayer, MarketChart } from '../src/client/market/MarketChart.tsx'
 import { marketAutomaticInterval, marketDisplayCandles, marketLatestChartPoint, marketViewportCandles, marketViewportLabel, marketWheelPixels, marketWheelWindow, marketZoomSpan } from '../src/client/market/candle-view.ts'
-import { chartRange } from '../src/client/market/chart-model.ts'
-import { marketTideSegments } from '../src/client/market/tide-model.ts'
+import { chartRange, marketTooltipPosition } from '../src/client/market/chart-model.ts'
+import { marketBubbleLabel, marketTideSegments } from '../src/client/market/tide-model.ts'
 import { marketBubbleDirection, marketDepthBands } from '../src/client/market/pond-model.ts'
 import { LEGACY_LIANGZI_POLICY_VERSION, LIANGZI_POLICY_VERSION } from '../src/domain/liangzi.ts'
 import type { MarketState } from '../src/shared/market-v1.ts'
@@ -23,6 +23,39 @@ function state(): MarketState {
 }
 
 describe('readable official market chart, independent of the header illustration', () => {
+  it('keeps point details out of the steady footer while preserving exact accessible amounts and Chinese batch names', () => {
+    const candles = [{ at: DAY + 18 * HOUR, open: .4, high: .6, low: .3, close: .5, up_votes: 10, down_votes: 10, volume: 9_999_999 }]
+    const html = renderToStaticMarkup(<MarketChart state={state()} candles={candles} animated={false} />)
+    const footer = html.match(/<figcaption[^>]*>(.*?)<\/figcaption>/)![1]!
+    expect(footer).toContain('夯')
+    expect(footer).toContain('拉')
+    expect(footer).toContain('梁位 55.000000%')
+    expect(footer).not.toContain('上香')
+    expect(footer).not.toContain('chart-detail')
+    expect(html).not.toContain('data-liangxiang-market-point-detail')
+    expect(html).toContain('本段上香 9,999,999 炷')
+    expect(html.match(/data-liangxiang-market-volume=""[^>]+/)![0]).toContain('本段上香 9,999,999 炷')
+    expect(html).not.toContain('本场新增')
+    for (const name of ['早盘', '午盘', '晚盘']) {
+      expect(html).toContain(`${name}投入`)
+      expect(html).toContain(`${name}锁仓定梁`)
+    }
+    expect(html).not.toContain('锁仓定线')
+  })
+  it('places a bounded point tooltip on either side of mouse, keyboard and touch positions without escaping the plot', () => {
+    for (const width of [240, 360, 760]) for (const height of [140, 272]) for (const x of [0, width / 2, width]) for (const y of [0, height / 2, height]) {
+      const tip = marketTooltipPosition({ x, y, width, height })
+      expect(tip.left).toBeGreaterThanOrEqual(8)
+      expect(tip.left + tip.width).toBeLessThanOrEqual(width - 8)
+      expect(tip.top).toBeGreaterThanOrEqual(8)
+      expect(tip.top + 80).toBeLessThanOrEqual(height - 8)
+    }
+  })
+  it('compacts BigInt bubble volume without inventing unknown directional counts', () => {
+    const bubble = { at: DAY, until: DAY + HOUR, last_sample_at: DAY, ratio: .5, radius: 4, volume: 123_456_789n, up: null, down: null }
+    expect(marketBubbleLabel(bubble, 'UTC')).toBe('00:00—01:00 · 本段上香 1.234亿 炷 · 方向明细未确认')
+    expect(marketBubbleLabel({ ...bubble, up: 123_450_000n, down: 6_789n }, 'UTC')).toContain('夯 1.234亿 · 拉 6,789')
+  })
   it('keeps a forming candle at or before the observation boundary', () => {
     const start = DAY + 10 * HOUR
     const candles = [{ at: start, open: .4, high: .5, low: .4, close: .5, up_votes: 10, down_votes: 10, volume: 0 }]

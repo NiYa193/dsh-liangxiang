@@ -1,4 +1,5 @@
 import type { PositionMood } from './chart-model.ts'
+import { marketBatchName } from './market-presentation.ts'
 
 export type FishAction = 'idle' | 'submit' | 'confirmed' | 'withdraw' | 'long' | 'short'
   | 'batch1' | 'batch2' | 'batch3' | 'history' | 'rules' | 'motion' | 'error'
@@ -63,9 +64,9 @@ const ACTIONS: Record<Exclude<FishAction, 'idle'>, readonly string[]> = {
   withdraw: ['撤回也要等回执～', '先核对，再腾出香火。'],
   long: ['向上看浪，尾巴跟上～', '抬头啦，水面瞧一瞧。'],
   short: ['潜水眼镜，准备好了～', '换个方向，继续看浪。'],
-  batch1: ['早盘，探个头～', '第一池浪，我来盯着。'],
-  batch2: ['午盘，换个姿势看浪。', '中场看浪，尾巴不歇。'],
-  batch3: ['晚盘，打起精神～', '最后一池，也慢慢看。'],
+  batch1: [`${marketBatchName(1)}，探个头～`, '第一池浪，我来盯着。'],
+  batch2: [`${marketBatchName(2)}，换个姿势看浪。`, '中场看浪，尾巴不歇。'],
+  batch3: [`${marketBatchName(3)}，打起精神～`, '最后一池，也慢慢看。'],
   history: ['翻翻旧回执，鱼也回个头。', '过去的浪，记在这里。'],
   rules: ['玩法先看懂，尾巴再开动。', '我陪你看，慢慢读～'],
   motion: ['尾巴开工，泡泡就位～', '动一动，才像大肥鱼。'],

@@ -324,7 +324,7 @@ describe('market dialog rendering', () => {
     expect(html).toContain('aria-modal="true"')
     expect(html).toContain('aria-label="交易动画"')
     expect(html).toContain('data-animated="false"')
-    expect(html).toContain('P1 总投入香火')
+    expect(html).toContain('早盘总投入香火')
     expect(html).toContain('冻结')
     expect(html).toContain('梁股')
     expect(html).toContain('香火市场')

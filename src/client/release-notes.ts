@@ -5,12 +5,12 @@
  * test deliberately fails when a version bump forgets to refresh this copy.
  * This is cosmetic localStorage only and never participates in authority.
  */
-export const RELEASE_NOTES_VERSION = '1.3.0-alpha.9'
+export const RELEASE_NOTES_VERSION = '1.3.0-alpha.10'
 export const RELEASE_NOTES_TITLE = `梁相 v${RELEASE_NOTES_VERSION} 更新`
 export const RELEASE_NOTES_ITEMS = [
-  '香火能攒了：余额与交易收益跨日保留，可用与冻结一目了然。',
+  '在线香火能攒了：余额与收益跨日保留，可用与冻结一目了然。',
   '三次入场，一起收盘：每盘四小时，做多做空都有翻盘机会。',
-  '梁股香火市场：直达行情与仓位，大肥鱼陪你聊着玩。',
+  '梁股香火市场：直达行情，持仓香池一眼看清，大肥鱼陪你聊着玩。',
   '上香更畅快：保留实时凝香反馈，定时参与和版本更新更省心。',
 ] as const
 export const RELEASE_NOTES_QQ = '梁相 QQ 群：453683905'

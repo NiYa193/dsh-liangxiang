@@ -1,5 +1,6 @@
 import { MARKET_CANDLE_INTERVAL_MS, type MarketCandle } from '../../shared/market-v1.ts'
 import { marketTime } from './chart-model.ts'
+import { formatMarketIncense } from './market-presentation.ts'
 
 export interface TideSample { at: number, ratio: number }
 export interface TideGap { from: number, until: number }
@@ -109,6 +110,6 @@ export function marketVolumeBubbles(candles: readonly MarketCandle[], sourceInte
 }
 
 export function marketBubbleLabel(bubble: VolumeBubble, timezone: string): string {
-  const detail = bubble.up === null || bubble.down === null ? '方向明细未确认' : `夯 ${bubble.up.toLocaleString('zh-CN')} · 拉 ${bubble.down.toLocaleString('zh-CN')}`
-  return `${marketTime(bubble.at, timezone)}—${marketTime(bubble.until, timezone)} · 本场新增 ${bubble.volume.toLocaleString('zh-CN')} 炷 · ${detail}`
+  const detail = bubble.up === null || bubble.down === null ? '方向明细未确认' : `夯 ${formatMarketIncense(bubble.up)} · 拉 ${formatMarketIncense(bubble.down)}`
+  return `${marketTime(bubble.at, timezone)}—${marketTime(bubble.until, timezone)} · 本段上香 ${formatMarketIncense(bubble.volume)} 炷 · ${detail}`
 }

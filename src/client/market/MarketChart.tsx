@@ -2,7 +2,8 @@ import { marketClass } from './market-motion-style.ts'
 import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactElement } from 'react'
 import { MARKET_CANDLE_INTERVAL_MS, type MarketCandle, type MarketState, type MarketBatchId } from '../../shared/market-v1.ts'
 import { PLUGIN_VERSION } from '../../shared/index.ts'
-import { chartRange, marketRatioLabel, marketTime, pointRatio } from './chart-model.ts'
+import { chartRange, marketRatioLabel, marketTime, marketTooltipPosition, pointRatio } from './chart-model.ts'
+import { formatMarketIncense, marketBatchName } from './market-presentation.ts'
 import { marketTideGaps, marketTidePath, marketTideSegments } from './tide-model.ts'
 import { marketDepthBands } from './pond-model.ts'
 import { createBusinessDateProvider } from '../../shared/business-date.ts'
@@ -86,6 +87,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const [pinned, setPinned] = useState<number | null>(null)
   const [mode, setMode] = useState<'tide' | 'candles'>(initialMode)
   const [special, setSpecial] = useState<string | null>(null)
+  const [tip, setTip] = useState<{ x: number; y: number; width: number; height: number; keyboard?: boolean } | null>(null)
   const [size, setSize] = useState({ width: WIDTH, height: HEIGHT })
   const [viewport, setViewport] = useState<ChartViewport | null>(null)
   const box = useRef<HTMLDivElement>(null)
@@ -153,7 +155,8 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   const selectedAt = pinned ?? hover
   const selected = visible.find(c => c.at === selectedAt) ?? visible[visible.length - 1]
   const maxVolume = Math.max(1, ...visible.map(c => c.volume))
-  const fullSelectedCopy = selected ? `${marketTime(selected.at, timezone)}—${marketTime(Math.min(selected.until, observedUntil), timezone)} · 本场新增 ${selected.volume.toLocaleString('zh-CN')} 炷 · ${selected.unknown_volume ? `其中 ${selected.unknown_volume.toLocaleString('zh-CN')} 炷方向未确认` : `夯 ${selected.confirmed_up.toLocaleString('zh-CN')} · 拉 ${selected.confirmed_down.toLocaleString('zh-CN')}`}` : '暂时没有官方行情'
+  const selectedTime = selected ? `${marketTime(selected.at, timezone)}—${marketTime(Math.min(selected.until, observedUntil), timezone)}` : ''
+  const fullSelectedCopy = selected ? `${selectedTime} · 本段上香 ${selected.volume.toLocaleString('zh-CN')} 炷 · 夯 ${selected.confirmed_up.toLocaleString('zh-CN')} · 拉 ${selected.confirmed_down.toLocaleString('zh-CN')}${selected.unknown_volume ? ` · 其中 ${selected.unknown_volume.toLocaleString('zh-CN')} 炷方向未确认` : ''}` : '暂时没有官方行情'
   const readout = special ?? fullSelectedCopy
   const clampWindow = (start: number, span: number): { from: number, until: number } => {
     const width = Math.min(day.until - day.from, Math.max(1_800_000, span))
@@ -162,7 +165,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
   }
   const changeWindow = (start: number, span: number): void => {
     stopWheel()
-    setViewport({ scope, ...clampWindow(start, span) }); setPinned(null); setHover(null); setSpecial(null)
+    setViewport({ scope, ...clampWindow(start, span) }); setPinned(null); setHover(null); setSpecial(null); setTip(null)
   }
   const zoom = (direction: 'in' | 'out'): void => {
     const span = marketZoomSpan(until - from, direction, day.until - day.from)
@@ -172,7 +175,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     changeWindow(center - span / 2, span)
     onInteraction?.(direction === 'in' ? 'zoom-in' : 'zoom-out', false, marketViewportLabel(span, day.until - day.from))
   }
-  const resetWindow = (): void => { stopWheel(); setViewport(null); setPinned(null); setHover(null); setSpecial(null); onInteraction?.('reset') }
+  const resetWindow = (): void => { stopWheel(); setViewport(null); setPinned(null); setHover(null); setSpecial(null); setTip(null); onInteraction?.('reset') }
   wheel.current = event => {
     const element = box.current
     if (!element) return
@@ -190,7 +193,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
       wheelFrame.current = null
       const pending = wheelViewport.current
       if (!pending || pending.scope !== scope) return
-      setViewport(pending); setPinned(null); setHover(null); setSpecial(null)
+      setViewport(pending); setPinned(null); setHover(null); setSpecial(null); setTip(null)
     })
     window.clearTimeout(wheelFeedback.current ?? undefined)
     wheelFeedback.current = window.setTimeout(() => {
@@ -205,7 +208,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     if (at < from || at > until) return null
     if (futureFrom !== null && at > futureFrom) { setSpecial('待开梁 · 等香火慢慢落下'); return null }
     const gap = gaps.find(g => at >= g.from && at < g.until)
-    if (gap) { setSpecial(`${marketTime(at, timezone)} · 这段未记录，走势不连线`); return null }
+    if (gap || !rawVisible.some(c => at >= c.at && at < c.at + candlesIntervalMs)) { setSpecial(`${marketTime(at, timezone)} · 这段未记录，走势不连线`); return null }
     setSpecial(null)
     let nearest = visible[0]
     for (const candle of visible) if (!nearest || Math.abs(midpoint(candle, observedUntil, candlesIntervalMs) - at) < Math.abs(midpoint(nearest, observedUntil, candlesIntervalMs) - at)) nearest = candle
@@ -221,10 +224,14 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
       if (gesture.moved) changeWindow(gesture.from - offset / Math.max(1, event.currentTarget.getBoundingClientRect().width) * size.width / plotWidth * (gesture.until - gesture.from), gesture.until - gesture.from)
       return
     }
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const local = (event.clientX - bounds.left) / bounds.width * size.width
+    if (local < LEFT || local > size.width - RIGHT) { setTip(null); return }
     if (pinned === null) setHover(hit(event))
+    setTip({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, width: bounds.width, height: bounds.height })
   }
   const key = (event: KeyboardEvent<SVGSVGElement>): void => {
-    if (event.key === 'Escape' && pinned !== null) { stopWheel(); event.preventDefault(); event.stopPropagation(); setPinned(null); setHover(null); setSpecial(null); return }
+    if (event.key === 'Escape' && pinned !== null) { stopWheel(); event.preventDefault(); event.stopPropagation(); setPinned(null); setHover(null); setSpecial(null); setTip(null); return }
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End', '+', '-', '=', '0'].includes(event.key)) return
     stopWheel()
     event.preventDefault(); event.stopPropagation()
@@ -235,11 +242,13 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     const index = Math.max(0, visible.findIndex(c => c.at === (selectedAt ?? selected?.at)))
     const next = event.key === 'Home' ? 0 : event.key === 'End' ? visible.length - 1 : Math.max(0, Math.min(visible.length - 1, index + (event.key === 'ArrowLeft' ? -1 : 1)))
     setHover(visible[next]!.at); setPinned(null); setSpecial(null); onInteraction?.('inspect')
+    const bounds = event.currentTarget.getBoundingClientRect()
+    setTip({ x: x(midpoint(visible[next]!, observedUntil, candlesIntervalMs)) / size.width * bounds.width, y: 32, width: bounds.width, height: bounds.height, keyboard: true })
   }
   const selectMode = (next: 'tide' | 'candles'): void => {
     if (next === mode) return
     stopWheel()
-    setMode(next); onInteraction?.(next === 'candles' ? 'mode-candles' : 'mode-tide')
+    setMode(next); setTip(null); onInteraction?.(next === 'candles' ? 'mode-candles' : 'mode-tide')
     try { window.localStorage.setItem(MODE_KEY, next) } catch { /* Cosmetic preference is optional. */ }
   }
   return <figure className={marketClass('chart')} data-animated={animated} data-liangxiang-market-chart-mode={mode} style={{ margin: 0 }}>
@@ -264,13 +273,13 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
       <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" tabIndex={0} data-liangxiang-market-from={from} data-liangxiang-market-until={until} data-liangxiang-market-interval={interval} data-liangxiang-market-source-interval={candlesIntervalMs} data-liangxiang-market-pinned={pinned !== null}
         style={{ width: '100%', height: '100%', display: 'block', overflow: 'hidden', touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none' }}
         aria-label={`今日梁位${mode === 'tide' ? '潮汐' : 'K线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方行情，加减号或滚轮缩放，拖动平移，0或双击复位，点击固定，Escape解除固定；缺口不连线。${readout}`}
-        onPointerMove={move} onPointerDown={event => { if (event.button !== 0 || drag.current) return; event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); stopWheel(); skipClick.current = false; drag.current = { pointer: event.pointerId, x: event.clientX, from, until, moved: false }; event.currentTarget.setPointerCapture(event.pointerId) }}
+        onPointerMove={move} onPointerDown={event => { if (event.button !== 0 || drag.current) return; event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); stopWheel(); setTip(null); skipClick.current = false; drag.current = { pointer: event.pointerId, x: event.clientX, from, until, moved: false }; event.currentTarget.setPointerCapture(event.pointerId) }}
         onPointerUp={event => { if (drag.current?.pointer !== event.pointerId) return; if (drag.current.moved) { skipClick.current = true; onInteraction?.('pan') } drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
         onPointerCancel={event => { if (drag.current?.pointer !== event.pointerId) return; stopWheel(); drag.current = null; skipClick.current = true }}
         onLostPointerCapture={event => { if (drag.current?.pointer === event.pointerId) { drag.current = null; skipClick.current = true } }} onDragStart={event => event.preventDefault()}
         onDoubleClick={resetWindow}
-        onClick={event => { if (skipClick.current) { skipClick.current = false; return } const at = hit(event as unknown as PointerEvent<SVGSVGElement>); if (at !== null) { setPinned(old => old === at ? null : at); setHover(at); onInteraction?.('inspect') } }}
-        onPointerLeave={() => { if (!drag.current && pinned === null) { setHover(null); setSpecial(null) } }} onKeyDown={key}>
+        onClick={event => { if (skipClick.current) { skipClick.current = false; return } const at = hit(event as unknown as PointerEvent<SVGSVGElement>); if (at !== null) { setPinned(old => old === at ? null : at); setHover(at); onInteraction?.('inspect') } move(event as unknown as PointerEvent<SVGSVGElement>) }}
+        onPointerLeave={() => { setTip(null); if (!drag.current && pinned === null) { setHover(null); setSpecial(null) } }} onBlur={() => setTip(null)} onKeyDown={key}>
         <defs>
           <clipPath id="liangxiang-market-price-clip"><rect x={LEFT} y={TOP} width={plotWidth} height={plotHeight} /></clipPath>
           <clipPath id="liangxiang-market-volume-clip"><rect x={LEFT} y={volumeY - 3} width={plotWidth} height={volumeHeight + 6} /></clipPath>
@@ -290,7 +299,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
         <g clipPath="url(#liangxiang-market-price-clip)">
           {market && [
             { from: day.from, until: market.batches[0]!.opens_at, kind: 'before', label: '开盘前' },
-            ...market.batches.flatMap(batch => [{ from: batch.opens_at, until: batch.locks_at, kind: 'open', label: `P${batch.batch}投入` }, { from: batch.locks_at, until: batch.reference_at, kind: 'locked', label: `P${batch.batch}锁仓定线` }]),
+            ...market.batches.flatMap(batch => [{ from: batch.opens_at, until: batch.locks_at, kind: 'open', label: `${marketBatchName(batch.batch)}投入` }, { from: batch.locks_at, until: batch.reference_at, kind: 'locked', label: `${marketBatchName(batch.batch)}锁仓定梁` }]),
             { from: market.batches[2]!.reference_at, until: day.until, kind: 'closing', label: '尾盘打梁' },
           ].filter(phase => phase.until > from && phase.from < until).map(phase => <rect key={`${phase.kind}-${phase.from}`} data-liangxiang-market-phase={phase.kind} role="img" aria-label={`${phase.label}：${marketTime(phase.from, timezone)}—${phase.until === day.until ? '24:00' : marketTime(phase.until, timezone)}`} x={x(Math.max(from, phase.from))} y={TOP} width={Math.max(0, x(Math.min(until, phase.until)) - x(Math.max(from, phase.from)))} height="3" fill={phase.kind === 'open' ? INK : phase.kind === 'locked' ? GOLD : SLATE} fillOpacity={phase.kind === 'open' ? '.3' : phase.kind === 'locked' ? '.24' : '.12'} />)}
           {gaps.map(gap => <g key={gap.from} role="img" aria-label="此段未记录，走势不连线"><rect x={x(gap.from)} y={TOP} width={Math.max(0, x(gap.until) - x(gap.from))} height={plotHeight} fill="url(#liangxiang-market-gap-fill)" data-liangxiang-market-gap="" />{x(gap.until) - x(gap.from) >= 45 && <text x={(x(gap.from) + x(gap.until)) / 2} y={TOP + 18} textAnchor="middle" fill={LIGHT_INK} fontSize="11">未记录</text>}</g>)}
@@ -303,12 +312,12 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
           {latest && latestInRange && <circle data-liangxiang-market-current-point="" data-at={latest.at} data-ratio={latest.ratio} data-source={latest.source} cx={x(latest.at)} cy={y(latest.ratio)} r="3" fill={GOLD} stroke={PAPER} strokeWidth="1.4" role="img" aria-label={latestLabel}><title>{latestLabel}</title></circle>}
           {selected && (hover !== null || pinned !== null) && <line x1={x(midpoint(selected, observedUntil, candlesIntervalMs))} x2={x(midpoint(selected, observedUntil, candlesIntervalMs))} y1={TOP} y2={layout.bottom} stroke={INK} strokeDasharray="2 3" opacity=".6" />}
         </g>
-        {market?.batches.filter(batch => batch.reference_at >= from && batch.reference_at <= until).map(batch => <text key={batch.batch} x={x(batch.reference_at)} y="15" textAnchor="middle" fill={LIGHT_INK} fontSize="11">P{batch.batch}{size.width < 560 ? '' : ` · ${marketTime(batch.reference_at, timezone)}`}</text>)}
+        {market?.batches.filter(batch => batch.reference_at >= from && batch.reference_at <= until).map(batch => <text key={batch.batch} x={x(batch.reference_at)} y="15" textAnchor="middle" fill={LIGHT_INK} fontSize="11">{marketBatchName(batch.batch)}{size.width < 560 ? '' : ` · ${marketTime(batch.reference_at, timezone)}定梁`}</text>)}
         <g clipPath="url(#liangxiang-market-volume-clip)">{visible.filter(c => c.volume > 0).map(c => {
           const cx = x(midpoint(c, observedUntil, candlesIntervalMs)), h = c.volume / maxVolume * volumeHeight
           const width = candleWidth(c.until - c.at)
           const upH = h * c.confirmed_up / c.volume, downH = h * c.confirmed_down / c.volume
-          return <g key={c.at} className={marketClass('volume-band')} data-liangxiang-market-volume="" role="img" aria-label={`${marketTime(c.at, timezone)} · 本场新增 ${c.volume.toLocaleString('zh-CN')} 炷 · 夯 ${c.confirmed_up} · 拉 ${c.confirmed_down}${c.unknown_volume ? ` · 方向未确认 ${c.unknown_volume}` : ''}`}>
+          return <g key={c.at} className={marketClass('volume-band')} data-liangxiang-market-volume="" role="img" aria-label={`${marketTime(c.at, timezone)} · 本段上香 ${c.volume.toLocaleString('zh-CN')} 炷 · 夯 ${c.confirmed_up} · 拉 ${c.confirmed_down}${c.unknown_volume ? ` · 方向未确认 ${c.unknown_volume}` : ''}`}>
             {upH > 0 && <rect data-direction="up" x={cx - width / 2} y={volumeY + volumeHeight - h} width={width} height={upH} rx=".7" fill={VERMILION} />}
             {downH > 0 && <rect data-direction="down" x={cx - width / 2} y={volumeY + volumeHeight - h + upH} width={width} height={downH} rx=".7" fill={SLATE} />}
             {c.unknown_volume > 0 && <rect data-direction="unknown" x={cx - width / 2} y={volumeY + volumeHeight - h + upH + downH} width={width} height={Math.max(0, h - upH - downH)} rx=".7" fill={LIGHT_INK} opacity=".5" />}
@@ -317,7 +326,11 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
         })}</g>
         {ticks.filter((_tick, index) => size.width >= 500 || index === 0 || index === ticks.length - 1 || index % 2 === 0).map((tick, index, shown) => <g key={tick.at} className={marketClass('time-tick')}><text x={x(tick.at)} y={size.height - 5} textAnchor={index === 0 ? 'start' : index === shown.length - 1 ? 'end' : 'middle'} fill={LIGHT_INK} fontSize="11">{tick.label}</text></g>)}
       </svg>
+      {tip && <div className={marketClass('chart-tip')} data-liangxiang-market-point-detail="" role="tooltip" aria-label={readout} style={marketTooltipPosition(tip)}>
+        {special || !selected ? readout : <><b>{selectedTime}</b><span>本段上香{formatMarketIncense(selected.volume)}炷</span><span>夯{formatMarketIncense(selected.confirmed_up)} · 拉{formatMarketIncense(selected.confirmed_down)}</span>{selected.unknown_volume > 0 && <span>方向未确认{formatMarketIncense(selected.unknown_volume)}炷</span>}</>}
+      </div>}
     </div>
-    <figcaption className="liangxiang-market-chart-readout liangxiang-market-pond-legend" aria-live="off" title={`${currentLabel} · ${readout}`}><span className={marketClass('chart-directions')}><span><i style={{ background: VERMILION }} />夯</span><span><i style={{ background: SLATE }} />拉</span></span><span className={marketClass('chart-current')}>{currentLabel}</span><span className={marketClass('chart-detail')}>{pinned !== null ? '已固定 · ' : ''}{readout}</span></figcaption>
+    <span className={marketClass('a11y')} aria-live={tip?.keyboard ? 'polite' : 'off'}>{readout}</span>
+    <figcaption className="liangxiang-market-chart-readout liangxiang-market-pond-legend"><span className={marketClass('chart-directions')}><span><i style={{ background: VERMILION }} />夯</span><span><i style={{ background: SLATE }} />拉</span></span><span className={marketClass('chart-current')}>{currentLabel}</span></figcaption>
   </figure>
 })

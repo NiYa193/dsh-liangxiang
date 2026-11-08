@@ -212,12 +212,90 @@ test('market follows the DSH appearance choice when it overrides the operating s
   expect(positionRequests).toBe(0)
 })
 
+test('server clock, batch cutoffs, persistent holdings and selected pool stay readable with large amounts on narrow screens', async ({ page }, testInfo) => {
+  let writes = 0
+  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/liangxiang/api/market/position') writes++ })
+  const dialog = await openMarket(page), pool = dialog.locator('[data-liangxiang-market-pool]')
+  const available = dialog.locator('[data-liangxiang-market-available]')
+  await expect(dialog.locator('.liangxiang-market-wallet')).toContainText('个人可用')
+  await expect(dialog.locator('[data-liangxiang-market-clock]')).toHaveText('11/06 13:00')
+  await expect(dialog.locator('[data-liangxiang-market-clock]')).toHaveAttribute('title', /UTC.*服务器业务时间/)
+  await expect(dialog.getByRole('tab')).toHaveCount(3)
+  for (const [name, lock, reference] of [['早盘', '11:00', '12:00'], ['午盘', '16:00', '17:00'], ['晚盘', '21:00', '22:00']] as const) {
+    const tab = dialog.getByRole('tab', { name: new RegExp(name) })
+    await expect(tab.locator('time')).toHaveText(`${lock}封盘`)
+    await expect(tab).toHaveAttribute('aria-description', new RegExp(`${reference}定梁`))
+  }
+  const early = dialog.getByRole('tab', { name: /早盘/ }), noon = dialog.getByRole('tab', { name: /午盘/ })
+  await expect(noon).toContainText('多10炷')
+  await expect(noon).toContainText('可投入')
+  await expect(pool).toContainText('午盘香池50炷')
+  await expect(pool.locator('.liangxiang-market-connection')).toHaveText('24:00后一起揭晓')
+  const initial = (await dialog.boundingBox())!
+  await early.click()
+  await expect(pool).toContainText('早盘香池0炷')
+  await expect(noon).toContainText('多10炷')
+  await expect(dialog.getByRole('spinbutton')).toBeDisabled()
+  expect((await dialog.boundingBox())!.height).toBeCloseTo(initial.height, 0)
+  await noon.click()
+  await expect(pool).toContainText('午盘香池50炷')
+  await expect(dialog.getByRole('spinbutton', { name: '午盘总投入香火' })).toHaveValue('10')
+
+  const large = fixture(), maximum = Number.MAX_SAFE_INTEGER
+  large.server_time += 1
+  large.wallet = { ...large.wallet, available_incense: maximum - 10, frozen_incense: 10, total_incense: maximum, version: 2 }
+  large.market!.batches[1] = { ...large.market!.batches[1]!, long_incense: maximum, short_incense: maximum }
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), large)
+  await expect(available).toHaveText('9007万亿')
+  expect(await available.locator('[title]').evaluate((element, count) => {
+    const exact = count.toLocaleString()
+    return element.getAttribute('title') === exact && element.getAttribute('aria-label') === exact
+  }, maximum - 10)).toBe(true)
+  const poolValue = pool.locator('strong [title]')
+  await expect(poolValue).toHaveText('1.801亿亿')
+  expect(await poolValue.evaluate((element, count) => {
+    const exact = BigInt(count).toLocaleString()
+    return element.getAttribute('title') === exact && element.getAttribute('aria-label') === exact
+  }, String(2n * BigInt(maximum)))).toBe(true)
+  await expect(noon).toContainText('多10炷')
+  expect((await dialog.boundingBox())!.height).toBeCloseTo(initial.height, 0)
+  const viewport = page.viewportSize()!
+  try {
+    for (const width of [480, 320]) {
+      await page.setViewportSize({ width, height: 900 })
+      const frame = (await dialog.boundingBox())!
+      expect(frame.width).toBeLessThanOrEqual(width)
+      expect(frame.height).toBeLessThanOrEqual(640)
+      await expect.poll(() => dialog.evaluate(element => {
+        const frame = element.getBoundingClientRect()
+        const nodes = [...element.querySelectorAll<HTMLElement>('.liangxiang-market-header-copy,.liangxiang-market-wallet,.liangxiang-market-clock,.liangxiang-market-stage-tabs button,.liangxiang-market-pool')]
+        const failures = nodes.flatMap(node => {
+          const bounds = node.getBoundingClientRect()
+          return bounds.left >= frame.left && bounds.right <= frame.right + 1 && node.scrollWidth <= node.clientWidth + 1 ? []
+            : [{ node: node.className, text: node.textContent, left: bounds.left - frame.left, right: bounds.right - frame.right, scroll: node.scrollWidth, client: node.clientWidth }]
+        })
+        if (element.scrollWidth > element.clientWidth + 1) failures.push({ node: 'dialog', text: '', left: 0, right: 0, scroll: element.scrollWidth, client: element.clientWidth })
+        return failures
+      }), { message: `No clipped or overflowing market copy at ${width}px` }).toEqual([])
+      await early.click()
+      await expect(pool).toContainText('早盘香池0炷')
+      await expect(noon).toContainText('多10炷')
+      expect((await dialog.boundingBox())!.height).toBeCloseTo(frame.height, 0)
+      await noon.click()
+      await expect(poolValue).toHaveText('1.801亿亿')
+      expect((await dialog.boundingBox())!.height).toBeCloseTo(frame.height, 0)
+    }
+    await dialog.screenshot({ path: testInfo.outputPath('market-compact-large-amounts.png') })
+  } finally { await page.setViewportSize(viewport) }
+  expect(writes).toBe(0)
+})
+
 test('whole-position changes freeze only the difference and a short position follows the confirmed direction', async ({ page }) => {
   const dialog = await openMarket(page), ticket = dialog.locator('[data-liangxiang-market-batch="2"]')
   const intents: MarketPositionRequest[] = []
   page.on('request', request => { if (new URL(request.url()).pathname === '/liangxiang/api/market/position') intents.push(request.postDataJSON() as MarketPositionRequest) })
   await ticket.getByRole('button', { name: '↘ 做空' }).click()
-  await ticket.getByRole('spinbutton', { name: 'P2 总投入香火' }).fill('20')
+  await ticket.getByRole('spinbutton', { name: '午盘总投入香火' }).fill('20')
   await ticket.getByRole('button', { name: '确认调整' }).click()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('20')
@@ -349,9 +427,9 @@ test('motion uses distinct local gestures without replaying ordinary frames, hid
   await expect(speech).toHaveAttribute('data-fish-action', 'long')
   await expect(actor).toHaveAttribute('data-test-action-plays', '2')
   expect(await actor.getAttribute('data-test-action-frames')).not.toBe(shortFrames)
-  await dialog.getByRole('tab', { name: /P1/ }).click()
+  await dialog.getByRole('tab', { name: /早盘/ }).click()
   await expect(speech).toHaveAttribute('data-fish-action', 'batch1')
-  await dialog.getByRole('tab', { name: /P2/ }).click()
+  await dialog.getByRole('tab', { name: /午盘/ }).click()
   await expect(speech).toHaveAttribute('data-fish-action', 'batch2')
   const svg = dialog.locator('.liangxiang-market-chart-scroll > svg')
   await dialog.getByRole('button', { name: '放大走势', exact: true }).click()
@@ -440,7 +518,7 @@ test('compact order keeps withdrawal in the order bar, clamps excessive input an
     expect(Math.abs(chartBounds.height - initialChartBounds.height)).toBeLessThanOrEqual(1)
     expect(Math.abs(chartBounds.y - initialChartBounds.y)).toBeLessThanOrEqual(1)
   }
-  const amount = dialog.getByRole('spinbutton', { name: 'P2 总投入香火' })
+  const amount = dialog.getByRole('spinbutton', { name: '午盘总投入香火' })
   const ticket = dialog.locator('[data-liangxiang-market-batch="2"]')
   const controls = ticket.locator('.liangxiang-market-direction,.liangxiang-market-amount,.liangxiang-market-primary,.liangxiang-market-withdraw')
   const expectCompactOrder = async (): Promise<void> => {
@@ -480,24 +558,24 @@ test('compact order keeps withdrawal in the order bar, clamps excessive input an
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await amount.fill('17')
   await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
-  await dialog.getByRole('tab', { name: /P1/ }).click()
+  await dialog.getByRole('tab', { name: /早盘/ }).click()
   await expect(dialog.getByRole('tabpanel')).toHaveCount(1)
   await expect(dialog.getByRole('spinbutton')).toBeDisabled()
   await expect(dialog.getByRole('button', { name: '撤回', exact: true })).toBeVisible()
   await expect(dialog.getByRole('button', { name: '撤回', exact: true })).toBeDisabled()
   await expectStableFrame()
-  await dialog.getByRole('tab', { name: /P2/ }).click()
+  await dialog.getByRole('tab', { name: /午盘/ }).click()
   await expect(amount).toHaveValue('17')
   await expect(ticket.getByRole('button', { name: '撤回', exact: true })).toBeEnabled()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await page.keyboard.press('End')
-  await expect(dialog.getByRole('tab', { name: /P3/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('tab', { name: /晚盘/ })).toHaveAttribute('aria-selected', 'true')
   await expectStableFrame()
   await page.keyboard.press('Home')
-  await expect(dialog.getByRole('tab', { name: /P1/ })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('tab', { name: /早盘/ })).toHaveAttribute('aria-selected', 'true')
   await expectStableFrame()
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true)
-  await dialog.getByRole('tab', { name: /P2/ }).click()
+  await dialog.getByRole('tab', { name: /午盘/ }).click()
   await ticket.getByRole('button', { name: '撤回', exact: true }).click()
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('100')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('0')
@@ -537,12 +615,13 @@ test('tide uses smooth real anchors over the full day, leaves gaps and future op
   const futureX = Number(await future.locator('rect').getAttribute('x'))
   expect(geometry.every(segment => segment.x + segment.width <= futureX + .02)).toBe(true)
   await future.hover()
-  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('待开梁')
+  await expect(chart.locator('[data-liangxiang-market-point-detail]')).toContainText('待开梁')
   const volume = chart.locator('[data-liangxiang-market-volume]')
   expect(await volume.count()).toBeGreaterThan(0)
   await volume.first().hover()
-  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('本场新增')
-  await expect(chart.locator('.liangxiang-market-chart-readout')).not.toContainText('全网')
+  await expect(chart.locator('[data-liangxiang-market-point-detail]')).toContainText('本段上香')
+  await expect(chart.locator('.liangxiang-market-chart-readout')).not.toContainText('上香')
+  await expect(chart.locator('[data-liangxiang-market-point-detail]')).not.toContainText('全网')
   expect(await volume.evaluateAll(nodes => nodes.every(node => node.getAnimations().length === 0))).toBe(true)
   await expect(chart).not.toContainText('气泡 =')
   await chart.screenshot({ path: testInfo.outputPath('market-tide.png') })
@@ -604,7 +683,7 @@ test('receipt and rules remain visible controls and use overlays without shiftin
     await expect(popover).toBeVisible()
     if (kind === 'rules') {
       await expect(popover.locator('.liangxiang-market-howto > li')).toHaveCount(3)
-      await expect(popover.locator('.liangxiang-market-rule-times strong')).toHaveText(['12:00', '17:00', '22:00'])
+      await expect(popover.locator('.liangxiang-market-rule-times strong')).toHaveText(['12:00定梁', '17:00定梁', '22:00定梁'])
       await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('投10')
       await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('返还15')
       await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('本金10＋赚5')
@@ -821,13 +900,13 @@ test('the fish reports the selected server pool on click and at the next minute 
   await expect(speech).toHaveAttribute('data-fish-action', 'periodic')
   await expect(speech).toContainText('余2时59分')
   await expect(speech).toContainText('香池50炷 · 多30 / 空20')
-  await dialog.getByRole('tab', { name: /P3/ }).click()
+  await dialog.getByRole('tab', { name: /晚盘/ }).click()
   await expect(speech).toHaveAttribute('data-fish-action', 'batch3')
-  await expect(speech).toContainText('17:00开放 · 22:00定线')
+  await expect(speech).toContainText('17:00开放 · 22:00定梁')
   await expect(speech).toContainText('香池0炷 · 多0 / 空0')
   await fish.click()
   await expect(speech).toHaveAttribute('data-fish-action', 'report')
-  await expect(speech).toContainText('22:00定线')
+  await expect(speech).toContainText('22:00定梁')
   expect(positionRequests).toBe(0)
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
@@ -918,7 +997,7 @@ test('fish click emits bounded live-fact lines without spending and static mode 
     const bounds = (await line.boundingBox())!
     expect(bounds.x).toBeGreaterThanOrEqual(sprite.x + sprite.width)
   }
-  expect(captured.join(' ')).toMatch(/梁位55\.000000%|P2香池50炷|本盘多10炷|可用90炷/)
+  expect(captured.join(' ')).toMatch(/梁位55\.000000%|午盘香池50炷|本盘多10炷|可用90炷/)
   const next = fixture()
   next.wallet = { ...next.wallet, available_incense: 80, frozen_incense: 20, version: 2 }
   next.server_time += 1_000

@@ -133,7 +133,7 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   const eightTick = (await chart.locator('.liangxiang-market-time-tick text').filter({ hasText: /^08:00$/ }).boundingBox())!
   const beforeOpenChart = (await svg.boundingBox())!
   await page.mouse.move(eightTick.x + eightTick.width / 2 + 1, beforeOpenChart.y + 50)
-  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('08:')
+  await expect(chart.locator('[data-liangxiang-market-point-detail]')).toContainText('08:')
   for (const [hours, label] of [[12, '近12时'], [6, '近6时'], [3, '近3时'], [1, '近1时'], [.5, '近30分']] as const) {
     await chart.getByRole('button', { name: '放大走势', exact: true }).click()
     await expect(range).toHaveText(label)
@@ -173,10 +173,13 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
     expect(quoteBounds[i]!.x).toBeGreaterThanOrEqual(quoteBounds[i - 1]!.x + quoteBounds[i - 1]!.width)
   }
   const readout = chart.locator('.liangxiang-market-chart-readout')
-  const initialReadout = await readout.innerText()
+  const initialReadout = (await readout.textContent())!
+  const initialDetails = await svg.getAttribute('aria-label')
   await svg.focus()
   await page.keyboard.press('ArrowLeft')
-  await expect(readout).not.toHaveText(initialReadout)
+  await expect(readout).toHaveText(initialReadout)
+  await expect(svg).not.toHaveAttribute('aria-label', initialDetails!)
+  await expect(chart.locator('[data-liangxiang-market-point-detail]')).toBeVisible()
   await expect(svg).toBeFocused()
   const priceBox = (await svg.boundingBox())!
   await svg.click({ position: { x: priceBox.width * .25, y: 50 } })
@@ -305,7 +308,7 @@ test('dragging either plot past its time labels pans without selecting text and 
   await page.evaluate(() => window.getSelection()?.removeAllRanges())
 })
 
-test('readout keeps left-aligned direction, position and volume slots stable through ordinary, gap and large-volume inspection', async ({ page }) => {
+test('point tooltip follows inspection inside plot edges while the two footer slots stay fixed across themes, gaps and large amounts', async ({ page }) => {
   const data = chartCandles().filter(candle => candle.at < DAY + 4.25 * HOUR || candle.at >= DAY + 5.25 * HOUR)
     .map(candle => candle.at === DAY + 6 * HOUR ? { ...candle, volume: 9_999_999 } : candle)
   await page.route('**/liangxiang/api/market/candles?*', route => route.fulfill({ json: candlePage(route.request().url(), data) }))
@@ -313,10 +316,12 @@ test('readout keeps left-aligned direction, position and volume slots stable thr
   const svg = chart.locator('svg[data-liangxiang-market-from]')
   const readout = chart.locator('.liangxiang-market-chart-readout')
   const slots = readout.locator(':scope > span')
-  await expect(slots).toHaveCount(3)
+  await expect(slots).toHaveCount(2)
   await expect(slots.nth(0)).toHaveClass(/chart-directions/)
   await expect(slots.nth(1)).toHaveClass(/chart-current/)
-  await expect(slots.nth(2)).toHaveClass(/chart-detail/)
+  await expect(readout).not.toContainText('上香')
+  const tip = chart.locator('[data-liangxiang-market-point-detail]')
+  await expect(tip).toHaveCount(0)
   const positions = async () => slots.evaluateAll(nodes => nodes.map(node => {
     const { x, y, width, height } = node.getBoundingClientRect()
     return { x, y, width, height, align: getComputedStyle(node).textAlign }
@@ -325,12 +330,18 @@ test('readout keeps left-aligned direction, position and volume slots stable thr
   expect(original.every(slot => slot.align === 'left')).toBe(true)
   expect(original[0]!.x).toBeCloseTo((await readout.boundingBox())!.x)
   expect(original[1]!.x).toBeGreaterThan(original[0]!.x + original[0]!.width)
-  const inspect = async (hour: number): Promise<void> => {
+  const inspect = async (hour: number, y = 40): Promise<void> => {
     const location = await svg.evaluate((element, hour) => {
       const svg = element as SVGSVGElement, bounds = svg.getBoundingClientRect(), width = svg.viewBox.baseVal.width
-      return { x: bounds.left + (12 + (width - 76) * hour / 24) / width * bounds.width, y: bounds.top + 40 }
+      return { x: bounds.left + (12 + (width - 76) * hour / 24) / width * bounds.width, y: bounds.top }
     }, hour)
-    await page.mouse.move(location.x, location.y)
+    await page.mouse.move(location.x, location.y + y)
+    await expect(tip).toBeVisible()
+    const panel = (await chart.locator('.liangxiang-market-chart-scroll').boundingBox())!, detail = (await tip.boundingBox())!
+    expect(detail.x).toBeGreaterThanOrEqual(panel.x)
+    expect(detail.y).toBeGreaterThanOrEqual(panel.y)
+    expect(detail.x + detail.width).toBeLessThanOrEqual(panel.x + panel.width)
+    expect(detail.y + detail.height).toBeLessThanOrEqual(panel.y + panel.height)
   }
   const stable = async (): Promise<void> => {
     const next = await positions()
@@ -339,16 +350,54 @@ test('readout keeps left-aligned direction, position and volume slots stable thr
     }
   }
   await inspect(8)
-  await expect(slots.nth(2)).toContainText('本场新增')
+  await expect(tip).toContainText('本段上香')
+  expect(await tip.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none')
+  const paint = await tip.evaluate(element => ({ foreground: getComputedStyle(element).color, background: getComputedStyle(element).backgroundColor }))
+  expect(paint.foreground).not.toBe(paint.background)
+  expect(paint.background).not.toBe('rgba(0, 0, 0, 0)')
   await stable()
   await inspect(4.75)
-  await expect(slots.nth(2)).toContainText('这段未记录')
+  await expect(tip).toContainText('这段未记录')
+  await expect(tip).not.toContainText('上香')
   await stable()
   await inspect(6.1)
-  await expect(slots.nth(2)).toContainText('方向未确认')
-  await expect(slots.nth(2)).toContainText(/\d{1,3},\d{3},\d{3}/)
+  await expect(tip).toContainText('方向未确认')
+  await expect(tip).toContainText('万')
+  await expect(tip).toHaveAttribute('aria-label', /\d{1,3},\d{3},\d{3}/)
   await stable()
   expect(await readout.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await inspect(.01)
+  await inspect(23.9, (await svg.boundingBox())!.height - 3)
+  await page.mouse.move(0, 0)
+  await expect(tip).toHaveCount(0)
+  await svg.focus()
+  await page.keyboard.press('Home')
+  await expect(tip).toContainText('00:00')
+  await expect(svg).toHaveAttribute('aria-label', /00:00/)
+  await expect(chart.locator('[aria-live="polite"]')).toContainText('本段上香')
+  await svg.click({ position: { x: (await svg.boundingBox())!.width * .25, y: 40 } })
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+  await expect(tip).toBeVisible()
+  await page.mouse.move(0, 0)
+  await expect(tip).toHaveCount(0)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+  await page.keyboard.press('Escape')
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
+})
+
+test.describe('touch point inspection', () => {
+  test.use({ hasTouch: true })
+  test('a tap reads an exact point and a second tap releases the original pin', async ({ page }) => {
+    const { chart } = await openChart(page)
+    const svg = chart.locator('svg[data-liangxiang-market-from]'), bounds = (await svg.boundingBox())!
+    await page.touchscreen.tap(bounds.x + bounds.width / 4, bounds.y + 45)
+    await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+    const detail = chart.locator('[data-liangxiang-market-point-detail]')
+    await expect(detail).toBeVisible()
+    await expect(detail).toHaveAttribute('aria-label', /本段上香.*夯.*拉/)
+    await page.touchscreen.tap(bounds.x + bounds.width / 4, bounds.y + 45)
+    await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
+  })
 })
 
 test('the latest marker stays on the true forming-minute endpoint in tide and aggregated K line views', async ({ page }) => {
@@ -420,7 +469,7 @@ test('both plot styles split future grey time at the actual business clock with 
     const visiblePoints = mode === '潮汐' ? chart.locator('[data-liangxiang-market-tide-end]') : chart.locator('[data-liangxiang-market-candle]')
     expect(await visiblePoints.evaluateAll((nodes, end) => nodes.every(node => Number(node.getAttribute('cx') ?? node.getAttribute('data-liangxiang-market-candle-x')) <= end), futureX)).toBe(true)
     await future.hover()
-    await expect(chart.locator('.liangxiang-market-chart-detail')).toContainText('待开梁')
+    await expect(chart.locator('[data-liangxiang-market-point-detail]')).toContainText('待开梁')
     await chart.getByRole('button', { name: '放大走势', exact: true }).click()
     await expectBoundary()
     await svg.focus()

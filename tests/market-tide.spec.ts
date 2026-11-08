@@ -79,7 +79,7 @@ describe('community-volume bubbles', () => {
     expect(bubbles[0]!.volume).toBe(8n)
     expect(bubbles[0]!.up).toBe(3n)
     expect(bubbles[0]!.down).toBe(5n)
-    expect(marketBubbleLabel(bubbles[0]!, 'UTC')).toContain('本场新增 8 炷')
+    expect(marketBubbleLabel(bubbles[0]!, 'UTC')).toContain('本段上香 8 炷')
     expect(marketBubbleLabel(bubbles[0]!, 'UTC')).toContain('夯 3 · 拉 5')
   })
   it('does not infer directions from first cumulative counts or across a gap', () => {
