@@ -4,6 +4,7 @@ import {
   type MarketState, type MarketCandle, type MarketCandleIntervalMs, type MarketReceipt, type MarketPositionRequest,
 } from '../../shared/market-v1.ts'
 import { boundedMarketCache, browserMarketStorage, emptyMarketCache, readMarketCache, writeMarketCache, writeMarketPending, type MarketCache, type MarketStorage } from './market-cache.ts'
+import { randomRequestId } from '../request-id.ts'
 
 const BASE = '/liangxiang/api/market'
 const TIMEOUT_MS = 6_000
@@ -70,7 +71,7 @@ export function browserMarketTransport(): MarketTransport {
       source.onerror = onError
       return { close: () => source.close() }
     },
-    requestId: () => crypto.randomUUID(),
+    requestId: () => randomRequestId(),
     dispose() { disposed = true; for (const controller of controllers) controller.abort(); controllers.clear() },
   }
 }

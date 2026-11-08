@@ -71,7 +71,12 @@ window.__ModuleLoader__.load({ id, factory }) 和 CJS factory 包装。
 还执行构建产物的工厂并核对插件导出，避免格式漂移。真实 Profile 将服务的 combo 与构建产物
 比较；只按 client/modules/src/index.ts 的 prepareSource 去掉 sourceURL/sourceMappingURL
 尾注（已核对同一 commit），不依赖引号或缩进形式。
-原梁子图像继续内联 lossless WebP，鲸鱼素材单独按需加载；单 client.js 预算为 raw ≤720 KB、gzip ≤430 KB。
+原梁子图像继续内联 lossless WebP，鲸鱼素材单独按需加载；单 client.js 预算为 raw ≤725 KB、gzip ≤430 KB。
+
+上香与香火交易共用 `src/client/request-id.ts`，依次使用 `crypto.randomUUID`、
+`crypto.getRandomValues` 和普通随机兜底生成幂等请求号；请求号不是秘密，
+普通随机不得用于安装密钥或签名。局域网HTTP不保证提供 `randomUUID`，
+localhost的成功不能代替非安全上下文回归；同一未确认意图仍复用原请求号和请求体。
 
 ## 验证边界
 

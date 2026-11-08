@@ -5,7 +5,7 @@
 ## 版本与边界
 
 当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.12`，`SERVER_BUILD=1.3.0-alpha.12-u1`。
-当前源码为 **1.3.0-alpha.12 开发候选，正式 1.3.0 尚未发布**。本轮仅UI更新，香港人工后台仍为alpha10-u1，未部署源码中的服务构建；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码为 **1.3.0-alpha.12 开发候选，正式 1.3.0 尚未发布**。本轮为客户端兼容与UI更新，香港人工后台仍为alpha10-u1，未部署源码中的服务构建；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定梁与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **14**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
@@ -70,6 +70,7 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 - `src/compat/dsh/`：DSH 接口、请求用量、存储与升级适配的唯一接触层。
 - `src/host/`：结算、持久化、模式、定时上香排期、同源路由与生命周期。
 - `src/client/`：交互与展示，不持有余额或投票权威。
+- `src/client/request-id.ts`：上香与市场共用的浏览器幂等请求号生成器；兼容局域网HTTP，普通随机兜底不用于密钥、身份或签名。
 - `src/backend/`：HTTP、SQLite 事务、身份、票据、快照与梁祠。
 
 存储使用既有 DSH storage domain。在线为 `liangxiang.json`，离线为 `liangxiang_local.json`；
@@ -79,6 +80,7 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 ## 验证与协作
 
 当前多项工作与待审核建议逐项记在 [`WORK_TRACKER.md`](WORK_TRACKER.md)；每项完成即更新，不用旧验证记录推断新任务已完成。
+社区PR #30同步、1.3版本冲突处理和HTTP兼容性漏测原因见 [`PR30_INTEGRATION.md`](PR30_INTEGRATION.md)。
 已审核样稿的当前落实与验收边界见 [`MARKET_UI_ALPHA12.md`](MARKET_UI_ALPHA12.md)。
 市场盘名、常驻投入／香池、业务时钟、点位浮层及紧凑金额的alpha10验证结果见 [`MARKET_UI_ALPHA10.md`](MARKET_UI_ALPHA10.md)。
 DSH侧栏默认280px、梁相外框256px的实现与实测见 [`DSH_LAYOUT_WIDTH.md`](DSH_LAYOUT_WIDTH.md)；alpha8按最终反馈保持256px，新增梁股直接入口与紧凑统计，指针关闭失焦、键盘关闭归还焦点。

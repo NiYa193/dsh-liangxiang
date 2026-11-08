@@ -17,6 +17,10 @@
 - 每个 main PR 都运行 smoke-installed：真实 tarball 安装、桌面/窄屏/暗色浏览器检查，
   以及隔离 Backend/Host 在线闭环。失败或跳过不能冒充通过。
 - 所有 PR 测试仅有 `contents: read`，checkout 不保留凭据，不向 fork 暴露写入令牌或秘密。
+- 浏览器基线必须覆盖真实非安全HTTP上下文：将保留测试域仅映射到隔离本机Host，
+  断言 `isSecureContext=false` 及原生 `randomUUID` 缺失，再验证连续上香与市场请求。
+  localhost和注入固定测试请求号不能代替这一项；权威接口在该UI用例中隔离模拟，
+  丢回执、重开和原请求重放另由真实SQLite回归验证。不得通过安全豁免标志使HTTP变安全。
   管理员在全部检查通过后人工审核合并。作者无法批准自己的 PR；单维护者合并不声称独立审批。
 - 个人 fork 推送与合入后的 push 不重复触发同一轮云端检查；本地验证仍必须完成。
 
