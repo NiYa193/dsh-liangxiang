@@ -105,6 +105,23 @@ describe('cumulative wallet Host authority', () => {
     await Promise.all([older, newer, pageTwo])
   })
 
+  it('fences reads across an uncertain position response as well as accepted writes', async () => {
+    const { service, client } = await hostHarness()
+    let reject!: (error: Error) => void
+    client.marketPosition = () => new Promise((_resolve, r) => { reject = r })
+    const resolvers: Array<(value: { schema_version: 1, receipts: [], next_cursor: null }) => void> = []
+    const read = vi.fn(() => new Promise<{ schema_version: 1, receipts: [], next_cursor: null }>(r => resolvers.push(r)))
+    client.marketHistory = read
+    const writing = expect(service.marketPosition(POSITION)).rejects.toThrow('response lost')
+    await pause()
+    const during = service.marketHistory({ limit: 20 })
+    reject(new Error('response lost')); await writing
+    const after = service.marketHistory({ limit: 20 })
+    expect(read).toHaveBeenCalledTimes(2)
+    for (const resolve of resolvers) resolve({ schema_version: 1, receipts: [], next_cursor: null })
+    await Promise.all([during, after])
+  })
+
   it('retries a failed cold read and preserves candle query boundaries', async () => {
     const { service, client } = await hostHarness()
     const page = { schema_version: 1 as const, case_id: 'case-a', business_date: '2026-08-16', interval_ms: 60_000 as const, candles: [], next_cursor: null }

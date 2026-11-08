@@ -572,10 +572,16 @@ export class BackendLiangService implements LiangHostService {
     if (submit === undefined) throw new BackendClientError('community market is unavailable', 404, 'market_unavailable')
     if (!this.authorityAvailable) throw new BackendClientError('community authority is temporarily unavailable', 503, 'authority_unavailable')
     this.readGeneration += 1
-    await this.flushClaim()
-    const result = await submit(id, intent)
-    if (!this.disposed && this.installationId === id) this.adoptMarketState(result.state)
-    return result
+    try {
+      await this.flushClaim()
+      const result = await submit(id, intent)
+      if (!this.disposed && this.installationId === id) this.adoptMarketState(result.state)
+      return result
+    } finally {
+      // A lost response may still have committed. A read begun during the
+      // write must not become the fresh read requested after that outcome.
+      this.readGeneration += 1
+    }
   }
 
   /** The explicit first-screen GET already calibrated authority. Attaching a
