@@ -33,6 +33,25 @@ import type { BarsRecorder } from './bars.ts'
 const MAX_VOTE_BODY_BYTES = 4096
 const SSE_HEARTBEAT_MS = 25_000
 
+// Only these fixed build/source URLs can be read. Request query text is never
+// resolved as a filesystem path, and the promise cache can hold at most 3 rows.
+const PANEL_ART_FILES = {
+  nan: [new URL('./main-nan.webp', import.meta.url), new URL('../client/assets/main-nan.webp', import.meta.url)],
+  grass: [new URL('./main-grass.webp', import.meta.url), new URL('../client/assets/main-grass.webp', import.meta.url)],
+  fish: [new URL('./main-fish.webp', import.meta.url), new URL('../client/assets/main-fish.webp', import.meta.url)],
+} as const
+type PanelArtAsset = keyof typeof PANEL_ART_FILES
+
+function parsePanelArtAsset(search: URLSearchParams): PanelArtAsset | null {
+  for (const key of search.keys()) {
+    if ((key !== 'asset' && key !== 'v') || search.getAll(key).length !== 1) return null
+  }
+  const version = search.get('v')
+  if (version !== null && !/^[A-Za-z0-9.+-]{1,64}$/.test(version)) return null
+  const asset = search.get('asset')
+  return asset === 'nan' || asset === 'grass' || asset === 'fish' ? asset : null
+}
+
 export interface LiangxiangApi {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>
   /** Dispose hook: ends every open SSE stream and clears heartbeats. */
@@ -142,6 +161,7 @@ export function createLiangxiangApi(
 ): LiangxiangApi {
   const connections = new Set<SseConnection>()
   let art: Promise<Buffer> | null = null
+  const panelArt = new Map<PanelArtAsset, Promise<Buffer>>()
 
   const dropConnection = (connection: SseConnection): void => {
     if (!connections.delete(connection)) return
@@ -300,6 +320,7 @@ export function createLiangxiangApi(
       '/liangxiang/api/market/candles': 'GET',
       '/liangxiang/api/market/history': 'GET',
       '/liangxiang/api/market/art.webp': 'GET',
+      '/liangxiang/api/panel/art.webp': 'GET',
       '/liangxiang/api/bars': 'GET',
       '/liangxiang/api/bars.svg': 'GET',
       '/liangxiang/api/bars/meta': 'GET',
@@ -324,6 +345,29 @@ export function createLiangxiangApi(
       } catch {
         art = null
         writeJson(res, 404, { error: 'market illustration is not installed' })
+      }
+      return
+    }
+    if (pathname === '/liangxiang/api/panel/art.webp') {
+      const asset = parsePanelArtAsset(url.searchParams)
+      if (asset === null) {
+        writeJson(res, 400, { error: 'invalid panel illustration request' })
+        return
+      }
+      let pending = panelArt.get(asset)
+      if (pending === undefined) {
+        const [build, source] = PANEL_ART_FILES[asset]
+        pending = readFile(build).catch(() => readFile(source))
+        panelArt.set(asset, pending)
+      }
+      try {
+        const image = await pending
+        res.writeHead(200, { 'content-type': 'image/webp', 'content-length': image.byteLength,
+          'cache-control': 'public, max-age=3600', 'x-content-type-options': 'nosniff' })
+        res.end(image)
+      } catch {
+        if (panelArt.get(asset) === pending) panelArt.delete(asset)
+        writeJson(res, 404, { error: 'panel illustration is not installed' })
       }
       return
     }

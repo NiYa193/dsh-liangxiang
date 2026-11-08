@@ -15,6 +15,17 @@ the roughly 81-pixel-tall header figure on dense displays without inlining
 another data URI in the browser bundle. Motion, water and bubbles are local
 presentation; the server stores no animation frames.
 
+## Main-panel illustrations
+
+The approved blue panel supplies three separate, transparent WebP files:
+`main-nan.webp` (256×256, 58,538 bytes), `main-grass.webp` (109×128, 11,952 bytes),
+and `main-fish.webp` (128×85, 4,556 bytes). Their bytes are copied directly from
+the reviewed design, without redrawing, resampling or recoloring. Each is
+served on demand by the Host's fixed allowlist at `/liangxiang/api/panel/art.webp`;
+none is embedded as another data URI in the always-loaded browser bundle.
+The grass and fish are decorative only. Water depth, growth, swimming and
+bubbles remain local presentation of already-confirmed incense values.
+
 ## Generation prompt
 
 Use case: stylized-concept. Asset type: a small transparent character sprite for

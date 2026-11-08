@@ -30,6 +30,9 @@
     "lib/client.js",
     "lib/client.js.map",
     "lib/market-whale.webp",
+    "lib/main-nan.webp",
+    "lib/main-grass.webp",
+    "lib/main-fish.webp",
     "cordis.patch.yml"
   ],
   "dsh": {
