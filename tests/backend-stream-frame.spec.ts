@@ -42,6 +42,30 @@ it('does not recompile per-subscriber SQL or write unchanged private ledgers dur
   expect(previous.wallet.available_incense).toBe(100)
 })
 
+it('discards an uncommitted pool projection when a failed order version is reused', () => {
+  const f = fixture(), id = 'stream-owner-a'
+  const market = f.service.marketState(id).market!
+  const transaction = f.store.transaction.bind(f.store)
+  f.store.transaction = <T>(body: () => T): T => transaction(() => {
+    const result = body()
+    if ((result as { request_id?: string })?.request_id === 'rollback-pool-order') {
+      throw new Error('injected commit failure')
+    }
+    return result
+  })
+  const order = (amount: number, request_id: string) => f.service.setMarketPosition(id,
+    { market_id: market.id, batch: 1, side: 'long', amount, request_id })
+  expect(() => order(7, 'rollback-pool-order')).toThrow('injected commit failure')
+  f.store.transaction = transaction
+  const accepted = order(13, 'committed-pool-order')
+  expect(accepted.accepted).toBe(true)
+  expect(accepted.state.wallet.frozen_incense).toBe(13)
+  expect(accepted.state.market?.batches[0]).toMatchObject({
+    long_incense: 13, short_incense: 0, position: { amount: 13 },
+  })
+  expect(f.service.prepareMarketStreamFrame()(id).market?.batches[0]?.long_incense).toBe(13)
+})
+
 it('grants a continuously connected account its next-day gift once and discards old private positions', () => {
   const f = fixture(), id = 'stream-gift-owner'
   f.store.upsertIdentity({ installation_id: id, public_key: 'stream-gift-key', device_fingerprint: 'stream-gift-device',

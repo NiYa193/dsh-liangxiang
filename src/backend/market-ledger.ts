@@ -25,6 +25,7 @@ export class MarketLedger {
   private readonly batchCache = new Map<string, { version: number, batches: BatchRow[] }>()
   private readonly statements = new Map<string, ReturnType<BackendStore['database']['prepare']>>()
   private readonly stateOwners = new WeakMap<MarketState, string>()
+  private cachedRollbackVersion = -1
   constructor(private readonly store: BackendStore, private readonly timezone: string) {
     this.db = store.database
   }
@@ -399,6 +400,7 @@ export class MarketLedger {
   }
 
   private view(market: MarketRow, installation: string | null): DailyMarket {
+    this.invalidateRolledBackReads()
     this.assertRule(market.rule_version)
     let shared = this.batchCache.get(market.id)
     if (shared === undefined || shared.version !== market.version) {
@@ -435,6 +437,7 @@ export class MarketLedger {
   private positions(id: string, batch: number): PositionRow[] { return this.prepare('SELECT * FROM liang_market_position WHERE market_id=? AND batch=? ORDER BY id').all(id, batch) as unknown as PositionRow[] }
   private position(id: string, batch: number, installation: string): PositionRow | undefined { return this.prepare('SELECT * FROM liang_market_position WHERE market_id=? AND batch=? AND installation_id=?').get(id, batch, installation) as unknown as PositionRow | undefined }
   private pools(id: string, batch: number, knownVersion?: number): { long: number, short: number } {
+    this.invalidateRolledBackReads()
     const version = knownVersion ?? (this.prepare('SELECT version FROM liang_market WHERE id=?').get(id) as { version: number }).version
     let cached = this.poolCache.get(id)
     if (cached === undefined || cached.version !== version) {
@@ -451,6 +454,14 @@ export class MarketLedger {
       this.poolCache.set(id, cached)
     }
     return cached.pools.get(batch) ?? { long: 0, short: 0 }
+  }
+  private invalidateRolledBackReads(): void {
+    if (this.cachedRollbackVersion === this.store.rollbackVersion) return
+    // A rolled-back market version can be reused by a different committed
+    // order. The version alone must never validate an uncommitted projection.
+    this.poolCache.clear()
+    this.batchCache.clear()
+    this.cachedRollbackVersion = this.store.rollbackVersion
   }
   private parsePoint(raw: string | null): MarketPoint | null { return raw === null ? null : JSON.parse(raw) as MarketPoint }
   private cursorNumber(value: string | undefined): number {

@@ -103,7 +103,7 @@ export class LiangxiangBackendService {
   // Public decoration follows the published cadence. Never cache wallets,
   // eligibility, identity checks or transaction results here.
   private lifetimeFrame: {
-    caseId: string, at: number,
+    caseId: string, at: number, rollbackVersion: number,
     totals: { incense: number, voters: number },
   } | undefined
 
@@ -1456,9 +1456,10 @@ export class LiangxiangBackendService {
     }
     const cached = this.lifetimeFrame
     if (cached === undefined || cached.caseId !== row.case_id
+      || cached.rollbackVersion !== this.store.rollbackVersion
       || now < cached.at || now - cached.at >= 1_000) {
       this.lifetimeFrame = {
-        caseId: row.case_id, at: now,
+        caseId: row.case_id, at: now, rollbackVersion: this.store.rollbackVersion,
         totals: this.store.lifetimeTotals(),
       }
     }

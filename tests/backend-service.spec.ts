@@ -791,6 +791,25 @@ describe('business date rollover', () => {
 })
 
 describe('same-day publish', () => {
+  it('restores lifetime presentation immediately after a reset transaction rolls back', () => {
+    const f = boot()
+    f.grantIncense(INSTALLATION, 5)
+    vote(f, INSTALLATION, 'up', 'rollback-reset-vote')
+    f.clock.advance(1_000)
+    expect(f.service.snapshotResponse().global_snapshot.lifetime_incense).toBe(1)
+    const transaction = f.store.transaction.bind(f.store)
+    f.store.transaction = <T>(body: () => T): T => transaction(() => {
+      const result = body()
+      if (result !== null && typeof result === 'object' && 'incense_rows' in result) {
+        throw new Error('injected reset commit failure')
+      }
+      return result
+    })
+    expect(() => f.service.resetTodayCase()).toThrow('injected reset commit failure')
+    f.store.transaction = transaction
+    expect(f.service.snapshotResponse().global_snapshot.lifetime_incense).toBe(1)
+    expect(f.service.dailyState(INSTALLATION).authoritative_personal_state.remaining_incense).toBe(4)
+  })
   it('shares public lifetime scans within one cadence while spends remain immediate', () => {
     const f = boot()
     f.grantIncense(INSTALLATION, 20)
