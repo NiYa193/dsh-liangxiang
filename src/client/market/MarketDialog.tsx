@@ -19,6 +19,8 @@ export interface MarketDialogProps {
   reducedMotion: boolean
   online: boolean
   onClose(): void
+  /** Embedded owners may restore the real trigger according to input mode. */
+  restoreFocus?: boolean
   session?: MarketSession
   presentation?: { caseId: string, policyId: string, title: string }
 }
@@ -47,7 +49,7 @@ function batchReport(batch: MarketBatch, state: MarketState, now: number): strin
   return `${clock}\n香池${(batch.long_incense + batch.short_incense).toLocaleString()}炷 · 多${batch.long_incense.toLocaleString()} / 空${batch.short_incense.toLocaleString()}`
 }
 
-export function MarketDialog({ reducedMotion, online, onClose, session: suppliedSession, presentation }: MarketDialogProps): ReactElement {
+export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = true, session: suppliedSession, presentation }: MarketDialogProps): ReactElement {
   const [session] = useState(() => suppliedSession ?? createMarketSession())
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
   const [firstVisit] = useState(() => !loadedMarketOnce)
@@ -96,8 +98,8 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
       else if (!event.shiftKey && (document.activeElement === last || !dialog.current.contains(document.activeElement))) { event.preventDefault(); first.focus() }
     }
     document.addEventListener('keydown', key, true)
-    return () => { document.removeEventListener('keydown', key, true); previous?.focus() }
-  }, [])
+    return () => { document.removeEventListener('keydown', key, true); if (restoreFocus) previous?.focus() }
+  }, [restoreFocus])
   useEffect(() => {
     if (lifecycle.current.disposeTimer !== null) window.clearTimeout(lifecycle.current.disposeTimer)
     if (online && !lifecycle.current.started) { lifecycle.current.started = true; void session.start() }

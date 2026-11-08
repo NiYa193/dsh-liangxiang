@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { LiangAvatar } from '../src/client/LiangAvatar.tsx'
 import { AVATAR_SLOT, RING_SIZE } from '../src/client/LiangQiRing.tsx'
-import { Panel } from '../src/client/Panel.tsx'
+import { Panel, type PanelProps } from '../src/client/Panel.tsx'
 import { createMockLiangxiangStore } from '../src/client/store.ts'
 import type { LiangxiangViewState } from '../src/client/store.ts'
 import { color } from '../src/client/theme.ts'
@@ -66,7 +66,7 @@ function renderPanel(
     onReconcileConfirm?: () => void
     onReconcileCancel?: () => void
     onShowVersion?: () => void
-    onOpenMarket?: () => void
+    onOpenMarket?: PanelProps['onOpenMarket']
     onInsufficientVote?: (voteType: 'up' | 'down') => void
     onVoteClick?: (voteType: 'up' | 'down') => void
     welcomeVisible?: boolean
@@ -422,7 +422,10 @@ describe('region 2: 香火 | 梁子 + 梁位 | 下一炷', () => {
       expect(styleOf(findByAttr(tree, 'data-liangxiang-ring-footer')[0]).top).toBe('100%')
       expect(styleOf(findByAttr(tree, 'data-liangxiang-ring-footer')[0]).marginTop).toBe('6px')
       expect(styleOf(findByAttr(tree, 'data-liangxiang-avatar')[0]).width).toBe(AVATAR_SLOT)
-      expect(styleOf(findAll(tree, (node) => node.props.role === 'dialog')[0]).width).toBe('256px')
+      const chrome = styleOf(findAll(tree, (node) => node.props.role === 'dialog')[0])
+      expect(chrome.width).toBe('256px')
+      expect(chrome.maxWidth).toBe('100vw')
+      expect(chrome.left).toBe('0px')
       expect(social).toHaveLength(2)
       expect(social.map((node) => styleOf(node).gridRow)).toEqual(['1 / 3', '1 / 3'])
       expect(social.map((node) => styleOf(node).gridColumn)).toEqual([1, 2])
@@ -1013,21 +1016,39 @@ describe('region 4: social stats', () => {
     expect(styleOf(voterIcon).gridRow).toBe('1 / 3')
     expect(styleOf(incenseIcon).alignSelf).toBe('center')
     expect(styleOf(voterIcon).alignSelf).toBe('center')
-    expect(findByAttr(tree, 'data-liangxiang-incense-icon')[0]?.props.height).toBe(26)
-    expect(findByAttr(tree, 'data-liangxiang-voter-icon')[0]?.props.height).toBe(26)
+    expect(findByAttr(tree, 'data-liangxiang-incense-icon')[0]?.props.height).toBe(16)
+    expect(findByAttr(tree, 'data-liangxiang-voter-icon')[0]?.props.height).toBe(16)
     expect(styleOf(slot).display).toBe('contents')
     expect(styleOf(desk).gridRow).toBe(1)
     expect(styleOf(entry).gridRow).toBe(2)
     expect(styleOf(incenseValue).textAlign).toBe('center')
     expect(styleOf(voterValue).textAlign).toBe('center')
-    expect(styleOf(findByAttr(tree, 'data-liangxiang-stat-label', 'incense')[0]).fontSize).toBe('12px')
-    expect(styleOf(findByAttr(tree, 'data-liangxiang-stat-label', 'voters')[0]).fontSize).toBe('12px')
+    expect(styleOf(findByAttr(tree, 'data-liangxiang-stat-label', 'incense')[0]).fontSize).toBe('11px')
+    expect(styleOf(findByAttr(tree, 'data-liangxiang-stat-label', 'voters')[0]).fontSize).toBe('11px')
     expect(findByAttr(tree, 'data-liangxiang-utility-desk')).toHaveLength(1)
     expect(findByAttr(tree, 'data-liangxiang-liangci-entry')).toHaveLength(1)
   })
 })
 
 describe('梁相案牍', () => {
+  it('bounds social counts while preserving the full labels and exact accessible detail', () => {
+    for (const [value, expected] of [[0, '0'], [9999, '9,999'], [99999, '100K'], [Number.MAX_SAFE_INTEGER, '9007T']] as const) {
+      const initial = demoState()
+      const state = { ...initial, snapshot: { ...initial.snapshot, totalIncense: value, upVotes: value, downVotes: 0, uniqueVoters: value } }
+      const tree = renderPanel(state, '', { onOpenMarket: () => undefined })
+      for (const kind of ['incense', 'voters'] as const) {
+        const stat = findByAttr(tree, 'data-liangxiang-stat', kind)[0]!
+        const count = findByAttr(tree, 'data-liangxiang-stat-value', kind)[0]!
+        expect(textContent([count])).toBe(expected)
+        expect(stat.props['aria-label']).toContain(value.toLocaleString('zh-CN'))
+        expect(stat.props.title).toBeUndefined()
+        const hint = findByAttr(tree, 'data-liangxiang-stat-hint', kind)[0]!
+        expect(textContent([hint])).toContain(value.toLocaleString('zh-CN'))
+      }
+      expect(textContent([findByAttr(tree, 'data-liangxiang-stat-label', 'incense')[0]!])).toBe('三界香火')
+      expect(textContent([findByAttr(tree, 'data-liangxiang-stat-label', 'voters')[0]!])).toBe('五行香客')
+    }
+  })
   it('opens one clearly named market action while keeping its miniature decorative', () => {
     let opened = 0
     const tree = renderPanel(onlineState(), '', { utilityOpen: true, reducedMotion: true, onOpenMarket: () => { opened++ } })
@@ -1040,9 +1061,42 @@ describe('梁相案牍', () => {
     expect(icon?.props['aria-hidden']).toBe('true')
     expect(icon?.props.focusable).toBe('false')
     expect(findByAttr(tree, 'data-liangxiang-utility-action')).toHaveLength(5)
-    const onClick = market?.props.onClick as (() => void) | undefined
-    onClick?.()
+    const onClick = market?.props.onClick as ((event: { detail: number, currentTarget: HTMLButtonElement }) => void) | undefined
+    onClick?.({ detail: 0, currentTarget: {} as HTMLButtonElement })
     expect(opened).toBe(1)
+  })
+
+  it('puts a direct market entry above two compact full-name ritual actions and keeps both market routes', () => {
+    const calls: { origin: string, trigger: HTMLButtonElement, keyboard: boolean }[] = []
+    const tree = renderPanel(onlineState(), '', { utilityOpen: true, onOpenMarket: (origin, trigger, keyboard) => calls.push({ origin, trigger, keyboard }) })
+    const main = findByAttr(tree, 'data-liangxiang-market-entry')[0]!
+    const drawer = findByAttr(tree, 'data-liangxiang-utility-market')[0]!
+    const social = findByAttr(tree, 'data-liangxiang-region', 'social')[0]
+    const desk = findByAttr(tree, 'data-liangxiang-utility-desk')[0]
+    const utility = findByAttr(tree, 'data-liangxiang-utility-trigger')[0]!
+    const calendar = findByAttr(tree, 'data-liangxiang-liangci-entry')[0]!
+    expect(styleOf(social).gridTemplateColumns).toBe('minmax(0, 1fr) minmax(0, 1fr) 78px')
+    expect(styleOf(main).gridRow).toBe(1)
+    expect(styleOf(desk).gridRow).toBe(2)
+    expect(styleOf(calendar).gridRow).toBe(2)
+    expect(styleOf(desk).width).toBe('78px')
+    expect(main.props['aria-label']).toBe('梁股 · 香火市场：走势与三次入场')
+    expect(utility.props['aria-label']).toBe(`${UTILITY_LABEL}：${UTILITY_HINT}`)
+    expect(calendar.props['aria-label']).toContain('进入梁祠')
+    for (const node of [main, utility, calendar]) expect(node.props.title).toBeUndefined()
+    expect(textContent([utility])).toContain('牍')
+    expect(textContent([calendar])).toContain('祠')
+    expect(findByAttr([main], 'data-liangxiang-utility-icon', 'market')).toHaveLength(1)
+    const trigger = { matches: () => false } as unknown as HTMLButtonElement
+    const activate = (node: RenderedElement, detail: number): void => {
+      const click = node.props.onClick as (event: { detail: number, currentTarget: HTMLButtonElement }) => void
+      click({ detail, currentTarget: trigger })
+    }
+    activate(main, 1)
+    activate(drawer, 0)
+    expect(calls).toEqual([{ origin: 'panel', trigger, keyboard: false }, { origin: 'utility', trigger, keyboard: true }])
+    expect(findByAttr(tree, 'data-liangxiang-region')).toHaveLength(4)
+    expect(findByAttr(tree, 'data-liangxiang-vote')).toHaveLength(2)
   })
 
   it('sits on the social row, not a fifth region or third vote', () => {

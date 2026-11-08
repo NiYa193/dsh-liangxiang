@@ -224,8 +224,8 @@ describe('free placement', () => {
   })
 
   it('stacks vertically and flips horizontal alignment before leaving the viewport', () => {
-    expect(panelPlacementFor({ x: BADGE_MARGIN, y: viewport.height - 96 }, viewport)).toEqual({ stack: 'above', align: 'start' })
-    expect(panelPlacementFor({ x: BADGE_MARGIN, y: BADGE_MARGIN }, viewport)).toEqual({ stack: 'below', align: 'start' })
-    expect(panelPlacementFor({ x: viewport.width - BADGE_SIZE - BADGE_MARGIN, y: BADGE_MARGIN }, viewport)).toEqual({ stack: 'below', align: 'end' })
+    expect(panelPlacementFor({ x: BADGE_MARGIN, y: viewport.height - 96 }, viewport)).toEqual({ stack: 'above', align: 'start', offsetX: 0 })
+    expect(panelPlacementFor({ x: BADGE_MARGIN, y: BADGE_MARGIN }, viewport)).toEqual({ stack: 'below', align: 'start', offsetX: 0 })
+    expect(panelPlacementFor({ x: viewport.width - BADGE_SIZE - BADGE_MARGIN, y: BADGE_MARGIN }, viewport)).toEqual({ stack: 'below', align: 'end', offsetX: -208 })
   })
 })

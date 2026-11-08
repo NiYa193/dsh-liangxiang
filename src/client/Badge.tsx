@@ -264,16 +264,26 @@ export function LiangxiangBadge(): ReactElement {
   })
   const [welcomeVisible, setWelcomeVisible] = useState(() => !hasSeenWelcome())
   const [releaseNotesVisible, setReleaseNotesVisible] = useState(() => !hasSeenReleaseNotes())
-  const [ritualResting, setRitualResting] = useState<Partial<Record<'utility' | 'liangci', 'pointer' | 'keyboard'>>>({})
+  const [ritualResting, setRitualResting] = useState<Partial<Record<'market' | 'utility' | 'liangci', 'pointer' | 'keyboard'>>>({})
+  const pointerPosition = useRef<{ x: number, y: number } | null>(null)
+  const ritualNeedsExit = useRef(new Set<'market' | 'utility' | 'liangci'>())
   const utilityOpenedByKeyboard = useRef(false)
   const modalOpenedByKeyboard = useRef(false)
   const releaseNotesFromUtility = useRef(false)
   const quietRitualReturn = useCallback((keyboard: boolean): void => {
     const mode = keyboard ? 'keyboard' : 'pointer'
-    setRitualResting({ utility: mode, liangci: mode })
+    ritualNeedsExit.current.clear()
+    const pointer = pointerPosition.current
+    if (pointer) {
+      for (const [kind, selector] of [['market', 'market-entry'], ['utility', 'utility-trigger'], ['liangci', 'liangci-entry']] as const) {
+        const rect = anchorRef.current?.querySelector(`[data-liangxiang-${selector}]`)?.getBoundingClientRect()
+        if (rect && pointer.x >= rect.left && pointer.x < rect.right && pointer.y >= rect.top && pointer.y < rect.bottom) ritualNeedsExit.current.add(kind)
+      }
+    }
+    setRitualResting({ market: mode, utility: mode, liangci: mode })
   }, [])
   useEffect(() => {
-    if (!ritualResting.utility && !ritualResting.liangci) return undefined
+    if (Object.keys(ritualResting).length === 0) return undefined
     const resume = (event: globalThis.KeyboardEvent): void => { if (event.key === 'Tab') setRitualResting({}) }
     document.addEventListener('keydown', resume, true)
     return () => document.removeEventListener('keydown', resume, true)
@@ -316,10 +326,18 @@ export function LiangxiangBadge(): ReactElement {
     setLiangciOpen(false)
   }, [quietRitualReturn])
   const [marketOpen, setMarketOpen] = useState(false)
+  const marketReturnTarget = useRef<HTMLButtonElement | null>(null)
   const closeMarket = useCallback(() => {
-    quietRitualReturn(modalOpenedByKeyboard.current)
+    const keyboard = modalOpenedByKeyboard.current
+    quietRitualReturn(keyboard)
     setMarketOpen(false)
-    requestAnimationFrame(() => anchorRef.current?.querySelector<HTMLButtonElement>('[data-liangxiang-utility-trigger]')?.focus())
+    requestAnimationFrame(() => {
+      const target = marketReturnTarget.current
+      if (keyboard) {
+        if (target?.isConnected) target.focus({ preventScroll: true })
+        else buttonRef.current?.focus({ preventScroll: true })
+      } else target?.blur()
+    })
   }, [quietRitualReturn])
   const selectWelcomeMode = useCallback((preference: HostAuthorityPreference) => {
     void store.selectAuthorityMode(preference).then(
@@ -988,6 +1006,8 @@ export function LiangxiangBadge(): ReactElement {
         pointerEvents: 'auto',
       }}
       data-liangxiang-root=""
+      onPointerMoveCapture={event => { pointerPosition.current = { x: event.clientX, y: event.clientY } }}
+      onPointerDownCapture={event => { pointerPosition.current = { x: event.clientX, y: event.clientY } }}
     >
       <BadgeButton
         open={open}
@@ -1047,13 +1067,15 @@ export function LiangxiangBadge(): ReactElement {
           utilityHintSuppressed={utilityHintSuppressed}
           ritualResting={ritualResting}
           onRitualReactivate={kind => {
+            if (ritualNeedsExit.current.has(kind)) return
             setRitualResting(current => { if (!current[kind]) return current; const next = { ...current }; delete next[kind]; return next })
             if (kind === 'utility') setUtilityHintSuppressed(false)
           }}
+          onRitualLeave={kind => { ritualNeedsExit.current.delete(kind) }}
           onUtilityEnter={() => { utilityPointerInside.current = true; cancelUtilityClose(); setUtilityHintSuppressed(false) }}
           onUtilityLeave={() => { utilityPointerInside.current = false; scheduleUtilityClose() }}
           onUtilityFocus={(keyboard, trigger) => { utilityKeyboardFocus.current = keyboard; cancelUtilityClose(); if (trigger) setUtilityHintSuppressed(false) }}
-          onUtilityBlur={() => { const keyboard = utilityKeyboardFocus.current; utilityKeyboardFocus.current = false; if (keyboard) closeUtility(); else if (!utilityPointerInside.current) scheduleUtilityClose() }}
+          onUtilityBlur={() => { const keyboard = utilityKeyboardFocus.current; utilityKeyboardFocus.current = false; if (!utilityOpen) return; if (keyboard) closeUtility(); else if (!utilityPointerInside.current) scheduleUtilityClose() }}
           onUtilityPointerInput={() => { utilityKeyboardFocus.current = false }}
           onUtilityKeyboardInput={key => { utilityKeyboardFocus.current = true; cancelUtilityClose(); if (key !== 'Escape') { setRitualResting({}); setUtilityHintSuppressed(false) } }}
           onUtilityToggle={() => {
@@ -1076,8 +1098,10 @@ export function LiangxiangBadge(): ReactElement {
           onModeConfirm={onModeConfirm}
           onModeCancel={onModeCancel}
           onShowVersion={onShowVersion}
-          onOpenMarket={() => {
-            modalOpenedByKeyboard.current = utilityKeyboardFocus.current
+          onOpenMarket={(origin, trigger, keyboard) => {
+            modalOpenedByKeyboard.current = keyboard
+            marketReturnTarget.current = origin === 'panel' ? trigger
+              : anchorRef.current?.querySelector<HTMLButtonElement>('[data-liangxiang-utility-trigger]') ?? null
             setUtilityOpen(false)
             setReconcilePending(false)
             setModeConfirmOpen(false)
@@ -1108,7 +1132,7 @@ export function LiangxiangBadge(): ReactElement {
           onRetry={() => { void store.loadHistory() }}
         />
       )}
-      {marketOpen && <MarketDialog key={state.authorityMode === 'LOCAL_FAKE_DEV' ? 'local' : 'online'} reducedMotion={reducedMotion} online={state.authorityMode !== 'LOCAL_FAKE_DEV'} onClose={closeMarket}
+      {marketOpen && <MarketDialog key={state.authorityMode === 'LOCAL_FAKE_DEV' ? 'local' : 'online'} reducedMotion={reducedMotion} online={state.authorityMode !== 'LOCAL_FAKE_DEV'} onClose={closeMarket} restoreFocus={false}
         {...(state.snapshot.liangziPolicyVersion === undefined || state.activeCase.id !== state.snapshot.caseId ? {} : {
           presentation: { caseId: state.snapshot.caseId, policyId: state.snapshot.liangziPolicyVersion, title: state.activeCase.title },
         })} />}

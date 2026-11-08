@@ -23,6 +23,7 @@ export class MarketLedger {
   private readonly db: BackendStore['database']
   private readonly poolCache = new Map<string, { version: number, pools: Map<number, { long: number, short: number }> }>()
   private readonly batchCache = new Map<string, { version: number, batches: BatchRow[] }>()
+  private cachedRollbackVersion = -1
   constructor(private readonly store: BackendStore, private readonly timezone: string) {
     this.db = store.database
   }
@@ -363,6 +364,7 @@ export class MarketLedger {
   }
 
   private view(market: MarketRow, installation: string): DailyMarket {
+    this.invalidateRolledBackReads()
     this.assertRule(market.rule_version)
     let shared = this.batchCache.get(market.id)
     if (shared === undefined || shared.version !== market.version) {
@@ -398,7 +400,15 @@ export class MarketLedger {
   private batches(id: string): BatchRow[] { return this.db.prepare('SELECT * FROM liang_market_batch WHERE market_id=? ORDER BY batch').all(id) as unknown as BatchRow[] }
   private positions(id: string, batch: number): PositionRow[] { return this.db.prepare('SELECT * FROM liang_market_position WHERE market_id=? AND batch=? ORDER BY id').all(id, batch) as unknown as PositionRow[] }
   private position(id: string, batch: number, installation: string): PositionRow | undefined { return this.db.prepare('SELECT * FROM liang_market_position WHERE market_id=? AND batch=? AND installation_id=?').get(id, batch, installation) as unknown as PositionRow | undefined }
+  private invalidateRolledBackReads(): void {
+    if (this.cachedRollbackVersion === this.store.rollbackVersion) return
+    // A rolled-back market version may be reused by the next committed order.
+    this.poolCache.clear()
+    this.batchCache.clear()
+    this.cachedRollbackVersion = this.store.rollbackVersion
+  }
   private pools(id: string, batch: number, knownVersion?: number): { long: number, short: number } {
+    this.invalidateRolledBackReads()
     const version = knownVersion ?? (this.db.prepare('SELECT version FROM liang_market WHERE id=?').get(id) as { version: number }).version
     let cached = this.poolCache.get(id)
     if (cached === undefined || cached.version !== version) {

@@ -4,8 +4,8 @@
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.7`，`SERVER_BUILD=1.3.0-alpha.7-u1`。
-当前源码为 **1.3.0-alpha.7 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.3.0-alpha.8`，`SERVER_BUILD=1.3.0-alpha.8-u1`。
+当前源码为 **1.3.0-alpha.8 开发候选，正式 1.3.0 尚未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 累计钱包、三批分池、延迟定线与缓存限制的现行候选契约见 [`MARKET_WALLET.md`](MARKET_WALLET.md)，当前候选 SQLite schema 为 **14**。独立实现与验证证据见 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)。线上仍运行下述维护版，候选迁移不能擅自上线。
 
@@ -79,7 +79,7 @@ Desktop 通过原生“插件 → 添加插件”输入完整包名 `dsh-liangxi
 ## 验证与协作
 
 当前多项工作与待审核建议逐项记在 [`WORK_TRACKER.md`](WORK_TRACKER.md)；每项完成即更新，不用旧验证记录推断新任务已完成。
-DSH侧栏默认280px、梁相外框256px对齐内容区的实现与实测见 [`DSH_LAYOUT_WIDTH.md`](DSH_LAYOUT_WIDTH.md)；主面板布局草图尚待审核。
+DSH侧栏默认280px、梁相外框256px的实现与实测见 [`DSH_LAYOUT_WIDTH.md`](DSH_LAYOUT_WIDTH.md)；alpha8按最终反馈保持256px，新增梁股直接入口与紧凑统计，指针关闭失焦、键盘关闭归还焦点。
 
 完成变更至少运行 `pnpm run verify`；DSH/打包触点运行 `smoke:clean-profile`，UI 运行
 `smoke:browser-clean-profile`，权威/API 变化运行 `smoke:online`，提交和推送必须通过隐私门禁。

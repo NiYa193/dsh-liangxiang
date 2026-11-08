@@ -184,7 +184,7 @@ test('utility hover closes after pointer exit despite click focus, cancels on re
   await expect(drawer).toBeHidden()
 })
 
-test('utility short hints point toward the opposite ritual row and keyboard dismissal does not leave a sticky popup', async ({ page }) => {
+test('compact ritual hints stay below their row and keyboard dismissal does not leave a sticky popup', async ({ page }) => {
   const panel = await openPanel(page)
   const trigger = panel.locator('[data-liangxiang-utility-trigger]')
   const entry = panel.locator('[data-liangxiang-liangci-entry]')
@@ -195,13 +195,12 @@ test('utility short hints point toward the opposite ritual row and keyboard dism
   await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
   const triggerBox = (await trigger.boundingBox())!, entryBox = (await entry.boundingBox())!, hintBox = (await hint.boundingBox())!
   expect(hintBox.y).toBeGreaterThanOrEqual(triggerBox.y + triggerBox.height)
-  expect(Math.abs(hintBox.y - entryBox.y)).toBeLessThanOrEqual(2)
-  expect(Math.abs(hintBox.x + hintBox.width - entryBox.x - entryBox.width)).toBeLessThanOrEqual(1)
+  expect(Math.abs(hintBox.x + hintBox.width - triggerBox.x - triggerBox.width)).toBeLessThanOrEqual(1)
   expect(await hint.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none')
   await entry.hover()
   await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('0')
   await expect.poll(() => entryHint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
-  expect((await entryHint.boundingBox())!.y + (await entryHint.boundingBox())!.height).toBeLessThanOrEqual(entryBox.y)
+  expect((await entryHint.boundingBox())!.y).toBeGreaterThanOrEqual(entryBox.y + entryBox.height)
 
   await trigger.click()
   await expect(drawer).toBeVisible()
@@ -228,48 +227,136 @@ test('utility short hints point toward the opposite ritual row and keyboard dism
   await expect(panel).toBeVisible()
 })
 
-test('utility hint paints over the calendar button while leaving its overlapping area clickable', async ({ page }) => {
+test('pointer ritual hints suppress the adjacent keyboard hint and never cover the direct market entry', async ({ page }) => {
   const panel = await openPanel(page)
   const trigger = panel.locator('[data-liangxiang-utility-trigger]')
   const entry = panel.locator('[data-liangxiang-liangci-entry]')
-  const hint = trigger.locator('[data-liangxiang-hint]')
-  // Merely hovering another control does not clear an existing keyboard ring.
-  // The pointer hint must still paint above that later sibling's context.
+  const market = panel.locator('[data-liangxiang-market-entry]')
   await page.mouse.move(0, 0)
   await page.keyboard.press('Tab')
   await entry.focus()
   await expect.poll(() => entry.evaluate(element => element.matches(':focus-visible'))).toBe(true)
   await trigger.hover()
-  await expect.poll(() => entry.evaluate(element => element.matches(':focus-visible'))).toBe(true)
-  await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  await expect.poll(() => entry.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  for (const action of [trigger, entry]) {
+    await action.hover()
+    const hint = action.locator('[data-liangxiang-hint]')
+    await expect.poll(() => hint.evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+    const hintBox = (await hint.boundingBox())!, marketBox = (await market.boundingBox())!
+    expect(hintBox.x).toBeGreaterThanOrEqual(0)
+    expect(hintBox.x + hintBox.width).toBeLessThanOrEqual(page.viewportSize()!.width)
+    expect(hintBox.y).toBeGreaterThan(marketBox.y + marketBox.height)
+    expect(await hint.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none')
+  }
+  await market.click()
+  await expect(page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })).toBeVisible()
+})
 
-  const overlap = await hint.evaluate(element => {
-    const entry = element.closest('[data-liangxiang-panel]')!.querySelector('[data-liangxiang-liangci-entry]')!
-    const hintRect = element.getBoundingClientRect(), entryRect = entry.getBoundingClientRect()
-    const left = Math.max(hintRect.left, entryRect.left), right = Math.min(hintRect.right, entryRect.right)
-    const top = Math.max(hintRect.top, entryRect.top), bottom = Math.min(hintRect.bottom, entryRect.bottom)
-    const x = (left + right) / 2, y = (top + bottom) / 2
-    const passesThrough = entry.contains(document.elementFromPoint(x, y))
-    const pointerEvents = getComputedStyle(element).pointerEvents
-    // Hit testing normally skips this noninteractive hint. Temporarily make
-    // it eligible to inspect the real paint order, then restore immediately.
-    const oldPointerEvents = element.style.pointerEvents
-    let paintedOnTop = false
-    try {
-      element.style.pointerEvents = 'auto'
-      paintedOnTop = element.contains(document.elementFromPoint(x, y))
-    } finally {
-      element.style.pointerEvents = oldPointerEvents
-    }
-    return { x, y, width: right - left, height: bottom - top, pointerEvents, passesThrough, paintedOnTop }
+test('original-width panel keeps its centre and compact bold ritual actions without crowding statistics', async ({ page }) => {
+  const panel = await openPanel(page)
+  const panelBox = (await panel.boundingBox())!, badgeBox = (await page.locator(badgeSelector).boundingBox())!
+  expect(panelBox.x).toBe(12)
+  expect(panelBox.width).toBe(256)
+  expect(badgeBox.x).toBe(12)
+  const ring = (await panel.locator('[data-liangxiang-ring]').boundingBox())!
+  expect(ring.x + ring.width / 2).toBeCloseTo(140, 0)
+  const market = panel.locator('[data-liangxiang-market-entry]')
+  const utility = panel.locator('[data-liangxiang-utility-trigger]')
+  const calendar = panel.locator('[data-liangxiang-liangci-entry]')
+  const marketBox = (await market.boundingBox())!, utilityBox = (await utility.boundingBox())!, calendarBox = (await calendar.boundingBox())!
+  expect(marketBox.width).toBe(78)
+  expect(utilityBox.width).toBe(37)
+  expect(calendarBox.width).toBe(37)
+  expect(utilityBox.y).toBe(calendarBox.y)
+  expect(utilityBox.y).toBeGreaterThan(marketBox.y)
+  for (const [button, word] of [[utility, '牍'], [calendar, '祠']] as const) {
+    await expect(button).toHaveCSS('font-weight', '700')
+    await expect(button).toHaveCSS('font-size', '12px')
+    expect(await button.evaluate(element => [...element.childNodes].filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join('').trim())).toBe(word)
+    expect((await button.locator('svg').boundingBox())!.width).toBe(12)
+    expect(await button.getAttribute('title')).toBeNull()
+  }
+  expect(await market.evaluate(element => getComputedStyle(element).color)).not.toBe(await utility.evaluate(element => getComputedStyle(element).color))
+  for (const label of await panel.locator('[data-liangxiang-stat-label]').all()) await expect(label).toHaveCSS('font-size', '11px')
+  await page.setViewportSize({ width: 320, height: 900 })
+  await expect.poll(async () => (await panel.boundingBox())!.width).toBe(256)
+  expect((await panel.boundingBox())!.x).toBe(12)
+})
+
+test('social slots fit zero, four-digit and extreme counts while retaining exact accessible values', async ({ page }) => {
+  const response = await page.request.get('/liangxiang/api/state')
+  const base = parseWireState(await response.json())
+  let value = 0, sequence = base.global.sequence + 100
+  await page.addInitScript(() => {
+    const Native = window.EventSource
+    window.EventSource = new Proxy(Native, { construct(target, args) {
+      if (new URL(String(args[0]), location.href).pathname === '/liangxiang/api/events') return { onmessage: null, onerror: null, close() {} }
+      return Reflect.construct(target, args)
+    } })
   })
-  expect(overlap.width).toBeGreaterThan(0)
-  expect(overlap.height).toBeGreaterThan(0)
-  expect(overlap.paintedOnTop).toBe(true)
-  expect(overlap.pointerEvents).toBe('none')
-  expect(overlap.passesThrough).toBe(true)
-  await page.mouse.click(overlap.x, overlap.y)
-  await expect(page.locator(liangciSelector)).toBeVisible()
+  await page.route(/\/liangxiang\/api\/(?:state|refresh)(?:\?|$)/, route => route.fulfill({ json: {
+    ...base, global: { ...base.global, upVotes: value, downVotes: 0, uniqueVoters: value, lifetimeIncense: value, lifetimeVoters: value, sequence },
+  } }))
+  for (const [count, caption] of [[0, '0'], [9999, '9,999'], [99999, '100K'], [Number.MAX_SAFE_INTEGER, '9007T']] as const) {
+    value = count; sequence++
+    await page.reload()
+    const panel = await openPanel(page)
+    for (const kind of ['incense', 'voters']) {
+      const slot = panel.locator(`[data-liangxiang-stat="${kind}"]`)
+      await expect(slot.locator('[data-liangxiang-stat-value]')).toHaveText(caption)
+      await expect(slot).toHaveAttribute('aria-label', new RegExp(count.toLocaleString('zh-CN')))
+      const layout = await slot.evaluate(element => {
+        const slotRect = element.getBoundingClientRect()
+        return [...element.querySelectorAll('[data-liangxiang-stat-label],[data-liangxiang-stat-value]')].every(item => {
+          const rect = item.getBoundingClientRect(), range = document.createRange()
+          range.selectNodeContents(item)
+          const ink = range.getBoundingClientRect()
+          return ink.left >= slotRect.left - 1 && ink.right <= slotRect.right + 1 && ink.width <= rect.width + 1
+        })
+      })
+      expect(layout).toBe(true)
+      expect(await slot.getAttribute('title')).toBeNull()
+    }
+  }
+})
+
+test('direct market entry returns pointer and keyboard users to their actual trigger without sticky hints', async ({ page }) => {
+  const panel = await openPanel(page)
+  const trigger = panel.locator('[data-liangxiang-market-entry]')
+  const market = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
+  const restColor = await trigger.evaluate(element => getComputedStyle(element).color)
+  await trigger.click()
+  await expect(market).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(market).toBeHidden()
+  await expect(trigger).not.toBeFocused()
+  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect(trigger).toHaveCSS('color', restColor)
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  const point = (await trigger.boundingBox())!
+  await page.mouse.move(point.x + point.width / 2 + 1, point.y + point.height / 2)
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  await page.mouse.move(0, 0)
+  await trigger.hover()
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('1')
+  await page.mouse.move(0, 0)
+  await page.keyboard.press('Tab')
+  await trigger.hover()
+  await trigger.focus()
+  await trigger.press('Enter')
+  await expect(market).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(market).toBeHidden()
+  await expect(trigger).toBeFocused()
+  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'keyboard')
+  await expect(trigger).toHaveCSS('outline-style', 'solid')
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
+  await trigger.click()
+  await expect(market).toBeVisible()
+  await market.getByRole('button', { name: '关闭香火交易', exact: true }).click()
+  await expect(market).toBeHidden()
+  await expect(trigger).not.toBeFocused()
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
 })
 
 test('Escape restores ritual focus without replaying pointer hints or highlights for the drawer, calendar, market and version notes', async ({ page }) => {
@@ -324,7 +411,7 @@ test('Escape restores ritual focus without replaying pointer hints or highlights
   await expect(market).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(market).toBeHidden()
-  await expect(trigger).toBeFocused()
+  await expect(trigger).not.toBeFocused()
   await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
   await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
   expect(await quietStyle(trigger)).toEqual(triggerRest)

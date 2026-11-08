@@ -177,7 +177,7 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   expect(axe.violations).toEqual([])
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
-  await expect(page.locator('[data-liangxiang-utility-trigger]')).toBeFocused()
+  await expect(page.locator('[data-liangxiang-utility-trigger]')).not.toBeFocused()
   await expect.poll(() => page.evaluate(() => window.__liangxiangMarketStreamsClosed)).toBe(1)
 })
 

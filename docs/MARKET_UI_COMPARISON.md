@@ -1,6 +1,6 @@
 # 交易视图：当前方案与参考边界
 
-当前 `1.3.0-alpha.7` 为未发布候选。潮汐表现层曾参考同项目的 MIT 设计提案 `design/tide-chart/liangzi-tide-chart.html`，保留贡献者版权；表现层不替换服务器账本或价格依据。
+当前 `1.3.0-alpha.8` 为未发布候选。潮汐表现层曾参考同项目的 MIT 设计提案 `design/tide-chart/liangzi-tide-chart.html`，保留贡献者版权；表现层不替换服务器账本或价格依据。
 
 ## 当前界面
 

@@ -25,9 +25,18 @@ original rule version through restart, settlement and receipts.
 Server transactions own freezing, idempotency, integer pool allocation and
 rollover. No client cache or chart is a ledger. Usage remains soft trust.
 
-The existing four-region panel and original Liangzi effects remain intact.
-One compact `香火交易` entry sits below the utility drawer's 2×2 tiles and
-opens the unified chart/trading view; do not add a second `梁位走势` entry or
+The four-region panel and original Liangzi effects remain intact. The approved
+main panel keeps its original 256 CSS pixels, matching the default DSH
+sidebar's content width, with its default outer left edge and badge at x=12.
+Clamp the panel independently at narrow viewport edges; never rewrite the
+freely dragged badge position to fit it. Region 4's compact right column has
+the direct `梁股` action above two bold icon-and-glyph controls `牍` / `祠`.
+Keep their full accessible names and custom hints. The market uses the primary
+ritual accent; tools/history use the quieter theme color. The drawer retains
+its full-name market shortcut below the 2×2 tiles. Both routes open the same
+chart/trading view. Keyboard closing returns focus to its actual origin;
+pointer closing blurs the entry and keeps its hint quiet until real re-entry.
+Do not add a second `梁位走势` entry or
 restore the retired window from old browser preferences. Keep official minute candles distinct from the retained Host-local observation API.
 Legacy five-minute records retain their true grain and are never subdivided. The whale stays
 in the header between the title/wallet and window controls, outside the plot.
@@ -235,8 +244,8 @@ incense.
 ### Region 4 — Social stats
 
 ```text
-    三界香火        五行香客      梁相案牍
-     12,846          2,841       进入梁祠
+    三界香火        五行香客        梁股
+     12,846          2,841        图标牍 图标祠
 ```
 
 - 三界香火 = accepted votes for the current case (天/人/地香火汇于一炉)
@@ -244,8 +253,15 @@ incense.
   underneath: this installation's today/lifetime 夯拉 and the share of 三界香火
   (`占梁`). Local only, never a fifth region or a 梁位 percentage-point claim
 - 五行香客 = unique users with at least one accepted vote for the current case/day (取经五众)
-- the right edge is one compact ritual-control column: `梁相案牍` above
-  `进入梁祠`; both remain inside Region 4 and neither is a fifth region
+- the right edge is one compact two-row ritual-control column: direct `梁股`
+  above bold icon + `牍` / icon + `祠`. Accessible names and custom short hints
+  remain `梁股 · 香火市场`, `梁相案牍` and `进入梁祠`; all stay inside Region 4,
+  never a fifth region. Preserve the primary market accent and quieter tool
+  colors, the original statistics and core centerline. Closing a market returns
+  to the real opening control for keyboard use; pointer closing blurs it.
+  Escape never revives a stale hint or hover state. Compact statistics keep
+  their full labels and exact accessible/tooltip values; large visual counts
+  must fit their slots without shrinking the controls or overflowing
 - routine Token claims, snapshots, reconnects and archive refresh are automatic;
   never present a routine manual-sync action
 - 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、定时上香、在线模式/离线模式、
