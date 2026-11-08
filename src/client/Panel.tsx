@@ -654,46 +654,8 @@ ${MAIN_PANEL_THEME_CSS}
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-[data-~utility-market] {
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) 10px;
-  grid-template-rows: auto auto;
-  align-items: center;
-  column-gap: 9px;
-  width: 100%;
-  min-height: 58px;
-  box-sizing: border-box;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, ${color.ritualGold} 46%, ${color.border});
-  border-radius: 10px;
-  background: linear-gradient(180deg, color-mix(in srgb, ${color.ritualGold} 8%, ${color.bgLayer}), ${color.bgSubtle});
-  box-shadow: inset 0 1px 0 color-mix(in srgb, ${color.ritualGold} 13%, transparent), 0 2px 0 color-mix(in srgb, ${color.ritualGold} 14%, ${color.border});
-  color: ${color.textPrimary};
-  font: 11px ${font.family};
-  text-align: left;
-  cursor: pointer;
-  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
-}
-[data-~utility-market] > svg {
-  grid-row: 1 / 3;
-  color: ${color.ritualEmberText};
-}
-[data-~utility-market] > strong { grid-column: 2; grid-row: 1; font-size: 12px; font-weight: 600; }
-[data-~utility-market-caption] { grid-column: 2; grid-row: 2; color: ${color.textSecondary}; font-size: 10px; white-space: nowrap; }
-[data-~utility-market-arrow] { grid-column: 3; grid-row: 1 / 3; color: ${color.ritualEmberText}; font-size: 20px; }
-[data-~utility-market]:hover,
-[data-~utility-market]:focus-visible {
-  border-color: ${color.ritualEmberText};
-  box-shadow: inset 0 1px 0 color-mix(in srgb, ${color.ritualGold} 20%, transparent), 0 3px 0 color-mix(in srgb, ${color.ritualGold} 22%, ${color.border});
-  transform: translateY(-1px);
-}
-[data-~utility-market]:active { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08); }
 .liangxiang-utility-mini-candle { transform-box: fill-box; transform-origin: center; transition: transform 150ms ease; }
-[data-~utility-market]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even),
 [data-~market-entry]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even) { transform: translateY(-1px); }
-[data-~utility-market][data-motion="false"],
-[data-~utility-market][data-motion="false"] .liangxiang-utility-mini-candle,
 [data-~market-entry][data-motion="false"] .liangxiang-utility-mini-candle { transform: none; transition: none; }
 [data-~version-label] {
   grid-column: 2;

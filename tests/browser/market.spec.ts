@@ -786,8 +786,11 @@ test('receipt and rules remain visible controls and use overlays without shiftin
       await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('投10')
       await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('返还15')
       await expect(popover.locator('.liangxiang-market-rule-example')).toContainText('本金10＋赚5')
-      await expect(popover).toContainText('收盘更高就赢')
-      await expect(popover).toContainText('收盘更低就赢')
+      await expect(popover).toContainText('收盘比照片高就赢')
+      await expect(popover).toContainText('收盘比照片低就赢')
+      await expect(popover).toContainText('冻结的香暂时不能上香')
+      await expect(popover).toContainText('输了，这盘的投入就归对面啦')
+      await expect(popover).toContainText('只有一边参加或本盘取消，原香退回')
     }
     const opened = (await dialog.boundingBox())!
     expect(Math.abs(opened.height - bounds.height)).toBeLessThanOrEqual(1)

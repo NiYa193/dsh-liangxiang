@@ -251,14 +251,14 @@ export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = tr
             </nav>}
           </section>
           <section id="liangxiang-market-rules" className={marketClass('popover')} data-liangxiang-market-popover="rules" aria-label="交易玩法" hidden={popover !== 'rules'}>
-            <div className={marketClass('popover-heading')}><strong>30秒看懂梁股</strong><button type="button" data-fish-action="dismiss" aria-label="关闭玩法" onClick={() => setPopover(null)}>×</button></div>
+            <div className={marketClass('popover-heading')}><strong>大肥鱼带你玩三步</strong><button type="button" data-fish-action="dismiss" aria-label="关闭玩法" onClick={() => setPopover(null)}>×</button></div>
             <ol className={marketClass('howto')}>
-              <li><b>选一盘，选方向</b><p>做多盼涨，做空盼跌。整炷投入并冻结，封盘前可调整或撤回。</p></li>
-              <li><b>记下这盘的梁位</b><div className={marketClass('rule-times')}>{market?.batches.map(batch => <span key={batch.batch}>{marketBatchName(batch.batch)}<strong>{marketTime(batch.reference_at, market.timezone)}定梁</strong></span>)}</div><p>定梁＝记录本盘梁位。封盘后还能上香争梁位；午夜收盘时与它比高低。</p><div className={marketClass('rule-sides')}><span>↗ 做多：收盘更高就赢</span><span>↘ 做空：收盘更低就赢</span></div></li>
-              <li><b>午夜一起揭晓</b><p>赢家按投入分走输方香火，并拿回本金。持平、单边或取消则退款。</p></li>
+              <li><b>选一盘，下点香</b><p>早、午、晚盘，每盘都能重新选方向。填整炷香火投入，封盘前能改、能撤；冻结的香暂时不能上香。</p></li>
+              <li><b>到点拍张梁位照</b><div className={marketClass('rule-times')}>{market?.batches.map(batch => <span key={batch.batch}>{marketBatchName(batch.batch)}<strong>{marketTime(batch.reference_at, market.timezone)}定梁</strong></span>)}</div><p>“定梁”就是拍下这盘的梁位。封盘后还能打梁；到午夜，拿收盘梁位和照片比一比。</p><div className={marketClass('rule-sides')}><span>↗ 做多：收盘比照片高就赢</span><span>↘ 做空：收盘比照片低就赢</span></div></li>
+              <li><b>午夜一起分香</b><p>赢了拿回本金，再按自己占本方的份额分对面香火；输了，这盘的投入就归对面啦。一样高、只有一边参加或本盘取消，原香退回。</p></li>
             </ol>
-            <div className={marketClass('rule-example')}><b>举个例子</b><p>你投10炷，多池20、空池10。做多赢了，返还15炷＝本金10＋赚5。</p></div>
-            <p className={marketClass('rule-note')}>出水占优，潜水落后，收盘才算数。投入看盘次按钮，香池看下方。</p>
+            <div className={marketClass('rule-example')}><b>小鱼算给你看</b><p>你做多投10炷，多池共20、空池共10。做多赢了，返还15炷＝本金10＋赚5。</p></div>
+            <p className={marketClass('rule-note')}>冷门赢了可能分得多，押错一样会亏香。只分整炷，零头也会按规则分完。出水只是暂时领先，收盘才算数～</p>
             <small className={marketClass('rule-trust')}>社区娱乐积分；用量由本机申报，钱包、时间与结果由服务器记账。</small>
           </section>
         </footer>

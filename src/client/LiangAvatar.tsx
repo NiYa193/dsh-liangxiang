@@ -69,7 +69,7 @@ const AVATAR_MOTION_CSS = `
 }
 @keyframes liangxiang-avatar-cross {
   0% { filter: none; }
-  35% { filter: drop-shadow(0 0 18px rgba(226, 174, 84, 0.95)) drop-shadow(0 0 32px rgba(216, 135, 58, 0.55)); }
+  35% { filter: drop-shadow(0 0 18px color-mix(in srgb, var(--liangxiang-main-blue, #5879bf) 95%, transparent)) drop-shadow(0 0 32px color-mix(in srgb, var(--liangxiang-main-water, #9dc6f6) 55%, transparent)); }
   100% { filter: none; }
 }
 @keyframes liangxiang-avatar-figure-float {

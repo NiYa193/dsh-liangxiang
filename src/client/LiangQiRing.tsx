@@ -45,8 +45,9 @@ const BOTTOM_GAP = 1.2
 const ONES_ORBIT = RING_RADIUS + 5
 const TENS_ORBIT = RING_RADIUS + 10
 const HUNDREDS_ORBIT = RING_RADIUS + 10
-/** Warm flame tone for the candle tip. */
-const FLAME = '#f3c152'
+/** Inherited ritual marks: quiet champagne gold against the blue water. */
+const FLAME = 'light-dark(#deb967, #edd49a)'
+const GLYPH_GOLD = 'light-dark(#b58a45, #d9bd82)'
 
 const ACTIVITY_CSS = `
 @keyframes liangxiang-stream-wisp {
@@ -84,7 +85,7 @@ function StickMark({ index, count, opacity }: { index: number, count: number, op
       opacity={opacity}
     >
       <path d="M 0 -4.4 C -1.2 -3.1 -1.2 -2 0 -1.2 C 1.2 -2 1.2 -3.1 0 -4.4 Z" fill={FLAME} />
-      <rect x="-1.5" y="-1.1" width="3" height="7.4" rx="1.4" fill={color.warn} />
+      <rect x="-1.5" y="-1.1" width="3" height="7.4" rx="1.4" fill={GLYPH_GOLD} />
     </g>
   )
 }
@@ -100,7 +101,7 @@ function MoonMark({ index, count, opacity }: { index: number, count: number, opa
     >
       {/* Open crescent (two horns), scaled from the standard "moon" icon path. */}
       <path
-        fill={color.warn}
+        fill={GLYPH_GOLD}
         d="M 2.1 0.3 A 3.8 3.8 0 1 1 -2 -3.8 A 2.9 2.9 0 0 0 2.1 0.3 Z"
       />
     </g>
@@ -124,11 +125,11 @@ function SunMark({ index, count, opacity }: { index: number, count: number, opac
           width="1.1"
           height="2.2"
           rx="0.55"
-          fill={color.warn}
+          fill={GLYPH_GOLD}
           transform={`rotate(${deg})`}
         />
       ))}
-      <circle r="2.4" fill={color.warn} />
+      <circle r="2.4" fill={GLYPH_GOLD} />
     </g>
   )
 }
