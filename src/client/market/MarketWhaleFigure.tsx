@@ -7,7 +7,7 @@ const BLUE = 'var(--liangxiang-market-blue, #4d6bfe)'
 const TAIL = 'M184 157Q204 169 219 157L246 132V183Q230 204 201 193L183 182Z'
 const HAIR = 'M24 135Q44 147 58 145L54 177Q46 198 26 208L10 193L7 167Z'
 
-/** A masked bitmap: local tail/hair motion, with the real waterline in front. */
+/** The dry face uses vector clipping, avoiding a low-resolution animated mask surface. */
 export function MarketWhaleFigure({ x, y, width, height, waterY, mood, animated, src }: {
   x: number, y: number, width: number, height: number, waterY: number,
   mood: PositionMood, animated: boolean, src: string,
@@ -26,10 +26,9 @@ export function MarketWhaleFigure({ x, y, width, height, waterY, mood, animated,
     <defs>
       <clipPath id={`${id}-tail`}><path d={TAIL} transform={partTransform} /></clipPath>
       <clipPath id={`${id}-hair`}><path d={HAIR} transform={partTransform} /></clipPath>
-      <mask id={`${id}-body`} maskUnits="userSpaceOnUse" x={x} y={y} width={width} height={height}>
-        <rect x={x} y={y} width={width} height={height} fill="white" />
-        <path d={TAIL} transform={partTransform} fill="black" /><path d={HAIR} transform={partTransform} fill="black" />
-      </mask>
+      <clipPath id={`${id}-body`}><path d={`M0 0H246V256H0Z${TAIL}${HAIR}`} transform={partTransform} clipRule="evenodd" /></clipPath>
+      <clipPath id={`${id}-dry`}><rect x={x - 5} y={y - 5} width={width + 10} height={Math.max(0, line - y + 5)} /></clipPath>
+      <clipPath id={`${id}-wet`}><rect x={x - 5} y={line} width={width + 10} height={Math.max(0, y + height - line + 5)} /></clipPath>
       <linearGradient id={`${id}-depth`} gradientUnits="userSpaceOnUse" x1="0" y1={line} x2="0" y2={Math.max(line + 1, y + height)}>
         <stop stopColor="white" stopOpacity={dive ? '.94' : '.9'} /><stop offset=".42" stopColor="white" stopOpacity={dive ? '.57' : '.28'} /><stop offset="1" stopColor="white" stopOpacity=".025" />
       </linearGradient>
@@ -39,15 +38,17 @@ export function MarketWhaleFigure({ x, y, width, height, waterY, mood, animated,
       </mask>
       <mask id={`${id}-alpha`} maskUnits="userSpaceOnUse" x={x} y={y} width={width} height={height} style={{ maskType: 'alpha' }}><image {...art} /></mask>
     </defs>
-    <g mask={`url(#${id}-occlusion)`} data-liangxiang-market-water-occlusion={pose}>
-        {/* A separate mask pass keeps the face out of the moving tail/hair raster layer. */}
-        <g data-liangxiang-market-whale-piece="body" data-liangxiang-market-steady-face="" mask={`url(#${id}-body)`}><image data-liangxiang-market-whale-art="" {...art} />{tint('body')}</g>
+    <g className="liangxiang-market-whale-swim">
+    <g data-liangxiang-market-whale-piece="body" clipPath={`url(#${id}-body)`}>
+      <g data-liangxiang-market-steady-face="" clipPath={`url(#${id}-dry)`}><image data-liangxiang-market-whale-art="" {...art} /></g>
+      <g clipPath={`url(#${id}-wet)`} mask={`url(#${id}-occlusion)`} data-liangxiang-market-water-occlusion={pose}><image {...art} />{tint('body')}</g>
     </g>
     <g mask={`url(#${id}-occlusion)`}>
         <g className="liangxiang-market-companion-sway">
         <g className="liangxiang-market-whale-tail" data-liangxiang-market-whale-piece="tail" clipPath={`url(#${id}-tail)`} style={{ transformOrigin: `${x + 188 * sx}px ${y + 176 * sy}px` }}><image {...art} />{tint('tail')}</g>
         </g>
         <g className="liangxiang-market-whale-hair" data-liangxiang-market-whale-piece="hair" clipPath={`url(#${id}-hair)`} style={{ transformOrigin: `${x + 49 * sx}px ${y + 144 * sy}px` }}><image {...art} />{tint('hair')}</g>
+    </g>
     </g>
     {mood !== 'waiting' && <g className="liangxiang-market-whale-ripples" data-liangxiang-market-water-front="">
       <ellipse className="liangxiang-market-whale-breath" cx={cx} cy={waterY + 4} rx={width * .37} ry="5" fill={BLUE} fillOpacity=".1" />

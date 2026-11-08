@@ -73,6 +73,10 @@ export { LIANGZI_POLICY_VERSION } from '../domain/index.ts'
 /** Presentation capability only; it never changes balances or vote weight. */
 export const LIANGZI_POLICY_HEADER = 'x-liangxiang-liangzi-policy'
 
+/** Explicit accounting capability, independent of the cosmetic Liangzi policy. */
+export const WALLET_CAPABILITY_HEADER = 'x-liangxiang-wallet'
+export const WALLET_CAPABILITY_VERSION = 'cumulative-v1'
+
 /**
  * Authority modes. `VERIFIED_PRODUCTION` requires server-verifiable identity
  * AND server-verifiable Token usage; Decision Gate A = A3 (docs/043) means it
@@ -350,6 +354,7 @@ export interface V1UnbindResponse {
 
 /** Structured error codes (HTTP status is carried separately). */
 export const V1_ERROR_CODES = [
+  'wallet_upgrade_required',
   'invalid_request',
   'missing_installation',
   'invalid_signature',

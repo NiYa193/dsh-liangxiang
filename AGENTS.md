@@ -25,13 +25,26 @@ original rule version through restart, settlement and receipts.
 Server transactions own freezing, idempotency, integer pool allocation and
 rollover. No client cache or chart is a ledger. Usage remains soft trust.
 
-The existing four-region panel and original Liangzi effects remain intact.
-One compact `香火交易` entry sits below the utility drawer's 2×2 tiles and
-opens the unified chart/trading view; do not add a second `梁位走势` entry or
+The four-region panel and original Liangzi effects remain intact. The approved
+main panel keeps its original 256 CSS pixels, matching the default DSH
+sidebar's content width, with its default outer left edge and badge at x=12.
+Clamp the panel independently at narrow viewport edges; never rewrite the
+freely dragged badge position to fit it. Region 4's compact right column has
+the direct `梁股` action above two bold icon-and-glyph controls `牍` / `祠`.
+Keep their full accessible names and custom hints. The market uses the primary
+ritual accent; tools/history use the quieter theme color. The drawer retains
+its full-name market shortcut below the 2×2 tiles. Both routes open the same
+chart/trading view. Keyboard closing returns focus to its actual origin;
+pointer closing blurs the entry and keeps its hint quiet until real re-entry.
+Do not add a second `梁位走势` entry or
 restore the retired window from old browser preferences. Keep official minute candles distinct from the retained Host-local observation API.
 Legacy five-minute records retain their true grain and are never subdivided. The whale stays
-in the header between the title/wallet and window controls, outside the plot; stage backgrounds are subtle, future time
-reads `待打梁`, and the footer reads `24:00后一起揭晓`. One noninteractive time-window text beside the zoom controls shows the actual zoomed span.
+in the header between the title/wallet and window controls, outside the plot.
+The same restrained gray future region in both charts starts at the actual
+business clock, with a clear current-time boundary and left-aligned `待开梁`
+caption. Thin stage strips distinguish investment windows without stacking
+full-height backgrounds; missing historical data remains a gap. The footer
+reads `24:00后一起揭晓`. One noninteractive time-window text beside the zoom controls shows the actual zoomed span.
 Wheel zoom is continuous and pointer-anchored; +/− step through 24/12/6/3/1 hours and 30 minutes; candle grain is automatic,
 never a separate interval selector, and cannot exceed the real source resolution. Record the active case all
 business day, including before trading opens; phase shading never hides prices. The normal window and order ticket stay compact. The header whale uses action-specific local motion and readable speech. It reports the selected batch's actual cutoff and pool once per minute, below operation/error priority; clicking it reports on demand.
@@ -43,6 +56,21 @@ decoration, never a replacement central Liangzi or a new business namespace.
 Market animation/static preference is local and respects reduced motion.
 Market surfaces inherit DSH's explicit color scheme. Verify an OS-light / DSH-dark
 combination as well as ordinary light/dark themes; static mode stops every local CSS transition and WAAPI action.
+Dragging either chart must not select its labels or adjacent readout; ordinary
+text outside the drag remains selectable. The readout has stable left-aligned
+direction, Liang position and detail slots. Keep whole-fish swimming and local
+motion in dynamic mode; solve sharpness in rendering rather than removing motion.
+First uncached loading may swim two circles then return the same fish to its
+header slot; errors, hiding, static mode and unmount cancel the flight. All
+fish speech shares one unboxed, staggered fading area beside the fish; do not
+restore a second speech card. Clicked fish may emit up to three short local
+lines sampled from current confirmed facts. They expire, never block controls,
+and never claim unconfirmed earnings. Static mode keeps the text readable.
+New Hosts negotiate `x-liangxiang-wallet: cumulative-v1`. Older Hosts retain
+the actual daily protocol and transactionally bounded daily voting, using the
+same wallet. Never invent daily Tokens or spending to fit old equations; mixed
+or downgraded installs that cannot represent their actual funds require a clear
+compatibility response. Unupgraded daily-only users must remain supported.
 Do not read another implementation until the independent implementation has
 been completed and recorded in a commit; comparisons must be documented.
 
@@ -161,17 +189,18 @@ Rules:
   `liang_qi_fill` (0 = slow idle bob, approaching 1 = faster), never remaining
   incense or the global 梁位. Respect `prefers-reduced-motion`.
 - right overlay: personal `tokens_to_next_incense` in **Pro 当量** (not raw
-  Flash Token). Hover/focus on 下一炷 shows the model-weight table
-  from the same static rule data used by accounting (Pro ×1,
-  Flash / other / unknown ×0.5); never maintain a second static table.
+  Flash Token). Keep it a passive caption without a hover/focus model-rate
+  table or competing popup. Exact values remain accessible. Accounting and
+  published rule explanations use the same static Pro ×1 / Flash, other and
+  unknown ×0.5 source; do not create an independent table.
 - Live requests may add restrained smoke/glow and `凝香中` inside the existing
   core. Activity is not progress: never extrapolate numeric Token captions,
   fill a fake percentage or mint spendable incense. Only confirmed ring
   geometry may interpolate; preserve figure bob cadence. Reduced motion uses
   static activity. Do not persist activity or transmit stream content.
 - visible 下一炷 当量 uses integer compact (`33K`, never `≈ 33.4K`) so the
-  flank does not overlap 梁子. Hover title and the screen-reader summary keep
-  the exact integer. 今日凝香 / 环上 overflow 仍可用一位小数。
+  flank does not overlap 梁子. The screen-reader summary keeps the exact
+  integer without adding a hover popup. 今日凝香 / 环上 overflow 仍可用一位小数。
 - under the avatar: **exactly one** global number — 梁位 = `up_ratio`, printed with
   6 decimals (`LIANG_POSITION_DECIMALS`) — then a causal arrow to the 称呼
   (`梁位 83.021952% → 梁神`). The authoritative text label remains outside the
@@ -215,8 +244,8 @@ incense.
 ### Region 4 — Social stats
 
 ```text
-    三界香火        五行香客      梁相案牍
-     12,846          2,841       进入梁祠
+    三界香火        五行香客        梁股
+     12,846          2,841        图标牍 图标祠
 ```
 
 - 三界香火 = accepted votes for the current case (天/人/地香火汇于一炉)
@@ -224,8 +253,15 @@ incense.
   underneath: this installation's today/lifetime 夯拉 and the share of 三界香火
   (`占梁`). Local only, never a fifth region or a 梁位 percentage-point claim
 - 五行香客 = unique users with at least one accepted vote for the current case/day (取经五众)
-- the right edge is one compact ritual-control column: `梁相案牍` above
-  `进入梁祠`; both remain inside Region 4 and neither is a fifth region
+- the right edge is one compact two-row ritual-control column: direct `梁股`
+  above bold icon + `牍` / icon + `祠`. Accessible names and custom short hints
+  remain `梁股 · 香火市场`, `梁相案牍` and `进入梁祠`; all stay inside Region 4,
+  never a fifth region. Preserve the primary market accent and quieter tool
+  colors, the original statistics and core centerline. Closing a market returns
+  to the real opening control for keyboard use; pointer closing blurs it.
+  Escape never revives a stale hint or hover state. Compact statistics keep
+  their full labels and exact accessible/tooltip values; large visual counts
+  must fit their slots without shrinking the controls or overflowing
 - routine Token claims, snapshots, reconnects and archive refresh are automatic;
   never present a routine manual-sync action
 - 梁相案牍 opens a themed 2×2 utility drawer: 梁相主页、定时上香、在线模式/离线模式、
@@ -650,7 +686,8 @@ The single static rule source is `src/domain/incense-weight.ts`: match whole
 DeepSeek route IDs by family, not model age, provider, display name or release
 date. Do not fetch an upstream model catalog or add remote earning-rate
 overrides. Stored or received rule metadata must not change these rates.
-Host sends the same rule data to Client for its tooltip. Details:
+Host exposes the same rule data to Client for consistent explanations, without
+restoring the removed main-panel hover table. Details:
 `docs/INCENSE_POLICY.md`.
 
 Streaming usage is provisional: current DSH's durable `assistant/message` or
@@ -1165,6 +1202,13 @@ For substantial work:
 6. run typecheck/lint/unit/integration/UI/backend tests as applicable
 7. fix failures before considering the phase complete
 8. update docs when contracts/integration seams change
+
+Maintain a concise visible checklist for ongoing multi-step work in
+`docs/WORK_TRACKER.md`. Add new requests without dropping unfinished items;
+mark each completed item with its verification evidence and show progress to
+the user. Keep pending approval distinct from implementation and testing.
+Reopen an item if a regression is found; never use checked boxes as a substitute
+for the final build/install/backend gates.
 
 ### Version (HARD RULE — 用户可见改动必须升版本)
 

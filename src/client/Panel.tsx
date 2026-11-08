@@ -11,7 +11,7 @@ import { liangziPolicyForVersion, LIANGZI_POLICY_VERSION } from '../domain/index
  * Presentational only (no hooks); the container wires state and callbacks.
  */
 import type { CSSProperties, KeyboardEvent, PointerEvent, ReactElement } from 'react'
-import { LIANG_POSITION_DECIMALS, VOTE_COUNT_MAX, formatCompactCount, formatIncenseShare, formatRatioPercents, incenseWeightRows, LEGACY_INCENSE_WEIGHT_POLICY, type LocalEpithet, type LocalIncenseStats, type VoteType } from '../domain/index.ts'
+import { LIANG_POSITION_DECIMALS, VOTE_COUNT_MAX, formatCompactCount, formatIncenseShare, formatRatioPercents, type LocalEpithet, type LocalIncenseStats, type VoteType } from '../domain/index.ts'
 import {
   ABSURD_CLAIM_NOTICE,
   ACCOUNTING_UNAVAILABLE_HINT,
@@ -26,10 +26,10 @@ import {
   LIANGCI_ENTRY_HINT,
   LIANGCI_ENTRY_LABEL,
   MY_INCENSE_LABEL,
+  MARKET_TITLE,
   NEXT_INCENSE_LABEL,
   NEXT_INCENSE_PROGRESS_LABEL,
   NEXT_INCENSE_UNIT,
-  NEXT_INCENSE_WEIGHT_TITLE,
   NO_INCENSE_REASON,
   OFFLINE_REASON,
   PANEL_TITLE,
@@ -96,6 +96,7 @@ import { ReleaseNotesDialog } from './ReleaseNotesDialog.tsx'
 const versionSuffixAt = PLUGIN_VERSION.search(/[-+]/)
 const versionBase = versionSuffixAt < 0 ? PLUGIN_VERSION : PLUGIN_VERSION.slice(0, versionSuffixAt)
 const versionSuffix = versionSuffixAt < 0 ? '' : PLUGIN_VERSION.slice(versionSuffixAt + 1)
+const MARKET_ENTRY_PARTS = MARKET_TITLE.split(' · ')
 
 export interface PanelProps {
   state: LiangxiangViewState
@@ -159,7 +160,17 @@ export interface PanelProps {
   /** Region 4's themed utility drawer; normal synchronization remains automatic. */
   utilityOpen: boolean
   onUtilityToggle: () => void
-  onUtilityClose: () => void
+  onUtilityClose: (returnFocus?: boolean) => void
+  utilityHintSuppressed?: boolean
+  ritualResting?: Partial<Record<'market' | 'utility' | 'liangci', 'pointer' | 'keyboard'>>
+  onRitualReactivate?: (kind: 'market' | 'utility' | 'liangci') => void
+  onRitualLeave?: (kind: 'market' | 'utility' | 'liangci') => void
+  onUtilityEnter?: () => void
+  onUtilityLeave?: () => void
+  onUtilityFocus?: (keyboard: boolean, trigger: boolean) => void
+  onUtilityBlur?: () => void
+  onUtilityPointerInput?: () => void
+  onUtilityKeyboardInput?: (key: string) => void
   onOpenHomepage: () => void
   modeConfirmOpen: boolean
   modeChanging: boolean
@@ -168,7 +179,7 @@ export interface PanelProps {
   onModeCancel: () => void
   onShowVersion: () => void
   /** Separate market window; this does not add a fifth main-panel region. */
-  onOpenMarket?: () => void
+  onOpenMarket?: (origin: 'panel' | 'utility', trigger: HTMLButtonElement, keyboard: boolean) => void
   /** Open the read-only 梁祠 calendar; remains inside Region 4. */
   onOpenLiangci: () => void
   /**
@@ -186,6 +197,7 @@ function panelChrome(): CSSProperties {
   return {
   position: 'absolute',
   width: `${PANEL_WIDTH}px`,
+  maxWidth: '100vw',
   overflow: 'visible',
   boxSizing: 'border-box',
   padding: '10px 12px 8px',
@@ -201,8 +213,9 @@ function panelChrome(): CSSProperties {
   }
 }
 
-const STAT_ICON_SIZE = 26
+const STAT_ICON_SIZE = 16
 const BROADCAST_MARQUEE_MIN_CHARS = 20
+const UTILITY_DRAWER_WIDTH = 242
 
 const statStyle: CSSProperties = {
   position: 'relative',
@@ -210,7 +223,7 @@ const statStyle: CSSProperties = {
   gridTemplateColumns: 'auto minmax(0, 1fr)',
   gridTemplateRows: 'subgrid',
   gridRow: '1 / 3',
-  columnGap: '6px',
+  columnGap: '3px',
   alignItems: 'center',
   minWidth: 0,
   whiteSpace: 'nowrap',
@@ -236,10 +249,10 @@ const statLabelRowStyle: CSSProperties = {
 }
 
 const statLabelStyle: CSSProperties = {
-  fontSize: '12px',
+  fontSize: '11px',
   fontWeight: 600,
   lineHeight: '16px',
-  letterSpacing: '0.2px',
+  letterSpacing: '0px',
   color: color.textPrimary,
 }
 
@@ -253,6 +266,15 @@ const statValueStyle: CSSProperties = {
   color: color.textPrimary,
   textAlign: 'center',
   width: '100%',
+  minWidth: 0,
+  whiteSpace: 'nowrap',
+}
+
+/** Keep tiny social slots bounded; the custom detail and aria keep exact counts. */
+function socialCount(value: number): string {
+  if (value < 10_000) return value.toLocaleString('zh-CN')
+  if (value < 1_000_000_000_000) return formatCompactCount(value, 0)
+  return `${Math.floor(value / 1_000_000_000_000)}T`
 }
 
 /**
@@ -379,9 +401,9 @@ function placementStyle(placement: PanelPlacement): CSSProperties {
   const stack = placement.stack === 'below'
     ? { top: `calc(100% + ${PANEL_GAP}px)` }
     : { bottom: `calc(100% + ${PANEL_GAP}px)` }
-  const horizontal = placement.align === 'end'
-    ? { left: `calc(${BADGE_SIZE}px - ${PANEL_WIDTH}px)` }
-    : { left: '0px' }
+  const horizontal = { left: placement.offsetX === undefined
+    ? placement.align === 'end' ? `calc(${BADGE_SIZE}px - ${PANEL_WIDTH}px)` : '0px'
+    : `${placement.offsetX}px` }
   return { ...horizontal, ...stack }
 }
 
@@ -563,6 +585,38 @@ const PANEL_CSS = `
   box-shadow: inset 0 0 0 1px ${color.brand}, 0 4px 10px rgba(0, 0, 0, 0.12);
   transform: translateY(-1px);
 }
+/* Transform gives each button a stacking context. A visible pointer hint must
+   also clear an adjacent keyboard hint; suppressed hints never raise a layer. */
+[data-~ritual]:focus-visible:not([data-~ritual-resting]):not([data-~hint-suppressed]) {
+  z-index: 1;
+}
+[data-~ritual]:hover:not(:disabled):not([data-~ritual-resting]):not([data-~hint-suppressed]) {
+  z-index: 2;
+}
+[data-~market-entry] {
+  --liangxiang-ritual-rest-color: ${color.ritualEmberText};
+  --liangxiang-ritual-rest-background: color-mix(in srgb, ${color.ritualEmber} 7%, ${color.bgLayer});
+  --liangxiang-ritual-rest-shadow: inset 0 0 0 1px color-mix(in srgb, ${color.ritualEmber} 28%, ${color.border});
+  width: 78px;
+  box-sizing: border-box;
+  justify-content: center;
+  padding: 3px 5px;
+  font-weight: 700;
+  color: var(--liangxiang-ritual-rest-color);
+  background: var(--liangxiang-ritual-rest-background);
+  box-shadow: var(--liangxiang-ritual-rest-shadow);
+}
+[data-~market-entry] > svg { width: 20px; height: 16px; flex-shrink: 0; }
+[data-~utility-slot][data-~compact] [data-~utility-trigger],
+[data-~utility-slot][data-~compact] [data-~liangci-entry] {
+  width: 37px;
+  box-sizing: border-box;
+  justify-content: center;
+  gap: 3px;
+  padding: 3px 4px;
+  letter-spacing: 0;
+  font-weight: 700;
+}
 [data-~utility-drawer] {
   animation: liangxiang-panel-enter 120ms cubic-bezier(.2,.8,.2,1) both;
 }
@@ -632,9 +686,11 @@ const PANEL_CSS = `
 }
 [data-~utility-market]:active { transform: translateY(1px); box-shadow: inset 0 1px 3px rgba(0, 0, 0, .08); }
 .liangxiang-utility-mini-candle { transform-box: fill-box; transform-origin: center; transition: transform 150ms ease; }
-[data-~utility-market]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even) { transform: translateY(-1px); }
+[data-~utility-market]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even),
+[data-~market-entry]:is(:hover, :focus-visible) .liangxiang-utility-mini-candle:nth-of-type(even) { transform: translateY(-1px); }
 [data-~utility-market][data-motion="false"],
-[data-~utility-market][data-motion="false"] .liangxiang-utility-mini-candle { transform: none; transition: none; }
+[data-~utility-market][data-motion="false"] .liangxiang-utility-mini-candle,
+[data-~market-entry][data-motion="false"] .liangxiang-utility-mini-candle { transform: none; transition: none; }
 [data-~version-label] {
   grid-column: 2;
   grid-row: 1 / 3;
@@ -738,36 +794,33 @@ const PANEL_CSS = `
   opacity: 1;
   transform: translateY(0);
 }
-[data-~personal="next-incense"] {
-  cursor: help;
-  outline: none;
+[data-~utility-trigger] [data-~hint] {
+  top: calc(100% + 6px);
+  bottom: auto;
+  transform: translateY(-4px);
 }
-[data-~personal="next-incense"] [data-~weight-hint] {
-  position: absolute;
-  right: 0;
-  top: calc(100% - 8px);
-  z-index: 3;
-  min-width: 168px;
-  max-width: calc(100vw - 32px);
-  box-sizing: border-box;
-  padding: 6px 8px;
-  border-radius: 10px;
-  border: 1px solid ${color.border};
-  background: ${color.bgLayer};
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.16);
-  color: ${color.textPrimary};
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: nowrap;
+[data-~utility-slot][data-~compact] [data-~liangci-entry] [data-~hint] {
+  top: calc(100% + 6px);
+  bottom: auto;
+  transform: translateY(-4px);
+}
+[data-~utility-slot]:has([data-~ritual]:hover) [data-~ritual]:focus-visible:not(:hover) [data-~hint] {
   opacity: 0;
-  transform: translateY(4px);
-  pointer-events: none;
-  transition: opacity 40ms ease, transform 40ms ease;
 }
-[data-~personal="next-incense"]:hover [data-~weight-hint],
-[data-~personal="next-incense"]:focus-within [data-~weight-hint] {
-  opacity: 1;
+[data-~utility-slot] [data-~ritual][data-~hint-suppressed] [data-~hint] {
+  opacity: 0;
+}
+[data-~utility-slot] [data-~ritual][data-~ritual-resting] [data-~hint] {
+  opacity: 0;
+  transition: none;
+}
+[data-~utility-slot] [data-~ritual][data-~ritual-resting="pointer"] {
+  outline: none;
+  color: var(--liangxiang-ritual-rest-color, ${color.textSecondary});
+  background: var(--liangxiang-ritual-rest-background, ${color.bgSubtle});
+  box-shadow: var(--liangxiang-ritual-rest-shadow, inset 0 0 0 1px ${color.border});
   transform: translateY(0);
+  transition: none;
 }
 [data-~stat] [data-~stat-hint] {
   position: absolute;
@@ -832,20 +885,6 @@ const PANEL_CSS = `
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid color-mix(in srgb, ${color.border} 80%, transparent);
-}
-[data-~weight-hint] table {
-  border-collapse: collapse;
-  width: 100%;
-}
-[data-~weight-hint] th,
-[data-~weight-hint] td {
-  padding: 2px 4px;
-  text-align: left;
-  font-weight: 500;
-  white-space: nowrap;
-}
-[data-~weight-hint] td {
-  text-align: right;
 }
 @keyframes liangxiang-condense {
   0% { opacity: 0; transform: translate(-50%, 16px) scale(0.72); }
@@ -946,6 +985,7 @@ export function Panel(props: PanelProps): ReactElement {
     onBroadcastDismiss = () => undefined,
     onInsufficientVote, onClose, onReconcileAsk, onReconcileConfirm, onReconcileCancel,
     reconcilePending, utilityOpen, onUtilityToggle, onUtilityClose, onOpenHomepage,
+    utilityHintSuppressed = false, ritualResting = {}, onRitualReactivate, onRitualLeave, onUtilityEnter, onUtilityLeave, onUtilityFocus, onUtilityBlur, onUtilityPointerInput, onUtilityKeyboardInput,
     modeConfirmOpen, modeChanging, onModeAsk, onModeConfirm, onModeCancel,
     onShowVersion, onOpenMarket, onOpenLiangci, onCycleLocalCase,
     onOpenBars = () => undefined,
@@ -1014,7 +1054,7 @@ export function Panel(props: PanelProps): ReactElement {
       if (releaseNotesVisible) onReleaseNotesClose()
       else if (modeConfirmOpen) onModeCancel()
       else if (reconcilePending) onReconcileCancel()
-      else if (utilityOpen) onUtilityClose()
+      else if (utilityOpen) onUtilityClose(true)
       else onClose()
     }
   }
@@ -1353,14 +1393,12 @@ export function Panel(props: PanelProps): ReactElement {
         <div
           style={{ ...flankStyle, right: '0px' }}
           data-liangxiang-personal="next-incense"
-          tabIndex={0}
-          aria-label={`${NEXT_INCENSE_LABEL} ${toNextExact} ${NEXT_INCENSE_UNIT}，悬停查看凝香规则`}
+          aria-label={`${NEXT_INCENSE_LABEL} ${toNextExact} ${NEXT_INCENSE_UNIT}`}
         >
           <span style={flankCaptionStyle}>{NEXT_INCENSE_LABEL}</span>
           <span style={flankValueStyle}>
             <span
               data-liangxiang-compact="next-incense"
-              title={`${toNextExact} ${NEXT_INCENSE_UNIT}`}
             >
               {formatCompactCount(displayTokensToNext, 0)}
             </span>
@@ -1368,22 +1406,9 @@ export function Panel(props: PanelProps): ReactElement {
           </span>
           <span style={{ ...flankUnitStyle, ...(streamingActive ? { color: color.ritualEmberText } : {}) }}
             data-liangxiang-stream-status={streamingActive ? '' : undefined}
-            role={streamingActive ? 'status' : undefined}
-            title={streamingActive ? '回复进行中，香火按最终用量结算' : undefined}>
+            role={streamingActive ? 'status' : undefined}>
             {streamingActive ? '凝香中' : `${NEXT_INCENSE_PROGRESS_LABEL} ${Math.trunc(Math.min(1, Math.max(0, personal.liangQiFill)) * 100)}%`}
           </span>
-          <div data-liangxiang-weight-hint="" role="tooltip">
-            <table aria-label={NEXT_INCENSE_WEIGHT_TITLE}>
-              <tbody>
-                {incenseWeightRows(state.incenseWeightPolicy ?? LEGACY_INCENSE_WEIGHT_POLICY, personal.tokenPerIncense).map((row) => (
-                  <tr key={`${row.model}:${row.weight}`}>
-                    <th scope="row">{row.model}</th>
-                    <td>{row.stick}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       </div>
 
@@ -1637,10 +1662,10 @@ export function Panel(props: PanelProps): ReactElement {
         data-liangxiang-region="social"
         style={{
           display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto',
+          gridTemplateColumns: `minmax(0, 1fr) minmax(0, 1fr) ${onOpenMarket ? '78px' : 'auto'}`,
           gridTemplateRows: 'auto auto',
           alignItems: 'center',
-          columnGap: '8px',
+          columnGap: '4px',
           rowGap: '6px',
           marginTop: 0,
           paddingTop: '8px',
@@ -1667,7 +1692,7 @@ export function Panel(props: PanelProps): ReactElement {
               mine={localIncense}
             />
           </span>
-          <strong data-liangxiang-stat-value="incense" style={statValueStyle}>{shownIncense.toLocaleString('zh-CN')}</strong>
+          <strong data-liangxiang-stat-value="incense" style={statValueStyle}>{socialCount(shownIncense)}</strong>
         </span>
         <span
           data-liangxiang-stat="voters"
@@ -1687,24 +1712,45 @@ export function Panel(props: PanelProps): ReactElement {
               lifetime={lifetimeVoters}
             />
           </span>
-          <strong data-liangxiang-stat-value="voters" style={statValueStyle}>{shownVoters.toLocaleString('zh-CN')}</strong>
+          <strong data-liangxiang-stat-value="voters" style={statValueStyle}>{socialCount(shownVoters)}</strong>
         </span>
-        <div data-liangxiang-utility-slot="" style={{ display: 'contents' }}>
+        <div data-liangxiang-utility-slot="" data-liangxiang-compact={onOpenMarket ? '' : undefined} style={{ display: 'contents' }}
+          onPointerEnter={event => { if (event.pointerType !== 'touch') onUtilityEnter?.() }}
+          onPointerLeave={event => { if (event.pointerType !== 'touch') onUtilityLeave?.() }}
+          onPointerDownCapture={() => onUtilityPointerInput?.()}
+          onKeyDownCapture={event => onUtilityKeyboardInput?.(event.key)}
+          onFocusCapture={event => onUtilityFocus?.(event.target.matches(':focus-visible'), event.target.hasAttribute('data-liangxiang-utility-trigger'))}
+          onBlurCapture={event => { if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) onUtilityBlur?.() }}>
+          {onOpenMarket && <button type="button" data-liangxiang-market-entry="" data-liangxiang-ritual=""
+            data-liangxiang-ritual-resting={ritualResting.market}
+            data-liangxiang-hint-suppressed={utilityOpen ? '' : undefined}
+            data-motion={!reducedMotion}
+            style={{ gridColumn: 3, gridRow: 1, justifySelf: 'end' }}
+            aria-label={`${MARKET_TITLE}：走势与三次入场`}
+            onPointerEnter={() => onRitualReactivate?.('market')}
+            onPointerLeave={() => onRitualLeave?.('market')}
+            onClick={event => onOpenMarket('panel', event.currentTarget, event.detail === 0 || event.currentTarget.matches(':focus-visible'))}>
+            <MarketMiniatureIcon /><span>梁股</span>
+            <span data-liangxiang-hint="" aria-hidden="true">{MARKET_TITLE}：走势与三次入场</span>
+          </button>}
           <div
             data-liangxiang-utility-desk=""
-            onMouseLeave={onUtilityClose}
-            style={{ position: 'relative', gridColumn: 3, gridRow: 1, justifySelf: 'end' }}
+            style={{ position: 'relative', gridColumn: 3, gridRow: onOpenMarket ? 2 : 1, justifySelf: 'end', ...(onOpenMarket ? { width: '78px' } : {}) }}
           >
           <button
             type="button"
             data-liangxiang-utility-trigger=""
             data-liangxiang-ritual=""
+            data-liangxiang-hint-suppressed={utilityOpen || utilityHintSuppressed ? '' : undefined}
+            data-liangxiang-ritual-resting={ritualResting.utility}
+            onPointerEnter={() => onRitualReactivate?.('utility')}
+            onPointerLeave={() => onRitualLeave?.('utility')}
             aria-label={`${UTILITY_LABEL}：${UTILITY_HINT}`}
             aria-expanded={utilityOpen}
             onClick={onUtilityToggle}
           >
-            <ArchiveDeskIcon size={14} />
-            {UTILITY_LABEL}
+            <ArchiveDeskIcon size={onOpenMarket ? 12 : 14} />
+            {onOpenMarket ? '牍' : UTILITY_LABEL}
             <span data-liangxiang-hint="" aria-hidden="true">{UTILITY_HINT}</span>
           </button>
           {utilityOpen
@@ -1717,7 +1763,7 @@ export function Panel(props: PanelProps): ReactElement {
                   right: 0,
                   bottom: '100%',
                   zIndex: 2,
-                  width: '220px',
+                  width: `${UTILITY_DRAWER_WIDTH}px`,
                   height: '7px',
                 }}
               />
@@ -1734,7 +1780,8 @@ export function Panel(props: PanelProps): ReactElement {
                   right: 0,
                   bottom: 'calc(100% + 6px)',
                   zIndex: 3,
-                  width: '220px',
+                  width: `${UTILITY_DRAWER_WIDTH}px`,
+                  boxSizing: 'border-box',
                   padding: '10px',
                   borderRadius: '12px',
                   border: `1px solid ${color.border}`,
@@ -1811,9 +1858,9 @@ export function Panel(props: PanelProps): ReactElement {
                     </span>
                   </button>
                 </div>
-                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" data-motion={!reducedMotion} onClick={onOpenMarket} aria-label="香火交易：走势与三次入场">
+                {onOpenMarket && <button type="button" data-liangxiang-utility-market="" data-motion={!reducedMotion} onClick={event => onOpenMarket('utility', event.currentTarget, event.detail === 0 || event.currentTarget.matches(':focus-visible'))} aria-label={`${MARKET_TITLE}：走势与三次入场`}>
                   <MarketMiniatureIcon />
-                  <strong>香火交易</strong><span data-liangxiang-utility-market-caption="">走势、仓位一处看</span>
+                  <strong style={{ display: 'flex', alignItems: 'center', gap: '5px' }}><span>{MARKET_ENTRY_PARTS[0]}</span><i aria-hidden="true" style={{ width: '3px', height: '3px', flexShrink: 0, borderRadius: '50%', background: 'currentColor', opacity: .6 }} /><span>{MARKET_ENTRY_PARTS[1]}</span></strong><span data-liangxiang-utility-market-caption="">走势、仓位一处看</span>
                   <span data-liangxiang-utility-market-arrow="" aria-hidden="true">›</span>
                 </button>}
                 {!onOpenMarket && <button
@@ -1877,12 +1924,15 @@ export function Panel(props: PanelProps): ReactElement {
             type="button"
             data-liangxiang-liangci-entry=""
             data-liangxiang-ritual=""
+            data-liangxiang-ritual-resting={ritualResting.liangci}
+            onPointerEnter={() => onRitualReactivate?.('liangci')}
+            onPointerLeave={() => onRitualLeave?.('liangci')}
             aria-label={`${LIANGCI_ENTRY_LABEL}：${LIANGCI_ENTRY_HINT}`}
             onClick={onOpenLiangci}
             style={{ gridColumn: 3, gridRow: 2, justifySelf: 'end' }}
           >
-            <LiangciIcon size={14} />
-            {LIANGCI_ENTRY_LABEL}
+            <LiangciIcon size={onOpenMarket ? 12 : 14} />
+            {onOpenMarket ? '祠' : LIANGCI_ENTRY_LABEL}
             <span data-liangxiang-hint="" aria-hidden="true">{LIANGCI_ENTRY_HINT}</span>
           </button>
         </div>

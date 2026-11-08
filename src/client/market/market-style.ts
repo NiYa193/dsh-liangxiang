@@ -19,8 +19,9 @@ export const MARKET_DIALOG_CSS = marketCss(`
  --~water-top:light-dark(#668bdd,#6c8bd8);
  --~water-bottom:light-dark(#a1bbea,#50769e);
  --~chart-text:var(--~sub);
+ --~future-bg:light-dark(#edf0f3,#30353d);
  box-sizing:border-box;position:relative;display:flex;flex-direction:column;
- width:min(900px,100%);height:min(512px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);
+ width:min(800px,100%);height:min(512px,calc(100dvh - 24px));max-height:calc(100dvh - 24px);
  padding:var(--~top) 16px 7px;overflow:auto;scrollbar-width:thin;
  background:var(--~paper);color:var(--~ink);
  border:1px solid var(--~border);border-radius:16px;
@@ -47,7 +48,7 @@ export const MARKET_DIALOG_CSS = marketCss(`
 [data-~dialog] .~companion-trigger{align-self:start;display:flex;align-items:center;justify-content:center;padding:4px 0 0;min-width:0;height:100px;border:0;background:none;text-align:left;overflow:visible}
 [data-~dialog] button.~companion-trigger:hover:not(:disabled){background:transparent}
 .~companion-trigger .~companion{width:100%;flex:1;padding-left:36px}
-.~companion-trigger .~companion-speech{padding:6px 8px;border-radius:12px 12px 12px 4px;background:color-mix(in srgb,var(--~blue) 7%,transparent)}
+.~companion-trigger .~companion-speech{padding:0;background:none;font-size:11px;line-height:1.4}
 .~window-controls{display:grid;gap:var(--~gap);align-self:start;width:64px}
 .~window-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 [data-~dialog] .~motion{display:flex;gap:4px;align-items:center;justify-content:center;white-space:nowrap;width:100%;height:var(--~control);min-height:var(--~control);margin-top:4px;padding:0;font-size:12px;color:var(--~blue-text)}
@@ -74,11 +75,13 @@ export const MARKET_DIALOG_CSS = marketCss(`
 .~chart-quotes b{font-size:12px;font-weight:600;white-space:nowrap}
 .~chart-scroll{flex:1;min-height:140px;overflow:hidden}
 .~chart-scroll>svg{width:100%;height:100%;display:block}
-.~chart-readout{display:flex;align-items:center;justify-content:center;gap:9px;flex:none;height:25px;min-width:0;padding:3px 0;font-size:11px;line-height:18px;color:var(--~sub);white-space:nowrap;font-variant-numeric:tabular-nums}
-.~chart-current{flex:none;color:var(--~ink)}
-.~chart-detail{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:center}
+.~chart-readout{display:grid;grid-template-columns:64px clamp(150px,22vw,210px) minmax(0,1fr);align-items:center;column-gap:16px;flex:none;height:25px;min-width:0;padding:3px 0;font-size:11px;line-height:18px;color:var(--~sub);white-space:nowrap;font-variant-numeric:tabular-nums;text-align:left}
+.~chart-readout>span{min-width:0}
+.~chart-directions{display:flex;align-items:center;gap:9px}
+.~chart-current{color:var(--~ink);overflow:hidden;text-overflow:ellipsis;text-align:left}
+.~chart-detail{min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left}
 .~pond-legend{margin:0}
-.~pond-legend>span{display:inline-flex;align-items:center;gap:4px}
+.~chart-directions>span{display:inline-flex;align-items:center;gap:4px}
 .~pond-legend>.~chart-detail{display:block}
 .~pond-legend i{display:inline-block;width:6px;height:6px;flex:none;border-radius:50%}
 .~stage-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;flex:none;height:35px;margin-top:4px;padding:2px;background:var(--~paper-2);border-radius:10px}
@@ -133,6 +136,10 @@ export const MARKET_DIALOG_CSS = marketCss(`
 .~receipt small{font-size:11px;color:var(--~sub)}
 ${MARKET_MOTION_CSS}
 ${COMPANION_CSS}
+@media(max-width:640px){
+ .~chart-readout{grid-template-columns:56px minmax(0,1fr);column-gap:12px;row-gap:1px;height:40px;line-height:17px}
+ .~chart-detail{grid-column:1/-1}
+}
 @media(max-width:600px){
  .~header{height:162px;grid-template-columns:minmax(0,1fr) 64px;grid-template-rows:62px 100px;gap:0 8px}
  .~header h2{font-size:18px;gap:6px;margin-bottom:4px}

@@ -25,7 +25,17 @@ export function receiveFishFeedback(state: FishFeedbackState, next: FishReaction
   const stillReading = active !== null && !active.deliberate && gestureGroup(active.action) === group
   const tracked = { ...seen, gesture: { group, at: now } }
   if (!next.deliberate && next.action !== 'report' && (continuousZoom || stillReading)) return tracked
-  return { ...tracked, active: next, until: now + Math.max(4_000, Math.min(10_000, (next.text?.length ?? 0) * 140)) }
+  return { ...tracked, active: next, until: now + fishFeedbackDuration(next) }
+}
+
+export function fishFeedbackDuration(reaction: FishReaction): number {
+  return reaction.action === 'report' ? 5_200 : Math.max(4_000, Math.min(10_000, (reaction.text?.length ?? 0) * 140))
+}
+
+/** Three presentation rows at most; extra source lines join without losing copy. */
+export function fishSpeechLines(text: string): string[] {
+  const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean)
+  return lines.length <= 3 ? lines : [...lines.slice(0, 2), lines.slice(2).join(' · ')]
 }
 
 export function createFishFeedback(reaction: FishReaction | null = null, now = Date.now()): FishFeedbackState {
@@ -81,4 +91,16 @@ export function fishResponse(mood: PositionMood, action: FishAction, variant = 0
   const index = Math.abs(Math.trunc(Number.isFinite(variant) ? variant : 0)) % lines.length
   const line = lines[index]!
   return underwater && action !== 'idle' ? `咕噜，${line}` : line
+}
+
+/** A click samples current facts once; decoration never derives a return or a balance. */
+export function fishDanmaku(mood: PositionMood, facts: readonly string[], variant = 0): string[] {
+  const lines = mood === 'behind' || mood === 'lost'
+    ? ['咕噜！谁在水面戳我？', '潜水员收到，泡泡马上到～', '水下也营业，尾巴没摸鱼。']
+    : mood === 'ahead' || mood === 'won'
+      ? ['探头营业，尾巴加班～', '戳中一条认真看浪的鱼！', '水面风大，先把小尾巴扶稳。']
+      : ['鱼已到岗，欢迎投喂好奇心～', '点我查岗？尾巴一直在动！', '先看清浪，再决定往哪游～']
+  const index = Math.abs(Math.trunc(Number.isFinite(variant) ? variant : 0))
+  const actual = [...new Set(facts.map(line => line.trim()).filter(Boolean))]
+  return [lines[index % lines.length]!, ...Array.from({ length: Math.min(2, actual.length) }, (_, i) => actual[(index + i) % actual.length]!)].slice(0, 3)
 }

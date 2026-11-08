@@ -141,8 +141,10 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
     await expect(range.locator('output')).toHaveCSS('border-top-width', '0px')
     await expect(range.locator('output')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     await expect(dialog.locator('.liangxiang-market-chart-quotes')).toHaveCSS('text-align', 'center')
-    await expect(dialog.locator('.liangxiang-market-chart-readout')).toHaveCSS('justify-content', 'center')
-    await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveCSS('font-size', '13px')
+    await expect(dialog.locator('.liangxiang-market-chart-readout')).toHaveCSS('text-align', 'left')
+    await expect(dialog.locator('.liangxiang-market-chart-readout')).toHaveCSS('display', 'grid')
+    await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveCSS('font-size', '11px')
+    await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
     const fish = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
     expect(fish.width).toBeGreaterThanOrEqual(95)
     expect(fish.height).toBeGreaterThanOrEqual(99)
@@ -175,7 +177,7 @@ test('market keeps the four-region panel, on-demand artwork, trapped focus and c
   expect(axe.violations).toEqual([])
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
-  await expect(page.locator('[data-liangxiang-utility-trigger]')).toBeFocused()
+  await expect(page.locator('[data-liangxiang-utility-trigger]')).not.toBeFocused()
   await expect.poll(() => page.evaluate(() => window.__liangxiangMarketStreamsClosed)).toBe(1)
 })
 
@@ -251,10 +253,16 @@ test('motion uses distinct local gestures without replaying ordinary frames, hid
   const face = dialog.locator('[data-liangxiang-market-steady-face]')
   await expect(face).toHaveCount(1)
   expect(await face.evaluate(element => {
+    let swims = false
     for (let node: Element | null = element; node && !node.hasAttribute('data-liangxiang-market-dialog'); node = node.parentElement) {
-      if (node.getAnimations().some(animation => animation.effect?.getTiming().iterations === Infinity)) return false
+      if (node.hasAttribute('mask') || getComputedStyle(node).filter.includes('blur(')) return false
+      for (const animation of node.getAnimations()) {
+        if (animation.effect?.getTiming().iterations !== Infinity) continue
+        swims = true
+        if ((animation.effect as KeyframeEffect).getKeyframes().some(frame => String(frame.transform).includes('scale'))) return false
+      }
     }
-    return true
+    return swims
   })).toBe(true)
   const frameTiming = await page.evaluate(async () => {
     const times: number[] = []
@@ -525,11 +533,11 @@ test('tide uses smooth real anchors over the full day, leaves gaps and future op
     ? ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00']
     : ['00:00', '08:00', '16:00', '24:00'])
   const future = chart.locator('[data-liangxiang-market-future]')
-  await expect(future).toContainText('待打梁')
+  await expect(future).toContainText('待开梁')
   const futureX = Number(await future.locator('rect').getAttribute('x'))
   expect(geometry.every(segment => segment.x + segment.width <= futureX + .02)).toBe(true)
   await future.hover()
-  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('待打梁')
+  await expect(chart.locator('.liangxiang-market-chart-readout')).toContainText('待开梁')
   const volume = chart.locator('[data-liangxiang-market-volume]')
   expect(await volume.count()).toBeGreaterThan(0)
   await volume.first().hover()
@@ -764,4 +772,124 @@ test('the fish reports the selected server pool on click and at the next minute 
   expect(positionRequests).toBe(0)
   await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
   await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+})
+
+test('first loading swims two loops, keeps one fish and returns without blocking the ready market', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  let release!: () => void
+  const response = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/liangxiang/api/market', async route => {
+    await response
+    await route.fulfill({ json: fixture(), headers: { 'x-liangxiang-cache-scope': 'browser-market-scope' } })
+  })
+  const panel = await openPanel(page)
+  await panel.locator('[data-liangxiang-utility-trigger]').click()
+  await panel.locator('[data-liangxiang-utility-market]').click()
+  const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
+  const companion = dialog.locator('.liangxiang-market-companion')
+  const sprite = companion.locator('[data-liangxiang-market-main-whale]')
+  try {
+    await expect(companion).toHaveAttribute('data-loading-phase', 'fishing')
+    await expect(dialog).toContainText('大肥鱼捕捞中')
+    const original = await sprite.elementHandle()
+    const height = (await dialog.boundingBox())!.height
+    expect(await sprite.evaluate(element => element.getAnimations().some(animation => (animation.effect as KeyframeEffect).getKeyframes().length >= 18))).toBe(true)
+    release()
+    await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+    await expect(dialog.getByRole('button', { name: '确认调整', exact: true })).toBeEnabled()
+    await expect(companion).toHaveAttribute('data-loading-phase', 'idle')
+    expect(await original!.evaluate(element => element.isConnected)).toBe(true)
+    await expect(sprite).toHaveCount(1)
+    expect((await dialog.boundingBox())!.height).toBeCloseTo(height, 0)
+    const header = (await dialog.locator('.liangxiang-market-header').boundingBox())!, home = (await sprite.boundingBox())!
+    expect(home.y).toBeGreaterThanOrEqual(header.y)
+    expect(home.y).toBeLessThan(header.y + header.height)
+    await page.evaluate(state => window.__liangxiangMarketFrame?.({ ...state, server_time: state.server_time + 1 }), fixture())
+    await expect(companion).toHaveAttribute('data-loading-phase', 'idle')
+    await dialog.getByRole('button', { name: '关闭香火交易', exact: true }).click()
+    await panel.locator('[data-liangxiang-utility-trigger]').click()
+    await panel.locator('[data-liangxiang-utility-market]').click()
+    await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+    await expect(companion).toHaveAttribute('data-loading-phase', 'idle')
+    expect(await sprite.evaluate(element => element.getAnimations().length)).toBe(0)
+  } finally { release() }
+})
+
+test('loading failure or reduced motion cancels fishing and keeps retry available', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  let fail!: () => void
+  const response = new Promise<void>(resolve => { fail = resolve })
+  await page.route('**/liangxiang/api/market', async route => {
+    await response
+    await route.fulfill({ status: 503, json: { error: 'unavailable' } })
+  })
+  const panel = await openPanel(page)
+  await panel.locator('[data-liangxiang-utility-trigger]').click()
+  await panel.locator('[data-liangxiang-utility-market]').click()
+  const dialog = page.getByRole('dialog', { name: '梁股 · 香火市场', exact: true })
+  const companion = dialog.locator('.liangxiang-market-companion')
+  try {
+    await expect(companion).toHaveAttribute('data-loading-phase', 'fishing')
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(companion).toHaveAttribute('data-loading-phase', 'waiting')
+    expect(await companion.locator('svg').evaluate(element => element.getAnimations().length)).toBe(0)
+    fail()
+    await expect(dialog.getByRole('button', { name: '重新连接', exact: true })).toBeVisible()
+    await expect(companion).toHaveAttribute('data-loading-phase', 'idle')
+    await page.emulateMedia({ reducedMotion: 'no-preference' })
+    await expect(companion).toHaveAttribute('data-loading-phase', 'idle')
+    expect(await companion.locator('[data-liangxiang-market-main-whale]').evaluate(element => element.getAnimations().length)).toBe(0)
+  } finally { fail() }
+})
+
+test('fish click emits bounded live-fact lines without spending and static mode clears them', async ({ page }) => {
+  await page.clock.install()
+  const dialog = await openMarket(page)
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await dialog.getByRole('switch', { name: '交易动画' }).click()
+  const fish = dialog.getByRole('button', { name: '大肥鱼：播报本盘香池与时间', exact: true })
+  const lines = dialog.locator('[data-liangxiang-market-danmaku]')
+  let writes = 0
+  page.on('request', request => { if (request.method() === 'POST' && request.url().includes('/market/position')) writes++ })
+  await fish.click()
+  await expect(lines).toHaveCount(3)
+  const captured = await lines.allTextContents()
+  const sprite = (await dialog.locator('[data-liangxiang-market-main-whale]').boundingBox())!
+  for (const line of await lines.all()) {
+    const bounds = (await line.boundingBox())!
+    expect(bounds.x).toBeGreaterThanOrEqual(sprite.x + sprite.width)
+  }
+  expect(captured.join(' ')).toMatch(/梁位55\.000000%|P2香池50炷|本盘多10炷|可用90炷/)
+  const next = fixture()
+  next.wallet = { ...next.wallet, available_incense: 80, frozen_incense: 20, version: 2 }
+  next.server_time += 1_000
+  next.market!.batches[1]!.position = { side: 'short', amount: 20, submitted_at: next.server_time, payout: null }
+  next.market!.batches[1]!.long_incense = 20; next.market!.batches[1]!.short_incense = 40
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), next)
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
+  expect(await lines.allTextContents()).toEqual(captured)
+  const fresh: string[] = []
+  for (let i = 0; i < 4; i++) {
+    const previous = await lines.allTextContents()
+    await fish.click()
+    await expect.poll(() => lines.allTextContents()).not.toEqual(previous)
+    fresh.push(...await lines.allTextContents())
+  }
+  expect(fresh.join(' ')).toContain('本盘空20炷')
+  expect(fresh.join(' ')).toContain('可用80炷，冻结20炷')
+  expect(fresh.join(' ')).not.toContain('可用90炷')
+  await page.clock.runFor(6_000)
+  await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveAttribute('data-fish-action', 'idle')
+  await expect(lines).toHaveCount(1)
+  await fish.click()
+  await expect(lines).toHaveCount(3)
+  await dialog.getByRole('switch', { name: '交易动画' }).click()
+  await fish.click()
+  await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveCount(1)
+  await expect(dialog.locator('.liangxiang-market-companion-speech')).toHaveAttribute('data-fish-action', 'report')
+  await expect(lines).toHaveCount(2)
+  await expect(dialog.locator('.liangxiang-market-companion-speech')).toContainText('香池60炷')
+  expect(await lines.evaluateAll(nodes => nodes.every(node => node.getAnimations().length === 0))).toBe(true)
+  expect(writes).toBe(0)
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('80')
 })

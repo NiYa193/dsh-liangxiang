@@ -31,13 +31,13 @@ export {
 export const PLUGIN_PACKAGE_NAME = 'dsh-liangxiang'
 
 /** Installed package version, surfaced by 梁相案牍. Keep in sync with package.json. */
-export const PLUGIN_VERSION = '1.3.0-alpha.6'
+export const PLUGIN_VERSION = '1.3.0-alpha.8'
 
 /**
  * Server-only release label for the community backend. Do not bump the npm /
  * client `PLUGIN_VERSION` for a backend-only change; stamp `1.1.6-uN` instead.
  */
-export const SERVER_BUILD = '1.3.0-alpha.6-u3'
+export const SERVER_BUILD = '1.3.0-alpha.8-u2'
 
 /** Welcome gift: sticks credited once per device fingerprint per business date. */
 export const STARTER_INCENSE_COUNT = 10
@@ -60,6 +60,9 @@ export const PANEL_TITLE = '今日梁案'
 
 /** Region 1 title when the user selected the in-process offline loop. */
 export const PANEL_TITLE_LOCAL = '今日梁案（离线）'
+
+/** Unified menu entry and market window title. */
+export const MARKET_TITLE = '梁股 · 香火市场'
 
 /** Local-only control: cycle the prepared 今日梁案 list. Not a fifth region. */
 export const CYCLE_LOCAL_CASE_LABEL = '换一案'

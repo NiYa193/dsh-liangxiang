@@ -708,12 +708,12 @@ export function openBackendStore(databasePath: string): BackendStore {
         db.exec('COMMIT')
         return value
       } catch (error) {
-        rollbackVersion += 1
         try {
           db.exec('ROLLBACK')
         } catch {
           // A failed rollback means the transaction was already resolved.
         }
+        rollbackVersion += 1
         throw error
       }
     },

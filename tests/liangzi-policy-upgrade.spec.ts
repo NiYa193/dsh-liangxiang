@@ -53,7 +53,10 @@ describe('Liangzi policy rolling upgrade', () => {
       liangzi_state: 'liang_gong', down_votes: 1, sequence: accepted.global_snapshot.sequence,
       policy_version: LEGACY_LIANGZI_POLICY_VERSION,
     })
-    expect(oldBootstrap.authoritative_personal_state).toEqual(accepted.authoritative_personal_state)
+    const { wallet, ...daily } = accepted.authoritative_personal_state
+    expect(oldBootstrap.authoritative_personal_state).toEqual(daily)
+    expect(oldBootstrap.authoritative_personal_state.wallet).toBeUndefined()
+    expect(wallet?.available_incense).toBe(daily.remaining_incense)
     const replay = await fetch(`${h.baseUrl}/v1/votes`, {
       method: 'POST', headers: { [INSTALLATION_HEADER]: installation, 'content-type': 'application/json' }, body: JSON.stringify(intent),
     }).then(r => r.json())

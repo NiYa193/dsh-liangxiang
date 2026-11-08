@@ -3,16 +3,24 @@ import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } 
 import { MARKET_AMOUNT_MAX, type MarketBatch, type MarketBatchId, type MarketReceipt, type MarketSide, type MarketState } from '../../shared/market-v1.ts'
 import { createMarketSession, type MarketSession } from './market-client.ts'
 import { browserMarketStorage, readMarketAnimation, writeMarketAnimation } from './market-cache.ts'
-import { expectedReturn, marketTime, positionMood, sideLabel } from './chart-model.ts'
+import { expectedReturn, marketTime, marketRatioLabel, pointRatio, positionMood, sideLabel } from './chart-model.ts'
 import { MarketChart } from './MarketChart.tsx'
 import { MarketFishCompanion, type FishAction, type FishReaction } from './MarketFishCompanion.tsx'
 import { MARKET_DIALOG_CSS } from './market-style.ts'
+import { MARKET_TITLE } from '../../shared/index.ts'
 
+const [MARKET_BRAND, MARKET_TOPIC] = MARKET_TITLE.split(' · ')
+
+// Cosmetic, per-page visit only. Reopening an already loaded window must not
+// replay its entrance; no wallet or market authority is cached here.
+let loadedMarketOnce = false
 
 export interface MarketDialogProps {
   reducedMotion: boolean
   online: boolean
   onClose(): void
+  /** Embedded owners may restore the real trigger according to input mode. */
+  restoreFocus?: boolean
   session?: MarketSession
   presentation?: { caseId: string, policyId: string, title: string }
 }
@@ -41,9 +49,11 @@ function batchReport(batch: MarketBatch, state: MarketState, now: number): strin
   return `${clock}\n香池${(batch.long_incense + batch.short_incense).toLocaleString()}炷 · 多${batch.long_incense.toLocaleString()} / 空${batch.short_incense.toLocaleString()}`
 }
 
-export function MarketDialog({ reducedMotion, online, onClose, session: suppliedSession, presentation }: MarketDialogProps): ReactElement {
+export function MarketDialog({ reducedMotion, online, onClose, restoreFocus = true, session: suppliedSession, presentation }: MarketDialogProps): ReactElement {
   const [session] = useState(() => suppliedSession ?? createMarketSession())
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot)
+  const [firstVisit] = useState(() => !loadedMarketOnce)
+  useEffect(() => { if (view.state) loadedMarketOnce = true }, [view.state])
   const [animated, setAnimated] = useState(() => readMarketAnimation(browserMarketStorage(), reducedMotion))
   const [visible, setVisible] = useState(() => typeof document === 'undefined' || !document.hidden)
   const [fullscreen, setFullscreen] = useState(false)
@@ -88,8 +98,8 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
       else if (!event.shiftKey && (document.activeElement === last || !dialog.current.contains(document.activeElement))) { event.preventDefault(); first.focus() }
     }
     document.addEventListener('keydown', key, true)
-    return () => { document.removeEventListener('keydown', key, true); previous?.focus() }
-  }, [])
+    return () => { document.removeEventListener('keydown', key, true); if (restoreFocus) previous?.focus() }
+  }, [restoreFocus])
   useEffect(() => {
     if (lifecycle.current.disposeTimer !== null) window.clearTimeout(lifecycle.current.disposeTimer)
     if (online && !lifecycle.current.started) { lifecycle.current.started = true; void session.start() }
@@ -116,6 +126,14 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
   const animatedNow = animated && visible && !reducedMotion
   const shownBatch = market?.batches.find(batch => batch.batch === selected)
   const fishMood = shownBatch ? positionMood(shownBatch, market?.close_point ?? state?.current_point ?? null) : 'waiting'
+  const fishFacts = state && shownBatch ? [
+    `梁位${marketRatioLabel(pointRatio(market?.close_point ?? state.current_point))}`,
+    `P${selected}香池${(shownBatch.long_incense + shownBatch.short_incense).toLocaleString()}炷，多${shownBatch.long_incense.toLocaleString()}／空${shownBatch.short_incense.toLocaleString()}`,
+    shownBatch.position ? `本盘${sideLabel(shownBatch.position.side)}${shownBatch.position.amount.toLocaleString()}炷，${shownBatch.reference ? '午夜一起揭晓' : '等定线再看高低'}` : '本盘还没下水，先看看浪～',
+    `可用${state.wallet.available_incense.toLocaleString()}炷，冻结${state.wallet.frozen_incense.toLocaleString()}炷`,
+  ] : []
+  const fetching = online && !state && view.status === 'loading'
+  const initialLoading = fetching && firstVisit
   useEffect(() => {
     if (!visible || !online || !shownBatch || !state || view.status !== 'live' || view.error) return
     const key = `${market?.id}:${selected}:${Math.floor(now / 60_000)}`
@@ -138,14 +156,14 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
       onPointerDownCapture={event => { if (event.target instanceof Element && !event.target.closest('[data-liangxiang-market-popover], [data-liangxiang-market-popover-trigger]')) setPopover(null) }}>
       <header className={marketClass('header')}>
         <div className={marketClass('header-copy')}>
-        <h2 id="liangxiang-market-title" aria-label="梁股 · 香火市场"><span>梁股</span><i aria-hidden="true" /><small>香火市场</small></h2>
+        <h2 id="liangxiang-market-title" aria-label={MARKET_TITLE}><span>{MARKET_BRAND}</span><i aria-hidden="true" /><small>{MARKET_TOPIC}</small></h2>
         <div className={marketClass('wallet')} aria-label="服务器累计钱包" title="可用与已到账收益跨日保留；冻结香火不能重复投入或上香">
           <span>可用<strong data-liangxiang-market-available="">{state?.wallet.available_incense.toLocaleString() ?? '—'}</strong>炷</span>
           <span>冻结<strong data-liangxiang-market-frozen="">{state?.wallet.frozen_incense.toLocaleString() ?? '—'}</strong>炷</span>
         </div>
         </div>
-        <button type="button" className={marketClass('companion-trigger')} aria-label="大肥鱼：播报本盘香池与时间" aria-description={shownBatch && state ? batchReport(shownBatch, state, now) : undefined} onClick={() => { if (shownBatch && state) reactFish('report', batchReport(shownBatch, state, now)) }}>
-          <MarketFishCompanion mood={fishMood} animated={animatedNow} visible={visible} reaction={fishReaction} />
+        <button type="button" className={marketClass('companion-trigger')} aria-label="大肥鱼：播报本盘香池与时间" aria-description={shownBatch && state ? `${batchReport(shownBatch, state, now)}\n${fishFacts.join('。')}` : undefined} onClick={() => { if (shownBatch && state) reactFish('report', batchReport(shownBatch, state, now)) }}>
+          <MarketFishCompanion mood={fishMood} animated={animatedNow} visible={visible} reaction={fishReaction} facts={fishFacts} loading={initialLoading} loadingFailed={!state && view.status !== 'loading'} />
         </button>
         <div className={marketClass('window-controls')}>
         <div className={marketClass('window-actions')}>
@@ -163,7 +181,7 @@ export function MarketDialog({ reducedMotion, online, onClose, session: supplied
         {!online ? '社区交易仅在线模式可用，离线香火与社区钱包分别保存。' : view.error ?? view.chartError ?? ''}
         {online && view.error && (view.pending ? <button type="button" disabled={view.sending} onClick={() => { void session.retryPending() }}>{view.sending ? '核对中…' : '核对上一笔'}</button> : view.status === 'offline' && !view.state && <button type="button" onClick={() => { void session.start() }}>重新连接</button>)}
       </div>
-      {online && view.status === 'loading' && <p className={marketClass('loading')}>正在唤醒大肥鱼…</p>}
+      {fetching && <p className={marketClass('loading')} role="status" aria-live="polite"><span className={marketClass('a11y')}>{initialLoading ? '大肥鱼捕捞中' : '正在读取行情'}</span></p>}
       {state && online && <>
         <MarketChart state={state} candles={view.candles} candlesIntervalMs={view.candleIntervalMs ?? 300_000} animated={animatedNow} selectedBatch={selected} onInteraction={(action, gesture, range) => reactFish(action ?? 'inspect', range ? `镜头${action === 'pan' ? '平移' : action === 'zoom-in' ? '拉近' : '拉远'}啦，${range}。` : undefined, !gesture)} {...(casePresentation === undefined ? {} : { liangziPolicyId: casePresentation.policyId })} />
         {!market && <p className={marketClass('empty')}>今日交易尚未开场，正常上香不受影响。</p>}

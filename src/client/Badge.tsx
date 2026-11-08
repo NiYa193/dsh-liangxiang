@@ -264,6 +264,30 @@ export function LiangxiangBadge(): ReactElement {
   })
   const [welcomeVisible, setWelcomeVisible] = useState(() => !hasSeenWelcome())
   const [releaseNotesVisible, setReleaseNotesVisible] = useState(() => !hasSeenReleaseNotes())
+  const [ritualResting, setRitualResting] = useState<Partial<Record<'market' | 'utility' | 'liangci', 'pointer' | 'keyboard'>>>({})
+  const pointerPosition = useRef<{ x: number, y: number } | null>(null)
+  const ritualNeedsExit = useRef(new Set<'market' | 'utility' | 'liangci'>())
+  const utilityOpenedByKeyboard = useRef(false)
+  const modalOpenedByKeyboard = useRef(false)
+  const releaseNotesFromUtility = useRef(false)
+  const quietRitualReturn = useCallback((keyboard: boolean): void => {
+    const mode = keyboard ? 'keyboard' : 'pointer'
+    ritualNeedsExit.current.clear()
+    const pointer = pointerPosition.current
+    if (pointer) {
+      for (const [kind, selector] of [['market', 'market-entry'], ['utility', 'utility-trigger'], ['liangci', 'liangci-entry']] as const) {
+        const rect = anchorRef.current?.querySelector(`[data-liangxiang-${selector}]`)?.getBoundingClientRect()
+        if (rect && pointer.x >= rect.left && pointer.x < rect.right && pointer.y >= rect.top && pointer.y < rect.bottom) ritualNeedsExit.current.add(kind)
+      }
+    }
+    setRitualResting({ market: mode, utility: mode, liangci: mode })
+  }, [])
+  useEffect(() => {
+    if (Object.keys(ritualResting).length === 0) return undefined
+    const resume = (event: globalThis.KeyboardEvent): void => { if (event.key === 'Tab') setRitualResting({}) }
+    document.addEventListener('keydown', resume, true)
+    return () => document.removeEventListener('keydown', resume, true)
+  }, [ritualResting])
   useEffect(() => {
     // Another tab completing guidance must not leave this one blocked or ask
     // for a second authority choice. Clearing storage never chooses a mode.
@@ -297,12 +321,24 @@ export function LiangxiangBadge(): ReactElement {
     playVolumePreview()
   }, [])
   const [liangciOpen, setLiangciOpen] = useState(false)
-  const closeLiangci = useCallback(() => setLiangciOpen(false), [])
+  const closeLiangci = useCallback(() => {
+    quietRitualReturn(modalOpenedByKeyboard.current)
+    setLiangciOpen(false)
+  }, [quietRitualReturn])
   const [marketOpen, setMarketOpen] = useState(false)
+  const marketReturnTarget = useRef<HTMLButtonElement | null>(null)
   const closeMarket = useCallback(() => {
+    const keyboard = modalOpenedByKeyboard.current
+    quietRitualReturn(keyboard)
     setMarketOpen(false)
-    requestAnimationFrame(() => anchorRef.current?.querySelector<HTMLButtonElement>('[data-liangxiang-utility-trigger]')?.focus())
-  }, [])
+    requestAnimationFrame(() => {
+      const target = marketReturnTarget.current
+      if (keyboard) {
+        if (target?.isConnected) target.focus({ preventScroll: true })
+        else buttonRef.current?.focus({ preventScroll: true })
+      } else target?.blur()
+    })
+  }, [quietRitualReturn])
   const selectWelcomeMode = useCallback((preference: HostAuthorityPreference) => {
     void store.selectAuthorityMode(preference).then(
       () => {
@@ -317,9 +353,13 @@ export function LiangxiangBadge(): ReactElement {
   const onChooseOnline = useCallback(() => selectWelcomeMode('online'), [selectWelcomeMode])
   const onChooseLocal = useCallback(() => selectWelcomeMode('local'), [selectWelcomeMode])
   const onReleaseNotesClose = useCallback(() => {
+    quietRitualReturn(modalOpenedByKeyboard.current)
+    const returnToUtility = releaseNotesFromUtility.current
+    releaseNotesFromUtility.current = false
     markReleaseNotesSeen()
     setReleaseNotesVisible(false)
-  }, [])
+    if (returnToUtility) requestAnimationFrame(() => anchorRef.current?.querySelector<HTMLButtonElement>('[data-liangxiang-utility-trigger]')?.focus({ preventScroll: true }))
+  }, [quietRitualReturn])
   const onBroadcastDismiss = useCallback((broadcastId: string) => {
     markBroadcastDismissed(broadcastId)
     setDismissedBroadcastId(broadcastId)
@@ -583,6 +623,44 @@ export function LiangxiangBadge(): ReactElement {
   const [reconcilePending, setReconcilePending] = useState(false)
   const [modeConfirmOpen, setModeConfirmOpen] = useState(false)
   const [modeChanging, setModeChanging] = useState(false)
+  const [utilityHintSuppressed, setUtilityHintSuppressed] = useState(false)
+  const utilityCloseTimer = useRef<number | null>(null)
+  const utilityPointerInside = useRef(false)
+  const utilityKeyboardFocus = useRef(false)
+  const cancelUtilityClose = useCallback((): void => {
+    window.clearTimeout(utilityCloseTimer.current ?? undefined)
+    utilityCloseTimer.current = null
+  }, [])
+  const closeUtility = useCallback((returnFocus = false): void => {
+    cancelUtilityClose()
+    quietRitualReturn(utilityOpenedByKeyboard.current)
+    setUtilityOpen(false)
+    setReconcilePending(false)
+    setModeConfirmOpen(false)
+    if (returnFocus) anchorRef.current?.querySelector<HTMLElement>('[data-liangxiang-utility-trigger]')?.focus()
+    setUtilityHintSuppressed(true)
+  }, [cancelUtilityClose, quietRitualReturn])
+  const scheduleUtilityClose = useCallback((): void => {
+    cancelUtilityClose()
+    utilityCloseTimer.current = window.setTimeout(() => {
+      utilityCloseTimer.current = null
+      const slot = anchorRef.current?.querySelector('[data-liangxiang-utility-slot]')
+      if (!slot?.querySelector('[data-liangxiang-utility-drawer]') || utilityPointerInside.current
+        || (utilityKeyboardFocus.current && slot.contains(document.activeElement))
+        || slot.querySelector('[data-liangxiang-reconcile-confirm],[data-liangxiang-mode-confirm]')) return
+      closeUtility()
+    }, 180)
+  }, [cancelUtilityClose, closeUtility])
+  useEffect(() => {
+    if (!utilityOpen) { cancelUtilityClose(); return undefined }
+    const outside = (event: globalThis.PointerEvent): void => {
+      const slot = anchorRef.current?.querySelector('[data-liangxiang-utility-slot]')
+      if (!(event.target instanceof Node) || slot?.contains(event.target)) return
+      closeUtility()
+    }
+    document.addEventListener('pointerdown', outside, true)
+    return () => { document.removeEventListener('pointerdown', outside, true); cancelUtilityClose() }
+  }, [utilityOpen, cancelUtilityClose, closeUtility])
   useEffect(() => {
     if (voteFeedback === '') return undefined
     const lingerMs = isEmptyIncenseFeedback(voteFeedback) ? EMPTY_INCENSE_FEEDBACK_MS : VOTE_FEEDBACK_MS
@@ -861,6 +939,8 @@ export function LiangxiangBadge(): ReactElement {
     ).finally(() => setModeChanging(false))
   }
   const onShowVersion = (): void => {
+    modalOpenedByKeyboard.current = utilityKeyboardFocus.current
+    releaseNotesFromUtility.current = true
     setUtilityOpen(false)
     setModeConfirmOpen(false)
     setReleaseNotesVisible(true)
@@ -926,6 +1006,8 @@ export function LiangxiangBadge(): ReactElement {
         pointerEvents: 'auto',
       }}
       data-liangxiang-root=""
+      onPointerMoveCapture={event => { pointerPosition.current = { x: event.clientX, y: event.clientY } }}
+      onPointerDownCapture={event => { pointerPosition.current = { x: event.clientX, y: event.clientY } }}
     >
       <BadgeButton
         open={open}
@@ -982,20 +1064,33 @@ export function LiangxiangBadge(): ReactElement {
           onClose={closePanel}
           reconcilePending={reconcilePending}
           utilityOpen={utilityOpen}
+          utilityHintSuppressed={utilityHintSuppressed}
+          ritualResting={ritualResting}
+          onRitualReactivate={kind => {
+            if (ritualNeedsExit.current.has(kind)) return
+            setRitualResting(current => { if (!current[kind]) return current; const next = { ...current }; delete next[kind]; return next })
+            if (kind === 'utility') setUtilityHintSuppressed(false)
+          }}
+          onRitualLeave={kind => { ritualNeedsExit.current.delete(kind) }}
+          onUtilityEnter={() => { utilityPointerInside.current = true; cancelUtilityClose(); setUtilityHintSuppressed(false) }}
+          onUtilityLeave={() => { utilityPointerInside.current = false; scheduleUtilityClose() }}
+          onUtilityFocus={(keyboard, trigger) => { utilityKeyboardFocus.current = keyboard; cancelUtilityClose(); if (trigger) setUtilityHintSuppressed(false) }}
+          onUtilityBlur={() => { const keyboard = utilityKeyboardFocus.current; utilityKeyboardFocus.current = false; if (!utilityOpen) return; if (keyboard) closeUtility(); else if (!utilityPointerInside.current) scheduleUtilityClose() }}
+          onUtilityPointerInput={() => { utilityKeyboardFocus.current = false }}
+          onUtilityKeyboardInput={key => { utilityKeyboardFocus.current = true; cancelUtilityClose(); if (key !== 'Escape') { setRitualResting({}); setUtilityHintSuppressed(false) } }}
           onUtilityToggle={() => {
+            cancelUtilityClose()
+            setUtilityHintSuppressed(true)
             if (utilityOpen) {
               setUtilityOpen(false)
               setReconcilePending(false)
               setModeConfirmOpen(false)
             } else {
+              utilityOpenedByKeyboard.current = utilityKeyboardFocus.current
               setUtilityOpen(true)
             }
           }}
-          onUtilityClose={() => {
-            setUtilityOpen(false)
-            setReconcilePending(false)
-            setModeConfirmOpen(false)
-          }}
+          onUtilityClose={closeUtility}
           onOpenHomepage={onOpenHomepage}
           modeConfirmOpen={modeConfirmOpen}
           modeChanging={modeChanging}
@@ -1003,7 +1098,10 @@ export function LiangxiangBadge(): ReactElement {
           onModeConfirm={onModeConfirm}
           onModeCancel={onModeCancel}
           onShowVersion={onShowVersion}
-          onOpenMarket={() => {
+          onOpenMarket={(origin, trigger, keyboard) => {
+            modalOpenedByKeyboard.current = keyboard
+            marketReturnTarget.current = origin === 'panel' ? trigger
+              : anchorRef.current?.querySelector<HTMLButtonElement>('[data-liangxiang-utility-trigger]') ?? null
             setUtilityOpen(false)
             setReconcilePending(false)
             setModeConfirmOpen(false)
@@ -1013,6 +1111,7 @@ export function LiangxiangBadge(): ReactElement {
           onReconcileConfirm={onReconcileConfirm}
           onReconcileCancel={onReconcileCancel}
           onOpenLiangci={() => {
+            modalOpenedByKeyboard.current = utilityKeyboardFocus.current
             setUtilityOpen(false)
             setReconcilePending(false)
             setModeConfirmOpen(false)
@@ -1033,7 +1132,7 @@ export function LiangxiangBadge(): ReactElement {
           onRetry={() => { void store.loadHistory() }}
         />
       )}
-      {marketOpen && <MarketDialog key={state.authorityMode === 'LOCAL_FAKE_DEV' ? 'local' : 'online'} reducedMotion={reducedMotion} online={state.authorityMode !== 'LOCAL_FAKE_DEV'} onClose={closeMarket}
+      {marketOpen && <MarketDialog key={state.authorityMode === 'LOCAL_FAKE_DEV' ? 'local' : 'online'} reducedMotion={reducedMotion} online={state.authorityMode !== 'LOCAL_FAKE_DEV'} onClose={closeMarket} restoreFocus={false}
         {...(state.snapshot.liangziPolicyVersion === undefined || state.activeCase.id !== state.snapshot.caseId ? {} : {
           presentation: { caseId: state.snapshot.caseId, policyId: state.snapshot.liangziPolicyVersion, title: state.activeCase.title },
         })} />}
