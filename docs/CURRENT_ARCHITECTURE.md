@@ -4,8 +4,8 @@
 
 ## 版本与边界
 
-当前源码 `package.json` / `PLUGIN_VERSION` = `1.2.0`，`SERVER_BUILD=1.2.0-u1`。
-当前源码目标为 **1.2.0**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
+当前源码 `package.json` / `PLUGIN_VERSION` = `1.2.1-compat.1`，`SERVER_BUILD=1.2.1-compat.1-u1`。
+当前源码目标为 **1.2.1-compat.1 旧版提示补丁候选，未发布**；公开版本与部署状态须结合[发布验收记录](RELEASE_READINESS_1_2.md)、GitHub Release、npm 与实际服务核对，不能由源码版本推断。候选提交、CI 合并与正式发布/生产部署是独立步骤。
 
 | 仓库 | 职责 |
 |---|---|

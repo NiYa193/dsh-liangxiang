@@ -16,6 +16,7 @@ import {
   ABSURD_CLAIM_NOTICE,
   ACCOUNTING_UNAVAILABLE_HINT,
   COMMUNITY_UNAVAILABLE_REASON,
+  WALLET_CLIENT_UPGRADE_HINT,
   AUTHORITY_MODE_NOTES,
   INCENSE_STAT_HINT,
   INCENSE_STAT_LABEL,
@@ -895,7 +896,9 @@ export function Panel(props: PanelProps): ReactElement {
   const authorityUnavailable = offline || communityUnavailable
   const communityUnavailableReason = state.authorityReason === null
     ? COMMUNITY_UNAVAILABLE_REASON
-    : `无法连接天庭：${state.authorityReason}`
+    : state.authorityReason === WALLET_CLIENT_UPGRADE_HINT
+      ? WALLET_CLIENT_UPGRADE_HINT
+      : `无法连接天庭：${state.authorityReason}`
   const outOfIncense = personal.remainingIncense <= 0
   const votingDisabled = outOfIncense || authorityUnavailable
   const disabledReason = offline

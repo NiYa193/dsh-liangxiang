@@ -30,13 +30,13 @@ export {
 export const PLUGIN_PACKAGE_NAME = 'dsh-liangxiang'
 
 /** Installed package version, surfaced by 梁相案牍. Keep in sync with package.json. */
-export const PLUGIN_VERSION = '1.2.0'
+export const PLUGIN_VERSION = '1.2.1-compat.1'
 
 /**
  * Server-only release label for the community backend. Do not bump the npm /
  * client `PLUGIN_VERSION` for a backend-only change; stamp `1.1.6-uN` instead.
  */
-export const SERVER_BUILD = '1.2.0-u1'
+export const SERVER_BUILD = '1.2.1-compat.1-u1'
 
 /** Welcome gift: sticks credited once per device fingerprint per business date. */
 export const STARTER_INCENSE_COUNT = 10
@@ -255,3 +255,6 @@ export const OVERLAY_ENTRY_ID = 'liangxiang'
 
 /** List ordering of the badge entry among `shell.overlay` occupants. */
 export const OVERLAY_ENTRY_ORDER = 100
+
+/** Explicit compatibility feedback; never present this as a network outage. */
+export const WALLET_CLIENT_UPGRADE_HINT = '请升级至梁相2.0.0及以上版本'

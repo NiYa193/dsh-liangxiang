@@ -1107,3 +1107,18 @@ describe('avatar states are visually distinct', () => {
     })
   })
 })
+
+
+describe('wallet compatibility feedback', () => {
+  it('shows the exact minimum-version instruction instead of a generic network failure', () => {
+    const hint = '请升级至梁相2.0.0及以上版本'
+    const state = { ...onlineState(), connection: 'live' as const, authorityAvailable: false, authorityReason: hint }
+    const tree = renderPanel(state)
+    const text = textContent(tree)
+    expect(text).toContain(hint)
+    expect(text).not.toContain('无法连接天庭：' + hint)
+    const votes = findByAttr(tree, 'data-liangxiang-region', 'vote').flatMap(region => findAll([region], node => node.type === 'button'))
+    expect(votes.length).toBe(2)
+    expect(votes.every(node => node.props.disabled === true)).toBe(true)
+  })
+})
