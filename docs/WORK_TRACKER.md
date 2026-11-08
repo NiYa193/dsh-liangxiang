@@ -79,5 +79,6 @@
 - [x] Inventory both isolated databases and client routes; consistent source snapshots pass wallet/journal, frozen-position and pool conservation checks.
 - [x] Preserve the completed ECS capacity rehearsal separately before restoring ongoing manual-test data.
 - [x] Fix fresh-host internal-test namespace startup: an absent legacy backup directory is optional; when present it remains inaccessible.
-- [ ] Restore both test environments, verify basic signed operations, preserve client identities and change their endpoints.
-- [ ] Stop old isolated test services after verification; check active dependencies and preserve production/original backups.
+- [x] Restore both test environments, verify eleven basic signed-operation/read checks against a disposable copy, preserve client identities and change their endpoints. Both full identity/financial/archive digests match the stopped source; real-clock client opens with its original profile, and the accelerated-client relay reaches the new host without restarting that client.
+- [x] Stop and disable only the old isolated test services after verification; retire their HTTPS route with 410. Active client environment/configuration checks show no old-host dependency. Production/old ordinary-service PIDs and the original seed checksum remain unchanged; historical backups plus the latest daily backup are preserved privately on the new host and locally.
+- [x] Verify both origins with strict TLS and five health requests each; add and successfully execute a separate daily backup for both restored test ledgers. No repeat capacity run or production cutover.
