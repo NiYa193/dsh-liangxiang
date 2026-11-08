@@ -12,7 +12,11 @@ ENV_FILE=/etc/liangxiang-internal-test.env
 UNIT=/etc/systemd/system/liangxiang-backend-internal-test.service
 PROXY=/etc/caddy/Caddyfile.standby
 SNIPPET=/etc/caddy/liangxiang-internal-test.caddy
-[[ "$EXPECTED_HOSTNAME" =~ (^|[-.])standby([-.]|$) && ! "$EXPECTED_HOSTNAME" =~ (^|[-.])(prod|production)([-.]|$) ]]
+if [[ "$EXPECTED_HOSTNAME" == liangxiang ]]; then
+  marker=/etc/liangxiang-deploy-role
+  [[ -f "$marker" && ! -L "$marker" && "$(stat -c '%u:%a' "$marker")" == 0:600 && "$(cat "$marker")" == standby ]] || { echo "refusing deploy: generic hostname requires a root-owned standby role marker" >&2; exit 1; }
+fi
+[[ ( "$EXPECTED_HOSTNAME" == liangxiang || "$EXPECTED_HOSTNAME" =~ (^|[-.])standby([-.]|$) ) && ! "$EXPECTED_HOSTNAME" =~ (^|[-.])(prod|production)([-.]|$) ]]
 [[ "$(hostname)" == "$EXPECTED_HOSTNAME" ]]
 [[ "$GIT_SHA" =~ ^[a-f0-9]{7,40}$ && "$STAMP" =~ ^[0-9TZ:-]+$ ]]
 [[ "$PLUGIN_VERSION" =~ ^[0-9A-Za-z.+-]+$ && "$SERVER_BUILD" =~ ^[0-9A-Za-z.+-]+$ ]]

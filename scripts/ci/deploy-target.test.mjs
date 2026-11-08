@@ -133,3 +133,20 @@ test('the actual standby proxy branch validates the active file without copying,
     assert.equal(readFileSync(active, 'utf8'), content)
   } finally { rmSync(directory, { recursive: true, force: true }) }
 })
+
+
+test('generic product hostname is standby-only; remote preflight requires a protected marker', async () => {
+  const generic = { ...standby, LIANGXIANG_DEPLOY_EXPECTED_HOSTNAME: 'liangxiang' }
+  assert.equal((await resolveDeployTarget(generic)).role, 'standby')
+  await assert.rejects(resolveDeployTarget({ ...generic, LIANGXIANG_DEPLOY_ROLE: 'production' }), /hostname/)
+  const source = readFileSync(new URL('../load-deploy-target.sh', import.meta.url), 'utf8')
+  const block = source.split('CONFIG=/etc/caddy/Caddyfile.standby\n')[1].split('for property in ExecStart')[0]
+  const dir = mkdtempSync(join(tmpdir(), 'liangxiang-role-marker-')), marker = join(dir, 'role')
+  try {
+    const run = () => spawnSync('bash', ['-c', 'hostname(){ echo liangxiang; }\n' + block.replaceAll('/etc/liangxiang-deploy-role', marker)], { encoding: 'utf8' })
+    assert.notEqual(run().status, 0)
+    writeFileSync(marker, 'production\n', {mode:0o600}); assert.notEqual(run().status, 0)
+    writeFileSync(marker, 'standby\n'); assert.notEqual(run().status, 0, 'an unprivileged marker must fail')
+    assert.equal(run().stderr.includes('root-owned standby role marker'), true)
+  } finally { rmSync(dir, {recursive:true,force:true}) }
+})

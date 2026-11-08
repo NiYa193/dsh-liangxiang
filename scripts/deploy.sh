@@ -82,6 +82,10 @@ if [[ "$(hostname)" != "$EXPECTED_HOSTNAME" ]]; then
 fi
 case "$DEPLOY_ROLE" in
   standby)
+    if [[ "$EXPECTED_HOSTNAME" == liangxiang ]]; then
+      marker=/etc/liangxiang-deploy-role
+      [[ -f "$marker" && ! -L "$marker" && "$(stat -c '%u:%a' "$marker")" == 0:600 && "$(cat "$marker")" == standby ]] || { echo "refusing deploy: generic hostname requires a root-owned standby role marker" >&2; exit 1; }
+    fi
     if [[ "$(sha256sum /etc/caddy/Caddyfile.standby | cut -d ' ' -f 1)" != "$STANDBY_PROXY_SHA" ]]; then
       echo "refusing deploy: standby proxy changed after preflight" >&2
       exit 1

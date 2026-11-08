@@ -42,7 +42,9 @@ export async function resolveDeployTarget(env, resolveHost = lookup) {
   const expectedHostname = env.LIANGXIANG_DEPLOY_EXPECTED_HOSTNAME ?? ''
   if (!hostnamePattern.test(expectedHostname)) refuse('LIANGXIANG_DEPLOY_EXPECTED_HOSTNAME is required')
   const labels = expectedHostname.toLowerCase().split(/[-.]/)
-  const standbyLabel = labels.includes('standby')
+  // A generic product hostname is standby-only and additionally requires the
+  // root-owned role marker checked by every remote preflight/installer.
+  const standbyLabel = labels.includes('standby') || expectedHostname === 'liangxiang'
   const productionLabel = labels.some(label => label === 'prod' || label === 'production')
   if (role === 'standby' ? !standbyLabel || productionLabel : !productionLabel || standbyLabel) {
     refuse('expected hostname must identify the selected standby or production role')

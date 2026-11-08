@@ -64,3 +64,12 @@
 | ☑ | 补齐非安全上下文与交易重试基线 | 真实非安全HTTP实包三主题6项通过；默认生成器与真实SQLite丢回执／重开重试4项红→绿，未重复冻结。漏测原因及基线见PR30_INTEGRATION.md |
 
 完成一项立即更新状态与证据；新事项追加，发现回归则重新打开对应项。当前版本证据见[候选验证记录](MARKET_VALIDATION.md)，兼容边界见[旧版过渡](LEGACY_WALLET_COMPAT.md)。
+
+
+### ECS isolated validation (2026-11-08)
+
+- [x] Freeze committed alpha.12 implementation (`1879c10`); initial verify: 993 tests passed.
+- [ ] Provision standby-only host, including generic `liangxiang` hostname guarded by a root-owned role marker.
+- [ ] Strict TLS and two-origin network checks; isolated database, 0/50/100/150/200 clients and sustained 200.
+- [ ] Market, wallet, retry/reconnect and accelerated boundary settlement audit.
+- [ ] Record protected-host evidence and retirement prerequisites; no cutover or old-server changes.

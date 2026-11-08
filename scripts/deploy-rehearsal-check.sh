@@ -18,7 +18,11 @@ SERVER_BUILD="$5"
 PREFIX=/opt/liangxiang-rehearsal
 ENV_FILE=/etc/liangxiang-rehearsal.env
 SERVICE=liangxiang-backend-rehearsal
-[[ "$EXPECTED_HOSTNAME" =~ (^|[-.])standby([-.]|$) && ! "$EXPECTED_HOSTNAME" =~ (^|[-.])(prod|production)([-.]|$) ]] || { echo "refusing rehearsal-check: standby hostname required" >&2; exit 1; }
+if [[ "$EXPECTED_HOSTNAME" == liangxiang ]]; then
+  marker=/etc/liangxiang-deploy-role
+  [[ -f "$marker" && ! -L "$marker" && "$(stat -c '%u:%a' "$marker")" == 0:600 && "$(cat "$marker")" == standby ]] || { echo "refusing deploy: generic hostname requires a root-owned standby role marker" >&2; exit 1; }
+fi
+[[ ( "$EXPECTED_HOSTNAME" == liangxiang || "$EXPECTED_HOSTNAME" =~ (^|[-.])standby([-.]|$) ) && ! "$EXPECTED_HOSTNAME" =~ (^|[-.])(prod|production)([-.]|$) ]] || { echo "refusing rehearsal-check: standby hostname required" >&2; exit 1; }
 [[ "$(hostname)" == "$EXPECTED_HOSTNAME" ]] || { echo "refusing rehearsal-check: hostname changed" >&2; exit 1; }
 [[ "$(sha256sum /etc/caddy/Caddyfile.standby | cut -d ' ' -f 1)" == "$EXPECTED_PROXY_SHA" ]] || { echo "refusing rehearsal-check: standby proxy changed" >&2; exit 1; }
 node "$PREFIX/scripts/deploy-target.mjs" receipt "$GIT_SHA" "$SERVER_BUILD" < "$PREFIX/VERSION"

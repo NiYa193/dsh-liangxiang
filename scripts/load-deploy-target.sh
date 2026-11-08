@@ -18,6 +18,12 @@ standby_proxy_check_script() {
   cat <<'PROXY_CHECK'
 set -euo pipefail
 CONFIG=/etc/caddy/Caddyfile.standby
+if [[ "$(hostname)" == liangxiang ]]; then
+  marker=/etc/liangxiang-deploy-role
+  [[ -f "$marker" && ! -L "$marker" && "$(stat -c '%u:%a' "$marker")" == 0:600 && "$(cat "$marker")" == standby ]] || {
+    echo "refusing deploy: generic hostname requires a root-owned standby role marker" >&2; exit 1;
+  }
+fi
 for property in ExecStart ExecReload; do
   value="$(systemctl show caddy -p "$property" --value)"
   case "$value" in
