@@ -260,7 +260,11 @@ test('unified K line has numeric axes, separate OHLC, keyboard reading and rever
   }
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
-  await expect(page.locator('[data-liangxiang-utility-trigger]')).toBeFocused()
+  // Both entry clicks are pointer actions; Escape clears their focus and hint.
+  const trigger = page.locator('[data-liangxiang-utility-trigger]')
+  await expect(trigger).not.toBeFocused()
+  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
 })
 
 test('dragging either plot past its time labels pans without selecting text and leaves ordinary copy selectable', async ({ page }) => {
@@ -531,5 +535,9 @@ test('legacy full-screen preferences cannot restore a second chart on reload', a
   }
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
-  await expect(page.locator('[data-liangxiang-utility-trigger]')).toBeFocused()
+  // Both entry clicks are pointer actions; Escape clears their focus and hint.
+  const trigger = page.locator('[data-liangxiang-utility-trigger]')
+  await expect(trigger).not.toBeFocused()
+  await expect(trigger).toHaveAttribute('data-liangxiang-ritual-resting', 'pointer')
+  await expect.poll(() => trigger.locator('[data-liangxiang-hint]').evaluate(element => getComputedStyle(element).opacity)).toBe('0')
 })
