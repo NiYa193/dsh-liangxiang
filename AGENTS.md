@@ -17,11 +17,11 @@ remain date-scoped. `remaining_incense` means wallet **available** incense,
 excluding frozen orders; today's used incense may exceed today's earned amount.
 Legacy/offline daily accounting stays isolated and never funds community trades.
 
-New v2 markets accept positions at 09:00–11:00 / 12:00–16:00 / 17:00–21:00,
+New v3 markets accept positions at 07:00–11:00 / 12:00–16:00 / 17:00–21:00,
 lock at 11:00/16:00/21:00, fix raw-count reference points at 12:00/17:00/22:00
-and share the old case's midnight close. Existing v1 markets retain all stored
-deadlines (11:00/17:00/20:00 locks, 12:00/18:00/21:00 references) and their
-original rule version through restart, settlement and receipts.
+and share the old case's midnight close. Existing v1/v2 markets retain all
+stored deadlines and their original rule version through restart, settlement
+and receipts; v2's early session still opens at 09:00.
 Server transactions own freezing, idempotency, integer pool allocation and
 rollover. No client cache or chart is a ledger. Usage remains soft trust.
 
@@ -48,7 +48,12 @@ reads `24:00后一起揭晓`. One noninteractive time-window text beside the zoo
 Wheel zoom is continuous and pointer-anchored; +/− step through 24/12/6/3/1 hours and 30 minutes; candle grain is automatic,
 never a separate interval selector, and cannot exceed the real source resolution. Record the active case all
 business day, including before trading opens; phase shading never hides prices. The normal window and order ticket stay compact. The header whale uses action-specific local motion and readable speech. It reports the selected batch's actual cutoff and pool once per minute, below operation/error priority; clicking it reports on demand.
-Do not restore a permanent countdown, sticky pool popup or duplicate position-caption row.
+The stage buttons permanently show 早盘/午盘/晚盘, the actual lock time and
+the user's direction/amount. Use 争梁位/已定梁 consistently. The footer shows
+the selected stage's total pool in a fixed, left-aligned numeric slot beside
+the midnight reveal text. Do not restore a permanent countdown, sticky pool
+popup or duplicate position-caption row. Show personal funds as 个人可用;
+the clock under the motion toggle uses the server business date/time only.
 Confirm and withdraw share one compact order row. The title is `梁股 · 香火市场`.
 Receipts and rules open overlays from permanent buttons; batch, status and wallet updates never resize the window.
 Its blue whale-girl artwork is a market
@@ -57,8 +62,12 @@ Market animation/static preference is local and respects reduced motion.
 Market surfaces inherit DSH's explicit color scheme. Verify an OS-light / DSH-dark
 combination as well as ordinary light/dark themes; static mode stops every local CSS transition and WAAPI action.
 Dragging either chart must not select its labels or adjacent readout; ordinary
-text outside the drag remains selectable. The readout has stable left-aligned
-direction, Liang position and detail slots. Keep whole-fish swimming and local
+text outside the drag remains selectable. The readout keeps stable left-aligned
+direction and Liang position slots; candle details follow the pointer in a
+bounded themed tooltip, retaining exact keyboard/touch access. Compact amounts
+use at most four significant digits and truncate toward zero, with exact
+accessible values and integer editing; 梁位 retains six truncated decimals.
+Keep whole-fish swimming and local
 motion in dynamic mode; solve sharpness in rendering rather than removing motion.
 First uncached loading may swim two circles then return the same fish to its
 header slot; errors, hiding, static mode and unmount cancel the flight. All
