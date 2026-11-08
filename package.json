@@ -26,6 +26,7 @@
   "files": [
     "README.md",
     "LICENSE",
+    "LICENSES/lucide.txt",
     "lib/index.js",
     "lib/client.js",
     "lib/client.js.map",
