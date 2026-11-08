@@ -87,6 +87,7 @@ DSH侧栏默认280px、梁相外框256px的实现与实测见 [`DSH_LAYOUT_WIDTH
 当前交易候选的验证证据集中记录在 [`MARKET_VALIDATION.md`](MARKET_VALIDATION.md)，
 隔离演示步骤见 [`MARKET_LOCAL_TEST.md`](MARKET_LOCAL_TEST.md)，香港备服专用部署与加速签名演练见 [`MARKET_REHEARSAL.md`](MARKET_REHEARSAL.md)。
 多客户端人工测试另用真实业务时钟、独立身份/数据库和出口IP白名单，固定部署及隔离规则见 [`INTERNAL_TEST.md`](INTERNAL_TEST.md)。
+新香港ECS的网络、200并发、同版恢复、单写切换与保留最新账本的回退方案见 [`ECS_MIGRATION.md`](ECS_MIGRATION.md)；方案准备不代表已验证新机或已授权正式切流。
 最新实际安装、人工环境及旧版原位升级的独立验收见 [`INTERNAL_TEST_READINESS.md`](INTERNAL_TEST_READINESS.md)；两分钟一天的演练不改真实时钟内测实例。
 当前alpha8入口、回滚缓存故障注入及新12客户端三批派彩见 [`MARKET_REHEARSAL_ALPHA8.md`](MARKET_REHEARSAL_ALPHA8.md)；alpha7旧协议证据见 [`MARKET_REHEARSAL_ALPHA7.md`](MARKET_REHEARSAL_ALPHA7.md)；alpha5的DSH手工收盘历史保留在 [`MARKET_REHEARSAL_REPORT.md`](MARKET_REHEARSAL_REPORT.md)，均不作为并发容量结论。
 [`RELEASE_READINESS_1_2.md`](RELEASE_READINESS_1_2.md) 仅保留 1.2 发布验收记录，不能代替当前候选检查。
