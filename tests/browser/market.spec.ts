@@ -414,6 +414,66 @@ test('server clock, batch cutoffs, persistent holdings and selected pool stay re
   expect(writes).toBe(0)
 })
 
+for (const mode of ['candles', 'tide'] as const) test(`mouse point inspection resumes following and returns to live readings in ${mode}`, async ({ page }) => {
+  const dialog = await openMarket(page)
+  if (mode === 'tide') await dialog.getByRole('button', { name: '潮汐', exact: true }).click()
+  const chart = dialog.locator('[data-liangxiang-market-chart-mode]')
+  const svg = chart.locator('svg[data-liangxiang-market-from]')
+  const time = chart.locator('.liangxiang-market-chart-quote-time b')
+  const detail = chart.locator('[data-liangxiang-market-point-detail]')
+  const close = chart.locator('[data-liangxiang-market-quote="close"]')
+  const point = (hour: number) => svg.evaluate((element, hour) => {
+    const bounds = element.getBoundingClientRect(), width = (element as SVGSVGElement).viewBox.baseVal.width
+    return { x: bounds.left + (12 + (width - 76) * hour / 24) / width * bounds.width, y: bounds.top + 40 }
+  }, hour)
+  const first = await point(2.1)
+  await page.mouse.click(first.x, first.y)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+  const firstTime = await time.textContent(), firstDetail = await detail.textContent()
+  await page.mouse.move(first.x + .1, first.y + 2)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+  await expect(time).toHaveText(firstTime!)
+  const next = await point(6.1)
+  await page.mouse.move(next.x, next.y)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
+  await expect(time).not.toHaveText(firstTime!)
+  await expect(detail).not.toHaveText(firstDetail!)
+  await expect(detail.locator('b')).toHaveText(/^06:/)
+  await page.mouse.move(0, 0)
+  await expect(detail).toHaveCount(0)
+  await expect(time).toHaveText(/^12:/)
+  await page.mouse.click(first.x, first.y)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+  await page.mouse.move(0, 0)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
+  await expect(detail).toHaveCount(0)
+  await expect(time).toHaveText(/^12:/)
+
+  // A real market frame must still advance the unselected readout after a
+  // click/leave cycle; this remains a read-only fixture, never a vote/order.
+  const live: MarketState = { ...fixture(), server_time: DAY + 13 * HOUR + MINUTE,
+    current_point: { ...fixture().current_point!, at: DAY + 13 * HOUR + MINUTE, up_votes: 1500, down_votes: 1000, sequence: 2 },
+    current_candle: { at: DAY + 13 * HOUR, open: .5, high: .6, low: .5, close: .6, up_votes: 1500, down_votes: 1000, volume: 842 },
+  }
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), live)
+  await expect(time).toHaveText('13:00')
+  await expect(close).toHaveAttribute('aria-label', '60.000000%')
+  await svg.focus()
+  await page.keyboard.press('Home')
+  await expect(time).toHaveText('00:00')
+  await expect(detail).toBeVisible()
+  await page.keyboard.press('ArrowRight')
+  await expect(time).not.toHaveText('00:00')
+  const keyboardTime = await time.textContent()
+  await page.evaluate(state => window.__liangxiangMarketFrame?.(state), { ...live, server_time: live.server_time + 1 })
+  await expect(time).toHaveText(keyboardTime!)
+  await expect(chart.locator('[aria-live="polite"]')).toContainText('本段上香')
+  await page.keyboard.press('End')
+  await expect(time).toHaveText('13:00')
+  await expect(dialog.locator('[data-liangxiang-market-available]')).toHaveText('90')
+  await expect(dialog.locator('[data-liangxiang-market-frozen]')).toHaveText('10')
+})
+
 test('whole-position changes freeze only the difference and a short position follows the confirmed direction', async ({ page }) => {
   const dialog = await openMarket(page), ticket = dialog.locator('[data-liangxiang-market-batch="2"]')
   const intents: MarketPositionRequest[] = []

@@ -421,6 +421,14 @@ test('point tooltip follows inspection inside plot edges while footer facts and 
   await expect(tip).toBeVisible()
   await page.mouse.move(0, 0)
   await expect(tip).toHaveCount(0)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
+  await expect(chart.locator('.liangxiang-market-chart-quote-time b')).toHaveText(/^09:/)
+  await svg.click({ position: { x: (await svg.boundingBox())!.width * .25, y: 40 } })
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+  await inspect(4.75)
+  await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
+  await expect(tip).toContainText('这段未记录')
+  await svg.click({ position: { x: (await svg.boundingBox())!.width * .25, y: 40 } })
   await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
   await page.keyboard.press('Escape')
   await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
@@ -428,15 +436,21 @@ test('point tooltip follows inspection inside plot edges while footer facts and 
 
 test.describe('touch point inspection', () => {
   test.use({ hasTouch: true })
-  test('a tap reads an exact point and a second tap releases the original pin', async ({ page }) => {
+  for (const mode of ['candles', 'tide'] as const) test(`touch taps retain point inspection and release on a second tap in ${mode}`, async ({ page }) => {
     const { chart } = await openChart(page)
+    if (mode === 'tide') await chart.getByRole('button', { name: '潮汐', exact: true }).click()
     const svg = chart.locator('svg[data-liangxiang-market-from]'), bounds = (await svg.boundingBox())!
     await page.touchscreen.tap(bounds.x + bounds.width / 4, bounds.y + 45)
     await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
     const detail = chart.locator('[data-liangxiang-market-point-detail]')
     await expect(detail).toBeVisible()
     await expect(detail).toHaveAttribute('aria-label', /本段上香.*夯.*拉/)
-    await page.touchscreen.tap(bounds.x + bounds.width / 4, bounds.y + 45)
+    const firstDetail = await detail.textContent()
+    await page.touchscreen.tap(bounds.x + bounds.width * .15, bounds.y + 45)
+    await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'true')
+    await expect(detail).toBeVisible()
+    await expect(detail).not.toHaveText(firstDetail!)
+    await page.touchscreen.tap(bounds.x + bounds.width * .15, bounds.y + 45)
     await expect(svg).toHaveAttribute('data-liangxiang-market-pinned', 'false')
   })
 })

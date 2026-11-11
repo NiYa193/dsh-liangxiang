@@ -120,7 +120,11 @@ text outside the drag remains selectable. The 夯/拉 legend sits beside the
 volume band in the same centered right-axis column as the price labels, below
 the lowest tick, while 梁位 is in the footer; no independent readout row.
 Candle details follow the pointer in a
-bounded themed tooltip, retaining exact keyboard/touch access. Compact amounts
+bounded themed tooltip. A mouse click may temporarily pin a point; moving to
+another point (including a gap/future region) releases it, and leaving the plot
+returns to the latest confirmed candle in the visible window. Touch/pen taps
+retain their point after pointer exit; another tap on that same point or Escape
+releases it. Preserve keyboard inspection and exact accessible values. Compact amounts
 use at most four significant digits and truncate toward zero, with exact
 accessible values and integer editing; 梁位 retains six truncated decimals.
 Keep whole-fish swimming and local

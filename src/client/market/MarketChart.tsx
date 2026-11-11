@@ -25,6 +25,7 @@ const MODE_KEY = 'liangxiang.market.chart-mode.v1'
 
 interface ChartGeometry { width: number, bottom: number }
 interface ChartViewport { scope: string, from: number, until: number }
+type ChartPointer = Pick<PointerEvent<SVGSVGElement>, 'currentTarget' | 'clientX' | 'clientY'>
 export type MarketChartInteraction = 'mode-candles' | 'mode-tide' | 'zoom-in' | 'zoom-out' | 'pan' | 'inspect' | 'reset'
 const geometry = (width = WIDTH, bottom = HEIGHT - 58): ChartGeometry => ({ width, bottom })
 const midpoint = (candle: MarketCandle, observedAt: number, sourceIntervalMs: number = MARKET_CANDLE_INTERVAL_MS): number => Math.min((candle.at + ('until' in candle ? (candle as MarketDisplayCandle).until : candle.at + sourceIntervalMs)) / 2, observedAt)
@@ -201,7 +202,7 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
       if (final?.scope === scope) onInteraction?.(delta < 0 ? 'zoom-in' : 'zoom-out', true, marketViewportLabel(final.until - final.from, day.until - day.from))
     }, 180)
   }
-  const hit = (event: PointerEvent<SVGSVGElement>): number | null => {
+  const hit = (event: ChartPointer): number | null => {
     const bounds = event.currentTarget.getBoundingClientRect()
     const at = from + ((event.clientX - bounds.left) / bounds.width * size.width - LEFT) / plotWidth * (until - from)
     if (at < from || at > until) return null
@@ -213,6 +214,14 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     for (const candle of visible) if (!nearest || Math.abs(midpoint(candle, observedUntil, candlesIntervalMs) - at) < Math.abs(midpoint(nearest, observedUntil, candlesIntervalMs) - at)) nearest = candle
     return nearest?.at ?? null
   }
+  const clearInspection = (): void => { setPinned(null); setHover(null); setSpecial(null); setTip(null) }
+  const showPointerTip = (event: ChartPointer): boolean => {
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const local = (event.clientX - bounds.left) / bounds.width * size.width
+    if (local < LEFT || local > size.width - RIGHT) { setTip(null); return false }
+    setTip({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, width: bounds.width, height: bounds.height })
+    return true
+  }
   const move = (event: PointerEvent<SVGSVGElement>): void => {
     const gesture = drag.current
     if (gesture) {
@@ -223,11 +232,12 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
       if (gesture.moved) changeWindow(gesture.from - offset / Math.max(1, event.currentTarget.getBoundingClientRect().width) * size.width / plotWidth * (gesture.until - gesture.from), gesture.until - gesture.from)
       return
     }
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const local = (event.clientX - bounds.left) / bounds.width * size.width
-    if (local < LEFT || local > size.width - RIGHT) { setTip(null); return }
-    if (pinned === null) setHover(hit(event))
-    setTip({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, width: bounds.width, height: bounds.height })
+    if (!showPointerTip(event)) { if (event.pointerType === 'mouse') clearInspection(); return }
+    if (pinned === null || event.pointerType === 'mouse') {
+      const at = hit(event)
+      if (pinned !== null && at !== pinned) setPinned(null)
+      setHover(at)
+    }
   }
   const key = (event: KeyboardEvent<SVGSVGElement>): void => {
     if (event.key === 'Escape' && pinned !== null) { stopWheel(); event.preventDefault(); event.stopPropagation(); setPinned(null); setHover(null); setSpecial(null); setTip(null); return }
@@ -271,14 +281,19 @@ export const MarketChart = memo(function MarketChart({ state, candles, animated,
     <div className={marketClass('chart-scroll')} ref={box}>
       <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" tabIndex={0} data-liangxiang-market-from={from} data-liangxiang-market-until={until} data-liangxiang-market-interval={interval} data-liangxiang-market-source-interval={candlesIntervalMs} data-liangxiang-market-pinned={pinned !== null}
         style={{ width: '100%', height: '100%', display: 'block', overflow: 'hidden', touchAction: 'pan-y', userSelect: 'none', WebkitUserSelect: 'none' }}
-        aria-label={`今日梁位${mode === 'tide' ? '潮汐' : 'K线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方行情，加减号或滚轮缩放，拖动平移，0或双击复位，点击固定，Escape解除固定；缺口不连线。${readout}`}
+        aria-label={`今日梁位${mode === 'tide' ? '潮汐' : 'K线'}，当前 ${marketRatioLabel(current)}${activeBand ? `，${activeBand.label}` : ''}。左右键查看官方行情，加减号或滚轮缩放，拖动平移，0或双击复位。点击暂留读数，鼠标移到其他时点恢复跟随，移出图表回到视窗最新读数；触屏再次点同一点或按Escape解除固定；缺口不连线。${readout}`}
         onPointerMove={move} onPointerDown={event => { if (event.button !== 0 || drag.current) return; event.preventDefault(); event.currentTarget.focus({ preventScroll: true }); stopWheel(); setTip(null); skipClick.current = false; drag.current = { pointer: event.pointerId, x: event.clientX, from, until, moved: false }; event.currentTarget.setPointerCapture(event.pointerId) }}
         onPointerUp={event => { if (drag.current?.pointer !== event.pointerId) return; if (drag.current.moved) { skipClick.current = true; onInteraction?.('pan') } drag.current = null; if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) }}
         onPointerCancel={event => { if (drag.current?.pointer !== event.pointerId) return; stopWheel(); drag.current = null; skipClick.current = true }}
         onLostPointerCapture={event => { if (drag.current?.pointer === event.pointerId) { drag.current = null; skipClick.current = true } }} onDragStart={event => event.preventDefault()}
         onDoubleClick={resetWindow}
-        onClick={event => { if (skipClick.current) { skipClick.current = false; return } const at = hit(event as unknown as PointerEvent<SVGSVGElement>); if (at !== null) { setPinned(old => old === at ? null : at); setHover(at); onInteraction?.('inspect') } move(event as unknown as PointerEvent<SVGSVGElement>) }}
-        onPointerLeave={() => { setTip(null); if (!drag.current && pinned === null) { setHover(null); setSpecial(null) } }} onBlur={() => setTip(null)} onKeyDown={key}>
+        onClick={event => { if (skipClick.current) { skipClick.current = false; return } if (!showPointerTip(event)) return; const at = hit(event); if (at !== null) { setPinned(old => old === at ? null : at); setHover(at); onInteraction?.('inspect') } }}
+        onPointerLeave={event => {
+          setTip(null)
+          // Touch/pen pointers leave after a tap; retain their deliberate pin.
+          // Only an actual mouse exit returns inspection to the live readout.
+          if (!drag.current && (event.pointerType === 'mouse' || pinned === null)) clearInspection()
+        }} onBlur={() => setTip(null)} onKeyDown={key}>
         <defs>
           <clipPath id="liangxiang-market-price-clip"><rect x={LEFT} y={TOP} width={plotWidth} height={plotHeight} /></clipPath>
           <clipPath id="liangxiang-market-volume-clip"><rect x={LEFT} y={volumeY - 3} width={plotWidth} height={volumeHeight + 6} /></clipPath>
